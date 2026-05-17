@@ -1,34 +1,19 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 
-const getSupabaseClient = (): SupabaseClient => {
-  const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-  const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
-  if (!supabaseUrl || !supabaseAnonKey) {
-    // Return a proxy that throws a helpful error when any property is accessed
-    return new Proxy({} as SupabaseClient, {
-      get() {
-        throw new Error(
-          'Supabase configuration is missing. Please set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in the app settings (Secrets panel).'
-        );
-      },
-    });
+let supabaseInstance: SupabaseClient | null = null;
+let isConfigured = false;
+
+if (supabaseUrl && supabaseAnonKey) {
+  try {
+    supabaseInstance = createClient(supabaseUrl, supabaseAnonKey);
+    isConfigured = true;
+  } catch (e) {
+    console.warn('Supabase client creation failed:', e);
   }
+}
 
-  return createClient(supabaseUrl, supabaseAnonKey);
-};
-
-export const supabase = getSupabaseClient();
-
-/**
- * SECURITY REMINDER:
- * 
- * To ensure data security, you MUST enable Row Level Security (RLS) on all your tables in the Supabase dashboard.
- * 
- * For example, for a 'readings' table:
- * 1. Go to Authentication -> Policies
- * 2. Enable RLS for the 'readings' table.
- * 3. Create a policy: "Users can only access their own data"
- *    - Definition: auth.uid() = user_id
- *    - Allowed operations: SELECT, INSERT, UPDATE, DELETE
- */
+export const supabase = supabaseInstance;
+export const isSupabaseReady = isConfigured;

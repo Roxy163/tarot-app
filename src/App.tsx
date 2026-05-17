@@ -11,7 +11,7 @@ import { ProfileView } from './components/ProfileView';
 import { CardMetadataManager } from './components/CardMetadataManager';
 import { StudyPavilionModules } from './components/StudyPavilionModules';
 import { Modal } from './components/Modal';
-import { supabase } from './lib/supabase';
+import { supabase, isSupabaseReady } from './lib/supabase';
 import { Auth } from './components/Auth';
 import { Session } from '@supabase/supabase-js';
 
@@ -152,6 +152,11 @@ export default function App() {
   const [isProcessing, setIsProcessing] = useState(false);
 
   useEffect(() => {
+    if (!isSupabaseReady || !supabase) {
+      setIsSupabaseConfigured(false);
+      setIsAuthChecking(false);
+      return;
+    }
     try {
       supabase.auth.getSession().then(({ data: { session } }) => {
         setSession(session);
@@ -197,6 +202,7 @@ export default function App() {
   };
 
   const fetchProfile = async (userId: string) => {
+    if (!supabase) return;
     const { data, error } = await supabase
       .from('profiles')
       .select('*')
@@ -316,7 +322,7 @@ export default function App() {
   };
 
   const handleLogout = async () => {
-    await supabase.auth.signOut();
+    if (supabase) await supabase.auth.signOut();
     setSession(null);
     setProfile(null);
     setActiveTab('home');
@@ -505,22 +511,8 @@ export default function App() {
   };
 
   if (!isSupabaseConfigured) {
-    return (
-      <div className="min-h-screen bg-forest-bg flex items-center justify-center p-4">
-        <div className="max-w-md w-full bg-white rounded-3xl shadow-xl border border-forest-border p-8 text-center space-y-4">
-          <div className="w-16 h-16 rounded-2xl bg-forest-accent/10 text-forest-accent flex items-center justify-center mx-auto">
-            <Settings size={32} />
-          </div>
-          <h2 className="text-xl font-serif font-bold text-forest-text">配置未完成</h2>
-          <p className="text-sm text-forest-muted">
-            请在 AI Studio 的 <b>Settings (Secrets)</b> 面板中配置 
-            <code className="bg-forest-bg px-1 rounded">VITE_SUPABASE_URL</code> 和 
-            <code className="bg-forest-bg px-1 rounded">VITE_SUPABASE_ANON_KEY</code>。
-          </p>
-          <p className="text-[10px] text-forest-muted italic">配置完成后，请刷新页面以生效。</p>
-        </div>
-      </div>
-    );
+    // Allow browsing without Supabase - skip auth, use local data only
+    // Just render the app without session (guest mode)
   }
 
   if (isAuthChecking) {
@@ -1056,7 +1048,7 @@ export default function App() {
                       if (!pwd || pwd.length < 6) return alert('密码强度不足，请至少输入 6 位。');
                       
                       try {
-                        const { error } = await supabase.auth.updateUser({ password: pwd });
+                        const { error } = supabase ? await supabase.auth.updateUser({ password: pwd }) : { error: null };
                         if (error) throw error;
                         input.value = '';
                         setIsSecurityModalOpen(false);
@@ -1330,14 +1322,14 @@ export default function App() {
                   try {
                     // Handle password update separately
                     if (updated.password) {
-                      const { error: authError } = await supabase.auth.updateUser({ password: updated.password });
+                      const { error: authError } = supabase ? await supabase.auth.updateUser({ password: updated.password }) : { error: null };
                       if (authError) throw authError;
                       delete updated.password;
                     }
 
                     // Handle remaining profile updates
                     if (Object.keys(updated).length > 0) {
-                      const { data, error: profileError } = await supabase.from('profiles').update(updated).eq('id', session?.user?.id).select().single();
+                      const { data, error: profileError } = supabase ? await supabase.from('profiles').update(updated).eq('id', session?.user?.id).select().single() : { data: null, error: null };
                       if (profileError) throw profileError;
                       if (data) setProfile(data);
                     }
