@@ -1,0 +1,75 @@
+@import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;0,700;1,300;1,400;1,500;1,600;1,700&family=Inter:wght@100..900&family=LXGW+WenKai+Mono+TC:wght@300;400;700&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-serif: "Cormorant Garamond", "LXGW WenKai Mono TC", serif;
+  --font-sans: "Inter", sans-serif;
+  --font-kai: "LXGW WenKai Mono TC", serif;
+  
+  --color-forest-bg: #FDF8F0;
+  --color-forest-card: #FFFFFF;
+  --color-forest-nav: #F5EDE3;
+  --color-forest-accent: #7CA982;
+  --color-forest-pink: #E8A598;
+  --color-forest-text: #3E3A36;
+  --color-forest-muted: #8B857D;
+  --color-forest-border: #E6DDD2;
+  --color-forest-ink: #3E3A36;
+}
+
+@layer base {
+  body {
+    @apply bg-forest-bg text-forest-text font-sans relative;
+  }
+  
+  body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E");
+    opacity: 0.03;
+    pointer-events: none;
+    z-index: -1;
+  }
+  
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-serif;
+  }
+}
+
+.card-shadow {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.04);
+}
+
+.active-tab {
+  @apply text-forest-accent font-bold;
+  position: relative;
+}
+
+.active-tab::after {
+  content: "";
+  position: absolute;
+  bottom: -4px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 12px;
+  height: 2px;
+  background-color: var(--color-forest-accent);
+  border-radius: 2px;
+}
+
+.ancient-book-bg {
+  background-color: #FFFFFF;
+  position: relative;
+  box-shadow: inset 0 0 40px rgba(230, 221, 210, 0.2);
+}
+
+.ancient-book-bg::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image: url("https://www.transparenttextures.com/patterns/paper.png");
+  opacity: 0.05;
+  pointer-events: none;
+}
+
