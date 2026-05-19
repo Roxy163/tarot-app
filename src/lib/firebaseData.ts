@@ -14,18 +14,50 @@ const getCardDocId = (cardName: string) => encodeURIComponent(cardName);
 
 const withoutUndefined = <T,>(value: T): T => JSON.parse(JSON.stringify(value));
 
-const generatePublicId = (createdAt: string) => {
-  const date = new Date(createdAt);
-  const mmdd = `${String(date.getMonth() + 1).padStart(2, '0')}${String(date.getDate()).padStart(2, '0')}`;
-  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-  let randomCode = '';
+const PUBLIC_ID_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 
-  for (let i = 0; i < 4; i += 1) {
-    randomCode += chars.charAt(Math.floor(Math.random() * chars.length));
+const createPublicIdCode = (input: string, length = 8) => {
+  let hash = 0x811c9dc5;
+  let code = '';
+
+  for (let i = 0; i < input.length; i += 1) {
+    hash ^= input.charCodeAt(i);
+    hash = Math.imul(hash, 0x01000193) >>> 0;
   }
 
-  return `TAROT-${mmdd}-${randomCode}`;
+  for (let i = 0; i < length; i += 1) {
+    hash ^= hash << 13;
+    hash ^= hash >>> 17;
+    hash ^= hash << 5;
+    hash >>>= 0;
+    code += PUBLIC_ID_ALPHABET.charAt(hash % PUBLIC_ID_ALPHABET.length);
+  }
+
+  return code;
 };
+
+const formatPublicIdDate = (createdAt: string) => {
+  const date = new Date(createdAt);
+  const safeDate = Number.isNaN(date.getTime()) ? new Date() : date;
+  const yy = String(safeDate.getFullYear()).slice(-2);
+  const mm = String(safeDate.getMonth() + 1).padStart(2, '0');
+  const dd = String(safeDate.getDate()).padStart(2, '0');
+
+  return `${yy}${mm}${dd}`;
+};
+
+const generatePublicId = (uid: string, createdAt: string) => {
+  const dateCode = formatPublicIdDate(createdAt);
+  const identityCode = createPublicIdCode(`${uid}:${createdAt}`);
+
+  return `TAROT-${dateCode}-${identityCode}`;
+};
+
+const shouldRefreshPublicId = (publicId?: string) => (
+  !publicId
+  || publicId === 'TAROT-INIT-0000'
+  || /^TAROT-\d{4}-[A-Z2-9]{4}$/.test(publicId)
+);
 
 const createDefaultProfile = (user: User): UserProfile => {
   const createdAt = new Date().toISOString();
@@ -36,7 +68,7 @@ const createDefaultProfile = (user: User): UserProfile => {
     display_name: displayName,
     bio: '研精覃思，洞见未来',
     createdAt,
-    user_public_id: generatePublicId(createdAt),
+    user_public_id: generatePublicId(user.uid, createdAt),
   };
 };
 
@@ -49,8 +81,8 @@ export const getOrCreateUserProfile = async (user: User): Promise<UserProfile> =
   if (snapshot.exists()) {
     const profile = { id: user.uid, ...snapshot.data() } as UserProfile;
 
-    if (!profile.user_public_id) {
-      const user_public_id = generatePublicId(profile.createdAt || new Date().toISOString());
+    if (shouldRefreshPublicId(profile.user_public_id)) {
+      const user_public_id = generatePublicId(user.uid, profile.createdAt || new Date().toISOString());
       await updateDoc(profileRef, { user_public_id });
       return { ...profile, user_public_id };
     }

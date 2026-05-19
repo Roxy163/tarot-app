@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react';
-import { User, Sparkles, Edit3, Save, X, Calendar, BookOpen, Award, Check, Lock, ShieldCheck, Camera, Copy, Upload, LogOut } from 'lucide-react';
+import { User, Sparkles, Edit3, Save, X, Calendar, BookOpen, Award, Check, Lock, ShieldCheck, Copy, LogOut, Camera } from 'lucide-react';
 import { TarotReading, TarotCardMetadata, UserProfile } from '../types';
 import { AvatarCropModal } from './AvatarCropModal';
 import { uploadUserAvatar } from '../lib/firebaseData';
@@ -35,14 +35,12 @@ export function ProfileView({
   const [isEditingName, setIsEditingName] = useState(false);
   const [isEditingBio, setIsEditingBio] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
+  const [cropImage, setCropImage] = useState<string | null>(null);
+  const [isCropModalOpen, setIsCropModalOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   
   const [editName, setEditName] = useState(profile?.display_name || profile?.nickname || authorName);
   const [editBio, setEditBio] = useState(profile?.bio || profile?.signature || '研习覃思，洞见未来');
-
-  // Avatar Crop States
-  const [cropImage, setCropImage] = useState<string | null>(null);
-  const [isCropModalOpen, setIsCropModalOpen] = useState(false);
 
   const authorReadings = readings.filter(r => {
     // 阁主本人查看自己的印鉴：通过 userId 强匹配
@@ -64,7 +62,7 @@ export function ProfileView({
 
   const rank = getRank(authorReadings.length);
 
-  const tarotId = profile?.user_public_id || 'TAROT-INIT-0000';
+  const tarotId = profile?.user_public_id || 'TAROT-PENDING';
 
   const handleCopyId = () => {
     navigator.clipboard.writeText(tarotId);

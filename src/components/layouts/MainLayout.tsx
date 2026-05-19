@@ -82,7 +82,7 @@ export const MainLayout: React.FC<MainLayoutProps> = ({
       </main>
 
       {/* Mobile Navigation */}
-      <nav className="fixed bottom-0 left-0 right-0 bg-white/90 backdrop-blur-md border-t border-forest-accent/10 z-[100] px-2 py-1 safe-area-inset-bottom shadow-[0_-4px_20px_-10px_rgba(0,0,0,0.1)]">
+      <nav className="fixed bottom-0 left-0 right-0 bg-white/90 backdrop-blur-md border-t border-forest-accent/10 z-[100] px-2 py-1 shadow-[0_-4px_20px_-10px_rgba(0,0,0,0.1)]" style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}>
         <div className="flex justify-around items-center max-w-lg mx-auto h-16">
           <TabButton 
             id="tab-home" 

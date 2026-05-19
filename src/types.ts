@@ -8,7 +8,7 @@ export interface ReadingSlotData {
 
 export interface UserProfile {
   id: string;
-  user_public_id?: string; // Formatted ID: TAROT-MMDD-XXXX
+  user_public_id?: string; // Formatted ID: TAROT-YYMMDD-XXXXXXXX
   nickname?: string;      // Legacy field
   display_name?: string;  // New personalized name
   signature?: string;     // Legacy field
@@ -78,4 +78,30 @@ export interface LayoutTemplate {
   class: string;
   itemClasses: string[];
   defaultSlots: string[];
+}
+
+export interface ReadingFormData {
+  question: string;
+  spread: string;
+  layoutType: string;
+  cardInput: string;
+  interpretation: {
+    singleCard: string;
+    combination: string;
+  };
+  isAnonymous: boolean;
+  isPublic: boolean;
+  isForClient: boolean;
+  clientName: string;
+  clientFeedback: string;
+  userFeedback: string;
+  readingDate: string;
+  isTimePrecise: boolean;
+  category: string;
+  skipAi: boolean;
+  cards: ReadingSlotData[];
+  cardInterpretations: string[];
+  slotLabels: string[];
+  slotPositions: string[];
+  rotatedSlots: number[];
 }

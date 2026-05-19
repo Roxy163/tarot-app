@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useCallback, useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Plus, History, Globe, BookOpen, Search, Sparkles, X, User, Menu, ChevronRight, Settings, Info, LogOut, Database, ShieldCheck, ArrowRight, LogIn, Book, Upload } from 'lucide-react';
+import { Plus, History, Globe, BookOpen, Search, Sparkles, X, User, Menu, ChevronRight, Settings, Info, LogOut, Database, ShieldCheck, ArrowRight, LogIn, Book, Upload, Moon, Sun, CheckCircle, AlertCircle, Mail } from 'lucide-react';
 import { TarotReading, SpreadDefinition, TarotCardMetadata, UserProfile } from './types';
 import { PAVILION_PROVERBS } from './constants';
 import { Modal } from './components/Modal';
@@ -18,8 +18,14 @@ import { MainLayout } from './components/layouts/MainLayout';
 import { useReadings } from './hooks/useReadings';
 
 // --- Auth Wrapper ---
+type SnackbarState = {
+  isOpen: boolean;
+  message: string;
+  showLoginAction?: boolean;
+};
+
 function AppContent() {
-  const { session, signOut, updatePassword } = useAuth();
+  const { session, isEmailVerified, signOut, updatePassword, sendVerificationEmail, refreshUser } = useAuth();
   
   const [activeTab, setActiveTab] = useState<'home' | 'add' | 'private' | 'public' | 'metadata' | 'profile'>('home');
   const [profile, setProfile] = useState<UserProfile | null>(null);
@@ -41,16 +47,37 @@ function AppContent() {
   const [isSyncing, setIsSyncing] = useState(false);
 
   // Smart Prompts
-  const [snackbar, setSnackbar] = useState<{ isOpen: boolean; message: string }>({ isOpen: false, message: '' });
+  const [snackbar, setSnackbar] = useState<SnackbarState>({ isOpen: false, message: '' });
+  const [isVerificationActionLoading, setIsVerificationActionLoading] = useState(false);
   
   // Narrative Elements
   const [showFirstEntryScroll, setShowFirstEntryScroll] = useState(false);
   const [showPromotionCeremony, setShowPromotionCeremony] = useState<{ isOpen: boolean; rank: string }>({ isOpen: false, rank: '' });
   const [dailyProverb, setDailyProverb] = useState('');
 
+  // Dark Mode
+  const [isDarkMode, setIsDarkMode] = useState(() => {
+    const saved = localStorage.getItem('tarot_dark_mode');
+    return saved ? saved === 'true' : false;
+  });
+
+  useEffect(() => {
+    if (isDarkMode) {
+      document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+    }
+    localStorage.setItem('tarot_dark_mode', String(isDarkMode));
+  }, [isDarkMode]);
+
+  const toggleDarkMode = () => {
+    setIsDarkMode(prev => !prev);
+  };
+
   // Use custom hook for readings state
   const {
     readings,
+    setReadings,
     spreads,
     setSpreads,
     cardMetadata,
@@ -70,6 +97,31 @@ function AppContent() {
     handleEditReading,
     toggleTag,
   } = useReadings(session);
+
+  const resetPrivateSessionState = useCallback((forceHome = false) => {
+    setProfile(null);
+    setSelectedAuthor(null);
+    setEditingReading(null);
+    setShowFirstEntryScroll(false);
+    setShowLogoutConfirm(false);
+    setIsSecurityModalOpen(false);
+    setActiveTab(current => (forceHome || current === 'profile' ? 'home' : current));
+  }, [setEditingReading]);
+
+  const resetSignedOutView = useCallback(() => {
+    resetPrivateSessionState(true);
+    setSearchQuery('');
+    setSearchTags([]);
+    setIsSidebarOpen(false);
+    setShowAuthPage(false);
+    setLoginPrompt(prev => ({ ...prev, isOpen: false }));
+  }, [resetPrivateSessionState, setSearchQuery, setSearchTags]);
+
+  useEffect(() => {
+    if (!session) {
+      resetPrivateSessionState();
+    }
+  }, [resetPrivateSessionState, session]);
 
   // Daily Proverb & First Entry Scroll
   useEffect(() => {
@@ -103,6 +155,16 @@ function AppContent() {
       });
     }
   }, [activeTab, session]);
+
+  useEffect(() => {
+    if (!session?.uid || isEmailVerified) return;
+
+    const promptKey = `tarot_email_verification_prompt_${session.uid}`;
+    if (window.sessionStorage.getItem(promptKey) === 'seen') return;
+
+    window.sessionStorage.setItem(promptKey, 'seen');
+    setShowAuthPage(true);
+  }, [isEmailVerified, session?.uid]);
 
   // Profile loading
   useEffect(() => {
@@ -139,7 +201,7 @@ function AppContent() {
     handleMagicLink();
   }, []);
 
-  // Handle Migration
+  // Handle Migration - Migrate local data to Firestore
   const handleMigration = async (confirm: boolean) => {
     if (!confirm) {
       setShowMigrationPrompt(false);
@@ -148,12 +210,57 @@ function AppContent() {
 
     setIsSyncing(true);
     try {
-      // Migration logic here
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      // Get local data from localStorage
+      const localReadings = localStorage.getItem('tarot_readings');
+      const localSpreads = localStorage.getItem('tarot_spreads');
+      
+      let migratedCount = 0;
+      
+      // Migrate readings
+      if (localReadings) {
+        try {
+          const readingsData = JSON.parse(localReadings);
+          if (Array.isArray(readingsData)) {
+            const migratedReadings = readingsData.filter((reading: TarotReading) => !reading.isExample && reading.id);
+            if (migratedReadings.length > 0) {
+              setReadings(prev => {
+                const existingIds = new Set(prev.map(reading => reading.id));
+                const newReadings = migratedReadings.filter((reading: TarotReading) => !existingIds.has(reading.id));
+                migratedCount += newReadings.length;
+                return [...newReadings, ...prev];
+              });
+            }
+          }
+        } catch (e) {
+          console.warn('Failed to migrate local readings:', e);
+        }
+      }
+      
+      // Migrate spreads
+      if (localSpreads) {
+        try {
+          const spreadsData = JSON.parse(localSpreads);
+          if (Array.isArray(spreadsData)) {
+            setSpreads(prev => {
+              const existingNames = new Set(prev.map(spread => spread.name));
+              const newSpreads = spreadsData.filter((spread: SpreadDefinition) => spread.name && spread.slots && !existingNames.has(spread.name));
+              return [...prev, ...newSpreads];
+            });
+          }
+        } catch (e) {
+          console.warn('Failed to migrate local spreads:', e);
+        }
+      }
+      
+      // Clear local storage after successful migration
+      localStorage.removeItem('tarot_readings');
+      localStorage.removeItem('tarot_spreads');
+      
       setShowMigrationPrompt(false);
-      setSnackbar({ isOpen: true, message: '✨ 本地记录已成功归档至云端。' });
+      setSnackbar({ isOpen: true, message: `✨ 成功迁移 ${migratedCount} 条记录至云端。` });
     } catch (error) {
       console.error('Migration failed:', error);
+      setSnackbar({ isOpen: true, message: '❌ 迁移失败，请稍后再试。' });
     } finally {
       setIsSyncing(false);
     }
@@ -161,10 +268,49 @@ function AppContent() {
 
   // Handle Logout
   const handleLogout = async () => {
-    await signOut();
-    setProfile(null);
-    setActiveTab('home');
+    const verificationPromptKey = session?.uid ? `tarot_email_verification_prompt_${session.uid}` : null;
+
+    resetSignedOutView();
+    if (verificationPromptKey) {
+      window.sessionStorage.removeItem(verificationPromptKey);
+    }
+
+    try {
+      await signOut();
+      resetSignedOutView();
+      setSnackbar({ isOpen: true, message: '您已安全离阁，期待下次相逢。' });
+    } catch (error: any) {
+      setSnackbar({ isOpen: true, message: `❌ ${error.message || '离阁失败，请稍后再试。'}` });
+    }
+  };
+
+  const handleAuthSignedOut = () => {
+    resetSignedOutView();
     setSnackbar({ isOpen: true, message: '您已安全离阁，期待下次相逢。' });
+  };
+
+  const handleSendVerificationFromSettings = async () => {
+    setIsVerificationActionLoading(true);
+    try {
+      await sendVerificationEmail();
+      setSnackbar({ isOpen: true, message: '✨ 验证邮件已发送，请查收邮箱。' });
+    } catch (error: any) {
+      setSnackbar({ isOpen: true, message: `❌ ${error.message || '发送验证邮件失败，请稍后再试。'}` });
+    } finally {
+      setIsVerificationActionLoading(false);
+    }
+  };
+
+  const handleRefreshVerificationFromSettings = async () => {
+    setIsVerificationActionLoading(true);
+    try {
+      await refreshUser();
+      setSnackbar({ isOpen: true, message: '✨ 邮箱验证状态已刷新。' });
+    } catch (error: any) {
+      setSnackbar({ isOpen: true, message: `❌ ${error.message || '刷新验证状态失败，请稍后再试。'}` });
+    } finally {
+      setIsVerificationActionLoading(false);
+    }
   };
 
   // Handle Export Data
@@ -209,18 +355,33 @@ function AppContent() {
         const text = await file.text();
         const importedData = JSON.parse(text);
         
+        let importedCount = 0;
+        
         if (importedData.readings && Array.isArray(importedData.readings)) {
-          // Handle readings import via existing hook logic
+          const importableReadings = importedData.readings.filter((reading: TarotReading) => (
+            !reading.isExample && reading.question && reading.cards && reading.cards.length > 0
+          ));
+
+          if (importableReadings.length > 0) {
+            setReadings(prev => {
+              const existingIds = new Set(prev.map(reading => reading.id));
+              const newReadings = importableReadings.filter((reading: TarotReading) => !existingIds.has(reading.id));
+              importedCount += newReadings.length;
+              return [...newReadings, ...prev];
+            });
+          }
         }
+        
         if (importedData.spreads && Array.isArray(importedData.spreads)) {
           setSpreads(prev => {
             const existingNames = new Set(prev.map((s: SpreadDefinition) => s.name));
             const newSpreads = importedData.spreads.filter((s: SpreadDefinition) => !existingNames.has(s.name));
+            importedCount += newSpreads.length;
             return [...prev, ...newSpreads];
           });
         }
         
-        setSnackbar({ isOpen: true, message: '✨ 典籍已成功载入阁中。' });
+        setSnackbar({ isOpen: true, message: `✨ 成功导入 ${importedCount} 条记录。` });
       } catch (error) {
         console.error('Import failed:', error);
         setSnackbar({ isOpen: true, message: '❌ 载入失败，请检查文件格式。' });
@@ -468,7 +629,7 @@ function AppContent() {
         >
           <ChevronRight size={24} className="rotate-180" />
         </button>
-        <Auth onClose={() => setShowAuthPage(false)} />
+        <Auth onClose={() => setShowAuthPage(false)} onSignedOut={handleAuthSignedOut} />
       </div>
     );
   }
@@ -535,10 +696,7 @@ function AppContent() {
           </div>
           <div className="flex flex-col gap-3">
             <button 
-              onClick={() => {
-                handleLogout();
-                setShowLogoutConfirm(false);
-              }}
+              onClick={() => void handleLogout()}
               className="w-full py-3.5 bg-forest-accent text-white rounded-xl font-bold text-sm shadow-lg shadow-forest-accent/20 hover:opacity-90 transition-all active:scale-[0.98]"
             >
               确定离阁
@@ -587,9 +745,79 @@ function AppContent() {
       <Modal 
         isOpen={isSecurityModalOpen} 
         onClose={() => setIsSecurityModalOpen(false)} 
-        title="账号安全管理"
+        title="账号与系统设置"
       >
         <div className="space-y-6">
+          {session && (
+            <div className="p-6 bg-forest-bg/30 rounded-2xl border border-forest-border/50">
+              <div className="flex items-center gap-3 text-forest-ink font-bold mb-3">
+                <Mail size={20} className="text-forest-accent" />
+                <h4>邮箱验证</h4>
+              </div>
+              <div className="p-4 bg-white rounded-xl border border-forest-border/30 space-y-3">
+                <div className="flex items-start gap-3">
+                  {isEmailVerified ? (
+                    <CheckCircle size={18} className="text-green-500 mt-0.5" />
+                  ) : (
+                    <AlertCircle size={18} className="text-amber-500 mt-0.5" />
+                  )}
+                  <div className="space-y-1">
+                    <p className="text-sm font-bold text-forest-ink">
+                      {isEmailVerified ? '邮箱已验证' : '邮箱尚未验证'}
+                    </p>
+                    <p className="text-xs text-forest-muted leading-relaxed">
+                      {isEmailVerified
+                        ? `${session.email || '当前邮箱'} 已完成验证。`
+                        : `请前往 ${session.email || '注册邮箱'} 点击验证链接，完成后刷新状态。`}
+                    </p>
+                  </div>
+                </div>
+                {!isEmailVerified && (
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      onClick={handleSendVerificationFromSettings}
+                      disabled={isVerificationActionLoading}
+                      className="py-2 bg-white border border-forest-accent/20 text-forest-accent rounded-xl text-xs font-bold hover:bg-forest-accent/5 transition-colors disabled:opacity-50"
+                    >
+                      重发验证邮件
+                    </button>
+                    <button
+                      onClick={handleRefreshVerificationFromSettings}
+                      disabled={isVerificationActionLoading}
+                      className="py-2 bg-forest-accent text-white rounded-xl text-xs font-bold hover:bg-forest-accent/90 transition-colors disabled:opacity-50"
+                    >
+                      我已验证
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          <div className="p-6 bg-forest-bg/30 rounded-2xl border border-forest-border/50">
+            <div className="flex items-center gap-3 text-forest-ink font-bold mb-3">
+              <Moon size={20} className="text-forest-accent" />
+              <h4>主题设置</h4>
+            </div>
+            <div className="flex items-center justify-between p-4 bg-white rounded-xl border border-forest-border/30">
+              <div className="flex items-center gap-3">
+                <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${isDarkMode ? 'bg-forest-bg-dark' : 'bg-forest-bg'}`}>
+                  {isDarkMode ? <Sun size={20} className="text-forest-accent" /> : <Moon size={20} className="text-forest-accent" />}
+                </div>
+                <div>
+                  <p className="text-sm font-bold text-forest-ink">{isDarkMode ? '深色模式' : '浅色模式'}</p>
+                  <p className="text-xs text-forest-muted">切换界面主题</p>
+                </div>
+              </div>
+              <button 
+                onClick={toggleDarkMode}
+                className={`relative w-14 h-7 rounded-full transition-colors ${isDarkMode ? 'bg-forest-accent' : 'bg-forest-border'}`}
+              >
+                <span className={`absolute top-1 w-5 h-5 rounded-full bg-white shadow transition-transform ${isDarkMode ? 'left-8' : 'left-1'}`} />
+              </button>
+            </div>
+          </div>
+
           <div className="p-6 bg-forest-bg/30 rounded-2xl border border-forest-border/50">
             <div className="flex items-center gap-3 text-forest-ink font-bold mb-3">
               <ShieldCheck size={20} className="text-forest-accent" />
@@ -622,6 +850,7 @@ function AppContent() {
                 onClick={async () => {
                   const currentInput = document.getElementById('sidebar-current-password-input') as HTMLInputElement;
                   const input = document.getElementById('sidebar-password-input') as HTMLInputElement;
+                  const button = document.getElementById('sidebar-update-password-btn') as HTMLButtonElement;
                   const currentPwd = currentInput?.value;
                   const pwd = input?.value;
                   if (!currentPwd) {
@@ -633,17 +862,35 @@ function AppContent() {
                     return;
                   }
                   
+                  // Show loading state
+                  if (button) {
+                    button.disabled = true;
+                    button.innerHTML = '<div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mx-auto"></div>';
+                  }
+                  
                   try {
                     await updatePassword(currentPwd, pwd);
                     currentInput.value = '';
                     input.value = '';
                     setSnackbar({ isOpen: true, message: '✨ 通行密码已更新。' });
                   } catch (error: any) {
-                    setSnackbar({ isOpen: true, message: `❌ 更新失败: ${error.message}` });
+                    const errorMsg = error.message || '更新失败';
+                    if (errorMsg.includes('network') || errorMsg.includes('timeout') || errorMsg.includes('interrupted')) {
+                      setSnackbar({ isOpen: true, message: '❌ 网络连接失败，请检查网络设置或稍后再试。如果问题持续，请尝试使用密码重置功能。' });
+                    } else {
+                      setSnackbar({ isOpen: true, message: `❌ ${errorMsg}` });
+                    }
+                  } finally {
+                    // Reset button state
+                    if (button) {
+                      button.disabled = false;
+                      button.innerHTML = '更新密码';
+                    }
                   }
                   setIsSecurityModalOpen(false);
                 }}
-                className="w-full py-3 bg-forest-accent text-white rounded-xl font-bold text-sm hover:bg-forest-accent/90 transition-all"
+                id="sidebar-update-password-btn"
+                className="w-full py-3 bg-forest-accent text-white rounded-xl font-bold text-sm hover:bg-forest-accent/90 transition-all disabled:opacity-50"
               >
                 更新密码
               </button>
@@ -667,16 +914,18 @@ function AppContent() {
             className="fixed bottom-8 left-1/2 z-[250] bg-white/95 text-forest-text px-5 py-3.5 rounded-2xl shadow-2xl text-sm font-medium backdrop-blur-md border border-forest-border flex items-center gap-4 min-w-[320px] max-w-[90vw]"
           >
             <span className="flex-1">{snackbar.message}</span>
-            <div className="flex items-center gap-3 border-l border-forest-border pl-4">
-              <button 
-                onClick={() => {
-                  setSnackbar(prev => ({ ...prev, isOpen: false }));
-                  setShowAuthPage(true);
-                }}
-                className="text-forest-pink font-bold hover:opacity-80 transition-opacity whitespace-nowrap"
-              >
-                立即登录
-              </button>
+            <div className={`flex items-center gap-3 ${snackbar.showLoginAction ? 'border-l border-forest-border pl-4' : ''}`}>
+              {snackbar.showLoginAction && (
+                <button 
+                  onClick={() => {
+                    setSnackbar(prev => ({ ...prev, isOpen: false }));
+                    setShowAuthPage(true);
+                  }}
+                  className="text-forest-pink font-bold hover:opacity-80 transition-opacity whitespace-nowrap"
+                >
+                  立即登录
+                </button>
+              )}
               <button 
                 onClick={() => setSnackbar(prev => ({ ...prev, isOpen: false }))}
                 className="text-forest-muted hover:text-forest-text transition-colors"
@@ -684,6 +933,27 @@ function AppContent() {
                 <X size={16} />
               </button>
             </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Global Loading Overlay */}
+      <AnimatePresence>
+        {isProcessing && (
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[400] flex items-center justify-center bg-forest-text/20 backdrop-blur-sm"
+          >
+            <motion.div 
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              className="flex flex-col items-center gap-4 px-8 py-6 bg-white rounded-2xl shadow-2xl"
+            >
+              <div className="w-12 h-12 border-4 border-forest-accent/20 border-t-forest-accent rounded-full animate-spin" />
+              <p className="text-forest-ink font-medium">正在处理...</p>
+            </motion.div>
           </motion.div>
         )}
       </AnimatePresence>

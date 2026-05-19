@@ -4,9 +4,15 @@ import { Mail, Lock, Send, Sparkles, ArrowRight, CloudOff, Home, Clock, CheckCir
 import { useAuth } from '../context/AuthContext';
 import { checkIfMagicLink, confirmPasswordReset } from '../lib/firebase';
 
-export const Auth: React.FC<{ onClose?: () => void }> = ({ onClose }) => {
-  const { session, lastLogin, signIn, signUp, signOut, resetPassword, updatePassword } = useAuth();
+interface AuthProps {
+  onClose?: () => void;
+  onSignedOut?: () => void;
+}
+
+export const Auth: React.FC<AuthProps> = ({ onClose, onSignedOut }) => {
+  const { session, isEmailVerified, lastLogin, signIn, signUp, signOut, resetPassword, updatePassword, sendVerificationEmail, refreshUser } = useAuth();
   
+  const [authMode, setAuthMode] = useState<'login' | 'signup'>('login');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -26,6 +32,16 @@ export const Auth: React.FC<{ onClose?: () => void }> = ({ onClose }) => {
   const [confirmNewPassword, setConfirmNewPassword] = useState('');
   const [changePasswordMessage, setChangePasswordMessage] = useState('');
   const [changePasswordError, setChangePasswordError] = useState('');
+  const [verificationLoading, setVerificationLoading] = useState(false);
+  const [verificationMessage, setVerificationMessage] = useState('');
+  const [verificationError, setVerificationError] = useState('');
+
+  const switchAuthMode = (nextMode: 'login' | 'signup') => {
+    setAuthMode(nextMode);
+    setError(null);
+    setVerificationMessage('');
+    setVerificationError('');
+  };
 
   // 检查是否是密码重置链接
   useEffect(() => {
@@ -69,6 +85,12 @@ export const Auth: React.FC<{ onClose?: () => void }> = ({ onClose }) => {
         case 'auth/user-disabled':
           errorMessage = "账号已被禁用，请联系管理员。";
           break;
+        case 'auth/network-request-failed':
+          errorMessage = "网络连接失败，请检查网络设置。若在中国境内，建议使用网络加速服务。";
+          break;
+        case 'auth/internal-error':
+          errorMessage = "服务器连接超时，请稍后再试或检查网络。";
+          break;
       }
       
       setError(errorMessage);
@@ -87,6 +109,7 @@ export const Auth: React.FC<{ onClose?: () => void }> = ({ onClose }) => {
 
     try {
       await signUp(normalizedEmail, password);
+      setVerificationMessage('验证邮件已发送，请前往邮箱完成验证。');
     } catch (err: any) {
       let errorMessage = err.message || "注册失败，请重试。";
       
@@ -102,11 +125,62 @@ export const Auth: React.FC<{ onClose?: () => void }> = ({ onClose }) => {
           setResetEmail(email);
           setShowResetPassword(true);
           break;
+        case 'auth/network-request-failed':
+          errorMessage = "网络连接失败，请检查网络设置。若在中国境内，建议使用网络加速服务。";
+          break;
+        case 'auth/internal-error':
+          errorMessage = "服务器连接超时，请稍后再试或检查网络。";
+          break;
       }
       
       setError(errorMessage);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleSendVerificationEmail = async () => {
+    if (verificationLoading) return;
+
+    setVerificationLoading(true);
+    setVerificationError('');
+    setVerificationMessage('');
+
+    try {
+      await sendVerificationEmail();
+      setVerificationMessage('验证邮件已重新发送，请查收邮箱。');
+    } catch (err: any) {
+      let errorMessage = err.message || '发送验证邮件失败，请稍后再试。';
+
+      switch (err.code) {
+        case 'auth/too-many-requests':
+          errorMessage = '发送次数过多，请稍后再试。';
+          break;
+        case 'auth/network-request-failed':
+          errorMessage = '网络连接失败，请检查网络设置。';
+          break;
+      }
+
+      setVerificationError(errorMessage);
+    } finally {
+      setVerificationLoading(false);
+    }
+  };
+
+  const handleRefreshVerification = async () => {
+    if (verificationLoading) return;
+
+    setVerificationLoading(true);
+    setVerificationError('');
+    setVerificationMessage('');
+
+    try {
+      await refreshUser();
+      setVerificationMessage('验证状态已刷新。');
+    } catch (err: any) {
+      setVerificationError(err.message || '刷新验证状态失败，请稍后再试。');
+    } finally {
+      setVerificationLoading(false);
     }
   };
 
@@ -123,7 +197,15 @@ export const Auth: React.FC<{ onClose?: () => void }> = ({ onClose }) => {
       setResetMessage('密码重置邮件已发送，请查收您的邮箱。');
       setResetEmail('');
     } catch (err: any) {
-      setResetError(err.message || '发送失败，请重试。');
+      let errorMessage = err.message || '发送失败，请重试。';
+      
+      if (err.code === 'auth/network-request-failed') {
+        errorMessage = '网络连接失败，请检查网络设置。';
+      } else if (err.code === 'auth/user-not-found') {
+        errorMessage = '该邮箱尚未注册，请先注册账号。';
+      }
+      
+      setResetError(errorMessage);
     } finally {
       setLoading(false);
     }
@@ -165,6 +247,7 @@ export const Auth: React.FC<{ onClose?: () => void }> = ({ onClose }) => {
 
   const handleLogout = async () => {
     await signOut();
+    if (onSignedOut) onSignedOut();
     if (onClose) onClose();
   };
 
@@ -221,8 +304,12 @@ export const Auth: React.FC<{ onClose?: () => void }> = ({ onClose }) => {
                 <div className="w-16 h-16 rounded-full bg-gradient-to-br from-forest-accent to-forest-pink flex items-center justify-center text-forest-card font-serif text-2xl shadow-lg mb-4">
                   <Sparkles size={24} />
                 </div>
-                <h1 className="font-serif text-xl font-bold text-forest-ink">执印入阁</h1>
-                <p className="text-xs text-forest-muted mt-1">塔罗研习阁 · 身份验证</p>
+                <h1 className="font-serif text-xl font-bold text-forest-ink">
+                  {authMode === 'signup' ? '注册新号' : '执印入阁'}
+                </h1>
+                <p className="text-xs text-forest-muted mt-1">
+                  {authMode === 'signup' ? '创建你的塔罗研习阁印鉴' : '塔罗研习阁 · 身份验证'}
+                </p>
               </div>
 
               {!!session ? (
@@ -234,6 +321,48 @@ export const Auth: React.FC<{ onClose?: () => void }> = ({ onClose }) => {
                     <h2 className="font-serif text-lg font-bold text-forest-ink">印鉴已验证</h2>
                     <p className="text-xs text-forest-muted mt-1">欢迎归来，研习阁主</p>
                   </div>
+
+                  {!isEmailVerified ? (
+                    <div className="bg-amber-50 border border-amber-100 rounded-2xl p-4 text-left space-y-3">
+                      <div className="flex items-start gap-2">
+                        <AlertCircle className="text-amber-500 mt-0.5" size={16} />
+                        <div className="space-y-1">
+                          <p className="text-xs font-bold text-amber-700">邮箱尚未验证</p>
+                          <p className="text-xs text-amber-700/80 leading-relaxed">
+                            请前往 {session.email || '注册邮箱'} 点击验证链接。验证后回来刷新状态。
+                          </p>
+                        </div>
+                      </div>
+                      {(verificationMessage || verificationError) && (
+                        <p className={`text-xs ${verificationError ? 'text-red-500' : 'text-green-600'}`}>
+                          {verificationError || verificationMessage}
+                        </p>
+                      )}
+                      <div className="grid grid-cols-2 gap-2">
+                        <button
+                          type="button"
+                          disabled={verificationLoading}
+                          onClick={handleSendVerificationEmail}
+                          className="py-2 bg-white border border-amber-200 text-amber-700 rounded-xl text-xs font-bold hover:bg-amber-100/40 transition-colors disabled:opacity-50"
+                        >
+                          重发邮件
+                        </button>
+                        <button
+                          type="button"
+                          disabled={verificationLoading}
+                          onClick={handleRefreshVerification}
+                          className="py-2 bg-forest-accent text-white rounded-xl text-xs font-bold hover:bg-forest-accent/90 transition-colors disabled:opacity-50"
+                        >
+                          我已验证
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="bg-green-50 border border-green-100 rounded-2xl p-3 text-xs text-green-600 flex items-center justify-center gap-2">
+                      <CheckCircle size={14} />
+                      邮箱已验证
+                    </div>
+                  )}
                   
                   {lastLogin && (
                     <div className="bg-forest-bg/30 rounded-xl p-4 text-left">
@@ -267,7 +396,7 @@ export const Auth: React.FC<{ onClose?: () => void }> = ({ onClose }) => {
                   </button>
                 </div>
               ) : (
-                <form onSubmit={handleLogin} className="space-y-5">
+                <form onSubmit={authMode === 'signup' ? handleSignUp : handleLogin} className="space-y-5">
                   <div className="space-y-2">
                     <label className="text-xs font-bold text-forest-muted uppercase tracking-wider flex items-center gap-2">
                       <Mail size={12} /> 邮箱
@@ -311,6 +440,15 @@ export const Auth: React.FC<{ onClose?: () => void }> = ({ onClose }) => {
                       className="text-xs text-red-500 bg-red-50 p-3 rounded-lg border border-red-100"
                     >
                       <p className="text-center">{error}</p>
+                      {error.includes('网络') && (
+                        <motion.p
+                          initial={{ opacity: 0 }}
+                          animate={{ opacity: 1 }}
+                          className="block w-full mt-2 text-xs text-amber-500 text-center"
+                        >
+                          💡 在中国境内访问可能需要网络加速服务
+                        </motion.p>
+                      )}
                       {(error.includes('密码错误') || error.includes('密码不正确') || error.includes('找回密码')) && (
                         <motion.button
                           initial={{ opacity: 0 }}
@@ -339,33 +477,37 @@ export const Auth: React.FC<{ onClose?: () => void }> = ({ onClose }) => {
                     ) : (
                       <>
                         <Sparkles size={16} />
-                        执印入阁
+                        {authMode === 'signup' ? '创建印鉴' : '执印入阁'}
                       </>
                     )}
                   </button>
 
                   <div className="pt-4 border-t border-forest-accent/5 space-y-3">
                     <div className="flex items-center justify-center gap-2">
-                      <span className="text-xs text-forest-muted">尚未执印入阁？</span>
+                      <span className="text-xs text-forest-muted">
+                        {authMode === 'signup' ? '已有印鉴？' : '尚未执印入阁？'}
+                      </span>
                       <button
                         type="button"
-                        onClick={handleSignUp}
+                        onClick={() => switchAuthMode(authMode === 'signup' ? 'login' : 'signup')}
                         className="text-xs font-bold text-forest-accent hover:underline transition-colors"
                       >
-                        注册新号
+                        {authMode === 'signup' ? '返回登录' : '注册新号'}
                       </button>
                     </div>
                     
-                    <div className="flex items-center justify-center">
-                      <button
-                        type="button"
-                        onClick={() => setShowResetPassword(true)}
-                        className="text-xs text-forest-muted hover:text-forest-accent transition-colors flex items-center gap-1"
-                      >
-                        <AlertCircle size={10} />
-                        忘记密码？
-                      </button>
-                    </div>
+                    {authMode === 'login' && (
+                      <div className="flex items-center justify-center">
+                        <button
+                          type="button"
+                          onClick={() => setShowResetPassword(true)}
+                          className="text-xs text-forest-muted hover:text-forest-accent transition-colors flex items-center gap-1"
+                        >
+                          <AlertCircle size={10} />
+                          忘记密码？
+                        </button>
+                      </div>
+                    )}
                   </div>
                 </form>
               )}

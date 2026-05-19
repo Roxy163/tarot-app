@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Calendar, User, UserCheck, Share2, MessageSquare, Sparkles, Tag, Trash2, ChevronDown, ChevronUp, Eye, Layers, Lock, Unlock, Copy, ExternalLink, Download, X, Edit3 } from 'lucide-react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
+import { Calendar, User, UserCheck, Share2, MessageSquare, Sparkles, Tag, Trash2, ChevronDown, ChevronUp, Eye, Layers, Lock, Unlock, Copy, ExternalLink, Download, X, Edit3, Maximize2, Minimize2, ZoomIn, ZoomOut } from 'lucide-react';
 import { TarotReading, TarotCardMetadata } from '../types';
 import { TAROT_CARDS, getCardImageUrl, LAYOUT_TEMPLATES } from '../constants';
 import { motion, AnimatePresence } from 'motion/react';
@@ -36,6 +36,59 @@ export const ReadingCard: React.FC<ReadingCardProps> = ({
   const [copySuccess, setCopySuccess] = useState(false);
   const [selectedCardIdx, setSelectedCardIdx] = useState<number | null>(null);
   const [isAiLoading, setIsAiLoading] = useState(false);
+  // Fullscreen view states
+  const [showFullscreen, setShowFullscreen] = useState(false);
+  const [fullscreenScale, setFullscreenScale] = useState(1);
+  const [fullscreenPosition, setFullscreenPosition] = useState({ x: 0, y: 0 });
+  const [isDragging, setIsDragging] = useState(false);
+  const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
+  const canvasRef = useRef<HTMLDivElement>(null);
+
+  // Handle mouse/touch events for dragging
+  const handleMouseDown = useCallback((e: React.MouseEvent | React.TouchEvent) => {
+    setIsDragging(true);
+    const point = 'touches' in e ? e.touches[0] : e;
+    setDragStart({ x: point.clientX - fullscreenPosition.x, y: point.clientY - fullscreenPosition.y });
+  }, [fullscreenPosition]);
+
+  const handleMouseMove = useCallback((e: React.MouseEvent | React.TouchEvent) => {
+    if (!isDragging) return;
+    const point = 'touches' in e ? e.touches[0] : e;
+    setFullscreenPosition({
+      x: point.clientX - dragStart.x,
+      y: point.clientY - dragStart.y
+    });
+  }, [isDragging, dragStart]);
+
+  const handleMouseUp = useCallback(() => {
+    setIsDragging(false);
+  }, []);
+
+  useEffect(() => {
+    if (showFullscreen) {
+      document.addEventListener('mousemove', handleMouseMove);
+      document.addEventListener('mouseup', handleMouseUp);
+      document.addEventListener('touchmove', handleMouseMove);
+      document.addEventListener('touchend', handleMouseUp);
+      return () => {
+        document.removeEventListener('mousemove', handleMouseMove);
+        document.removeEventListener('mouseup', handleMouseUp);
+        document.removeEventListener('touchmove', handleMouseMove);
+        document.removeEventListener('touchend', handleMouseUp);
+      };
+    }
+  }, [showFullscreen, handleMouseMove, handleMouseUp]);
+
+  const handleWheel = useCallback((e: React.WheelEvent) => {
+    e.preventDefault();
+    const delta = e.deltaY > 0 ? -0.1 : 0.1;
+    setFullscreenScale(prev => Math.min(Math.max(prev + delta, 0.5), 3));
+  }, []);
+
+  const resetView = () => {
+    setFullscreenScale(1);
+    setFullscreenPosition({ x: 0, y: 0 });
+  };
 
   const handleShare = () => {
     console.log("Share button clicked for reading:", reading.id);
@@ -67,13 +120,13 @@ export const ReadingCard: React.FC<ReadingCardProps> = ({
   };
 
   const renderTags = (showCards = true) => (
-    <div className="flex flex-wrap gap-1.5 items-center">
+    <div className="flex flex-wrap gap-2 items-center">
       {showCards && reading.cards.map((card, idx) => {
         const isActive = activeTags.includes(card.name);
         return (
           <span 
             key={`card-${idx}`}
-            className={`text-[9px] px-1.5 py-0.5 rounded cursor-pointer transition-all whitespace-nowrap ${isActive ? 'bg-forest-accent text-white shadow-sm' : 'bg-forest-bg text-forest-text/70 hover:bg-forest-accent/10 hover:text-forest-accent'}`}
+            className={`text-[10px] px-2 py-1 rounded-lg cursor-pointer transition-all whitespace-nowrap font-medium ${isActive ? 'bg-forest-accent text-white shadow-md shadow-forest-accent/20 scale-105' : 'bg-forest-bg/80 text-forest-text/80 hover:bg-forest-accent/15 hover:text-forest-accent hover:scale-105'}`}
             onClick={(e) => {
               e.stopPropagation();
               onTagClick?.(card.name);
@@ -85,14 +138,13 @@ export const ReadingCard: React.FC<ReadingCardProps> = ({
       })}
       {reading.keywords.map(tag => {
         const isActive = activeTags.includes(tag);
-        // Clean tag if it contains "研习分类："
         const cleanTag = tag.replace('研习分类：', '').replace('塔罗', '');
         if (!cleanTag) return null;
         
         return (
           <span 
             key={`tag-${tag}`} 
-            className={`text-[9px] px-2 py-0.5 rounded-full cursor-pointer transition-all font-medium whitespace-nowrap ${isActive ? 'bg-forest-accent text-white shadow-sm' : 'bg-forest-accent/5 text-forest-accent/70 hover:bg-forest-accent/10 hover:text-forest-accent'}`}
+            className={`text-[10px] px-2.5 py-1 rounded-full cursor-pointer transition-all font-medium whitespace-nowrap ${isActive ? 'bg-gradient-to-r from-forest-accent to-forest-pink text-white shadow-md shadow-forest-accent/20 scale-105' : 'bg-forest-accent/10 text-forest-accent/80 hover:bg-forest-accent/20 hover:text-forest-accent hover:scale-105'}`}
             onClick={(e) => {
               e.stopPropagation();
               onTagClick?.(tag);
@@ -104,7 +156,7 @@ export const ReadingCard: React.FC<ReadingCardProps> = ({
       })}
       {reading.category && (
         <span 
-          className={`text-[9px] px-2 py-0.5 rounded-full cursor-pointer transition-all font-medium whitespace-nowrap ${activeTags.includes(reading.category) ? 'bg-forest-accent text-white shadow-sm' : 'bg-forest-accent/5 text-forest-accent/70 hover:bg-forest-accent/10 hover:text-forest-accent'}`}
+          className={`text-[10px] px-2.5 py-1 rounded-full cursor-pointer transition-all font-medium whitespace-nowrap ${activeTags.includes(reading.category) ? 'bg-gradient-to-r from-forest-accent to-forest-pink text-white shadow-md shadow-forest-accent/20 scale-105' : 'bg-forest-accent/10 text-forest-accent/80 hover:bg-forest-accent/20 hover:text-forest-accent hover:scale-105'}`}
           onClick={(e) => {
             e.stopPropagation();
             onTagClick?.(reading.category!);
@@ -175,8 +227,8 @@ export const ReadingCard: React.FC<ReadingCardProps> = ({
 
     if (isMini) {
       return (
-        <div className="w-full flex-1 overflow-hidden relative rounded-[2rem] bg-forest-bg/40 p-3 border-2 border-forest-border/40 group-hover/viz:bg-forest-bg/60 transition-all duration-500 min-h-[180px] flex items-center justify-center">
-          <div className="scale-[1.7] sm:scale-[1.9] transform-gpu transition-all duration-700 group-hover/viz:scale-[1.8] group-hover/viz:rotate-2">
+        <div className="w-full flex-1 overflow-hidden relative rounded-[2rem] bg-forest-bg/40 p-6 border-2 border-forest-border/40 group-hover/viz:bg-forest-bg/60 transition-all duration-500 min-h-[220px] flex items-center justify-center">
+          <div className="scale-[1.8] sm:scale-[2.0] transition-all duration-500 group-hover/viz:scale-[1.85]">
             {content}
           </div>
         </div>
@@ -189,7 +241,7 @@ export const ReadingCard: React.FC<ReadingCardProps> = ({
   return (
     <div 
       onClick={() => setIsExpanded(!isExpanded)}
-      className={`bg-white rounded-[2rem] border border-forest-accent/10 hover:border-forest-accent/30 transition-all overflow-hidden cursor-pointer active:scale-[0.99] group/card-main ${isExpanded ? 'p-6 sm:p-8 shadow-2xl' : 'p-5 shadow-sm hover:shadow-lg'}`}
+      className={`bg-white rounded-[2rem] border border-forest-accent/10 hover:border-forest-accent/30 transition-all overflow-hidden cursor-pointer active:scale-[0.99] group/card-main ${isExpanded ? 'p-6 sm:p-8 shadow-2xl' : 'p-5 shadow-sm hover:shadow-xl hover:-translate-y-1'}`}
     >
       <div className="flex justify-between items-start gap-4">
         <div className="flex-1 min-w-0">
@@ -220,12 +272,14 @@ export const ReadingCard: React.FC<ReadingCardProps> = ({
               </>
             )}
           </div>
-          <h3 className={`${isExpanded ? 'text-2xl sm:text-3xl font-bold' : 'text-lg'} font-serif text-forest-ink leading-tight transition-all`}>
-            {reading.question}
+          <div className="flex flex-wrap items-start gap-2">
+            <h3 className={`${isExpanded ? 'text-2xl sm:text-3xl font-bold' : 'text-lg'} font-serif text-forest-ink leading-tight transition-all flex-shrink-0`}>
+              {reading.question}
+            </h3>
             {reading.isExample && (
-              <span className="ml-3 px-2 py-0.5 bg-forest-accent/10 text-forest-accent rounded-full text-[9px] font-black uppercase tracking-tighter">案例</span>
+              <span className="mt-1 px-2.5 py-1 bg-gradient-to-r from-forest-accent to-forest-pink text-white rounded-full text-[9px] font-black uppercase tracking-tighter shadow-lg shadow-forest-accent/25 shrink-0">案例</span>
             )}
-          </h3>
+          </div>
           
           {!isExpanded && (
             <div className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-forest-ink/60 font-medium">
@@ -327,17 +381,24 @@ export const ReadingCard: React.FC<ReadingCardProps> = ({
 
       {!isExpanded && (
         <div className="mt-8 flex flex-col gap-6">
-          <div className="relative p-2 sm:p-4 bg-forest-bg/10 rounded-[3rem] border-2 border-forest-accent/5 border-dashed overflow-hidden flex flex-col items-center justify-center min-h-[260px] group/viz">
-            <div className="absolute inset-0 bg-gradient-to-br from-white/40 to-transparent opacity-0 group-hover/viz:opacity-100 transition-opacity duration-700" />
+          <div className="relative p-4 sm:p-6 bg-gradient-to-br from-forest-bg/10 to-forest-bg/20 rounded-[3rem] border-2 border-forest-accent/10 border-dashed overflow-hidden flex flex-col items-center justify-center min-h-[280px] group/viz shadow-inner">
+            <div className="absolute inset-0 bg-gradient-to-br from-white/60 via-transparent to-transparent opacity-0 group-hover/viz:opacity-100 transition-opacity duration-700" />
+            <div className="absolute top-4 left-4 w-8 h-8 rounded-full border-2 border-dashed border-forest-accent/20 flex items-center justify-center">
+              <span className="text-[8px] font-black text-forest-accent/30">1</span>
+            </div>
             
             {renderCards(true)}
             
-            <div className="absolute bottom-4 px-4 py-2 bg-white/60 backdrop-blur-sm rounded-full text-[10px] text-forest-accent font-black tracking-widest uppercase opacity-0 group-hover/viz:opacity-100 transition-all transform translate-y-2 group-hover/viz:translate-y-0">
+            <div className="absolute bottom-4 px-5 py-2 bg-white/80 backdrop-blur-md rounded-full text-[10px] text-forest-accent font-black tracking-widest uppercase opacity-0 group-hover/viz:opacity-100 transition-all duration-300 transform translate-y-2 group-hover/viz:translate-y-0 shadow-lg">
               点击展开详情
             </div>
           </div>
           
-          <div className="pt-6 border-t border-forest-accent/5">
+          <div className="pt-6 border-t border-forest-accent/10">
+            <div className="flex items-center gap-2 mb-3">
+              <div className="h-3 w-1 bg-gradient-to-b from-forest-accent to-forest-pink rounded-full" />
+              <span className="text-[9px] font-black text-forest-muted uppercase tracking-wider">研习标签</span>
+            </div>
             {renderTags(false)}
           </div>
         </div>
@@ -354,11 +415,18 @@ export const ReadingCard: React.FC<ReadingCardProps> = ({
             <span className="text-[11px] font-black text-forest-accent uppercase tracking-widest flex items-center gap-1.5">
               <Layers size={14} /> 灵见位阶
             </span>
-            <span className="text-[10px] text-forest-muted/60 flex items-center gap-1 font-medium"><Sparkles size={10} /> 点击牌面查看单牌解读</span>
+            <button 
+              onClick={(e) => {
+                e.stopPropagation();
+                setShowFullscreen(true);
+              }}
+              className="text-[10px] text-forest-accent flex items-center gap-1 font-medium hover:underline transition-colors"
+            >
+              <Maximize2 size={12} /> 放大查看
+            </button>
           </div>
-          <div className="p-6 sm:p-10 bg-forest-bg/30 rounded-[2.5rem] border-2 border-forest-border border-dashed mb-8 relative overflow-hidden group/visuals">
-            <div className="absolute inset-0 bg-gradient-to-br from-white/10 to-transparent opacity-0 group-hover/visuals:opacity-100 transition-opacity" />
-            <div className="overflow-x-auto pb-4 custom-scrollbar">
+          <div className="p-4 sm:p-6 bg-gradient-to-br from-forest-bg/40 to-forest-bg/20 rounded-[2rem] border border-forest-border/50 mb-6 relative overflow-hidden">
+            <div className="min-h-[200px] sm:min-h-[280px] flex items-center justify-center">
               {renderCards(false)}
             </div>
           </div>

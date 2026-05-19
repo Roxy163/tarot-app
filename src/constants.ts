@@ -114,7 +114,7 @@ export const INITIAL_READINGS = [
     spread: '圣三角牌阵',
     layoutType: 'triangle',
     slotLabels: ['现状/行动', '阻碍/情感', '结果/灵性'],
-    slotPositions: ['col-start-3 row-start-2', 'col-start-2 row-start-1', 'col-start-4 row-start-1'],
+    slotPositions: ['col-start-3 row-start-3', 'col-start-2 row-start-2', 'col-start-4 row-start-2'],
     isPublic: true,
     authorName: '研习阁主',
     isAnonymous: false,
@@ -134,8 +134,8 @@ export const LAYOUT_TEMPLATES: Record<string, { name: string, class: string, ite
   },
   'triangle': { 
     name: '圣三角牌阵', 
-    class: 'grid grid-cols-3 gap-y-0.5 gap-x-1.5 max-w-[240px] mx-auto justify-items-center', 
-    itemClasses: ['col-start-2 row-start-2', 'col-start-1 row-start-1', 'col-start-3 row-start-1'],
+    class: 'grid grid-cols-5 gap-y-1 gap-x-1 max-w-[280px] mx-auto justify-items-center', 
+    itemClasses: ['col-start-3 row-start-3', 'col-start-2 row-start-2', 'col-start-4 row-start-2'],
     defaultSlots: ['现状/行动', '阻碍/情感', '结果/灵性']
   },
   'cross': { 
@@ -200,7 +200,7 @@ export const OFFICIAL_SPREADS = [
     name: '圣三角牌阵', 
     layout: 'triangle', 
     slots: ['现状/行动', '阻碍/情感', '结果/灵性'],
-    slotPositions: ['col-start-3 row-start-2', 'col-start-2 row-start-1', 'col-start-4 row-start-1']
+    slotPositions: ['col-start-3 row-start-3', 'col-start-2 row-start-2', 'col-start-4 row-start-2']
   },
   { 
     name: '选择牌阵', 

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, FormEvent } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Plus, Sparkles, Layers, ChevronDown, ImageIcon, User, MessageSquare, RotateCcw, FileText, BookOpen, X, Calendar, Tag, Settings, Save, Mail } from 'lucide-react';
-import { SpreadDefinition, TarotCardMetadata, ReadingSlotData } from '../types';
+import { SpreadDefinition, TarotCardMetadata, ReadingSlotData, TarotReading, ReadingFormData } from '../types';
 import { LAYOUT_TEMPLATES, TAROT_CARDS, getCardImageUrl, OFFICIAL_SPREADS } from '../constants';
 import { CardPicker } from './CardPicker';
 import { SpreadDesigner } from './SpreadDesigner';
@@ -15,7 +15,7 @@ import { EmailShareModal } from './EmailShareModal';
 import { useCardNumerology } from '../hooks/useCardNumerology';
 
 interface AddReadingFormProps {
-  onSubmit: (data: any) => void;
+  onSubmit: (data: Partial<ReadingFormData>) => void;
   isLoading: boolean;
   isLoggedIn: boolean;
   userId?: string;
@@ -23,7 +23,7 @@ interface AddReadingFormProps {
   onUpdateSpreads: (spreads: SpreadDefinition[]) => void;
   cardMetadata: TarotCardMetadata[];
   onUpdateCardMetadata: (metadata: TarotCardMetadata[]) => void;
-  initialData?: any;
+  initialData?: Partial<TarotReading>;
   onCancel?: () => void;
 }
 
@@ -61,10 +61,10 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
   });
 
   const [cardInterpretations, setCardInterpretations] = useState<string[]>(initialData?.cardInterpretations || []);
-  const [editingCorrespondence, setEditingCorrespondence] = useState<{ index: number; card: any; metadata: TarotCardMetadata } | null>(null);
+  const [editingCorrespondence, setEditingCorrespondence] = useState<{ index: number; card: ReadingSlotData; metadata: TarotCardMetadata } | null>(null);
   const [cardSlots, setCardSlots] = useState<ReadingSlotData[]>(() => {
     if (initialData?.cards) {
-      return initialData.cards.map((c: any, i: number) => ({
+      return initialData.cards.map((c: { name: string; isReversed: boolean }, i: number) => ({
         ...c,
         label: initialData.slotLabels?.[i] || '',
         position: initialData.slotPositions?.[i] || '',
