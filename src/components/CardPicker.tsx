@@ -17,6 +17,19 @@ export function CardPicker({ onSelect, onClose, excludeCards = [] }: CardPickerP
     c.name.includes(search) || c.english.toLowerCase().includes(search.toLowerCase())
   );
 
+  const highlightMatch = (text: string, searchTerm: string) => {
+    if (!searchTerm) return text;
+    const regex = new RegExp(`(${searchTerm})`, 'gi');
+    const parts = text.split(regex);
+    return parts.map((part, index) => 
+      regex.test(part) ? (
+        <span key={index} className="bg-forest-accent/20 text-forest-accent font-bold">{part}</span>
+      ) : (
+        part
+      )
+    );
+  };
+
   return (
     <div className="fixed inset-0 z-[1000] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
       <motion.div 
@@ -52,7 +65,7 @@ export function CardPicker({ onSelect, onClose, excludeCards = [] }: CardPickerP
           />
         </div>
 
-        <div className="flex-1 overflow-y-auto p-4 grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-3">
+        <div className="flex-1 overflow-y-auto p-4 grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 gap-3">
           {filteredCards.map(card => {
             const isExcluded = excludeCards.includes(card.name);
             return (
@@ -60,8 +73,8 @@ export function CardPicker({ onSelect, onClose, excludeCards = [] }: CardPickerP
                 key={card.id}
                 disabled={isExcluded}
                 onClick={() => onSelect(card, isReversed)}
-                className={`group flex flex-col items-center gap-2 p-2 rounded-xl transition-all ${
-                  isExcluded ? 'opacity-30 cursor-not-allowed grayscale' : 'hover:bg-forest-accent/5'
+                className={`group flex flex-col items-center gap-2 p-3 rounded-xl transition-all ${
+                  isExcluded ? 'opacity-30 cursor-not-allowed grayscale' : 'hover:bg-forest-accent/5 active:scale-95'
                 }`}
               >
                 <div className={`aspect-[2/3.5] w-full bg-forest-bg rounded-lg overflow-hidden border border-forest-accent/10 group-hover:border-forest-accent/30 ${isReversed ? 'rotate-180' : ''}`}>
@@ -73,7 +86,7 @@ export function CardPicker({ onSelect, onClose, excludeCards = [] }: CardPickerP
                   />
                 </div>
                 <span className="text-[10px] text-forest-ink font-medium truncate w-full text-center">
-                  {card.name}
+                  {highlightMatch(card.name, search)}
                   {isExcluded && <span className="block text-[8px] text-forest-accent mt-0.5">(已选)</span>}
                 </span>
               </button>

@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
-import { supabase } from '../lib/supabase';
 import { TAROT_CARDS } from '../constants';
+import { deleteNumerologySetting, getNumerologySetting, saveNumerologySetting } from '../lib/firebaseData';
 
 export function useCardNumerology(cardName: string, isLoggedIn: boolean, userId?: string) {
   const [numerology, setNumerology] = useState<number | null>(null);
@@ -16,19 +16,21 @@ export function useCardNumerology(cardName: string, isLoggedIn: boolean, userId?
     const loadNumerology = async () => {
       setLoading(true);
       if (isLoggedIn && userId) {
-        const { data, error } = await supabase
-          .from('user_numerology_settings')
-          .select('custom_numerology, custom_meaning, custom_keywords')
-          .eq('user_id', userId)
-          .eq('card_name', cardName)
-          .single();
-
-        if (data) {
-          setNumerology(data.custom_numerology);
-          setMeaning(data.custom_meaning || '');
-          setKeywords(data.custom_keywords || '');
-          setIsCustom(true);
-        } else {
+        try {
+          const setting = await getNumerologySetting(userId, cardName);
+          if (setting) {
+            setNumerology(setting.numerology);
+            setMeaning(setting.meaning || '');
+            setKeywords(setting.keywords || '');
+            setIsCustom(true);
+          } else {
+            setNumerology(defaultVal);
+            setMeaning('');
+            setKeywords('');
+            setIsCustom(false);
+          }
+        } catch (error) {
+          console.error('Error loading numerology:', error);
           setNumerology(defaultVal);
           setMeaning('');
           setKeywords('');
@@ -78,17 +80,13 @@ export function useCardNumerology(cardName: string, isLoggedIn: boolean, userId?
 
   const saveNumerology = async (value: number, customMeaning: string, customKeywords: string) => {
     if (isLoggedIn && userId) {
-      const { error } = await supabase
-        .from('user_numerology_settings')
-        .upsert({
-          user_id: userId,
-          card_name: cardName,
-          custom_numerology: value,
-          custom_meaning: customMeaning,
-          custom_keywords: customKeywords
-        }, { onConflict: 'user_id,card_name' });
-      
-      if (error) {
+      try {
+        await saveNumerologySetting(userId, cardName, {
+          numerology: value,
+          meaning: customMeaning,
+          keywords: customKeywords,
+        });
+      } catch (error) {
         console.error('Error saving numerology:', error);
         return false;
       }
@@ -111,13 +109,9 @@ export function useCardNumerology(cardName: string, isLoggedIn: boolean, userId?
 
   const restoreDefault = async () => {
     if (isLoggedIn && userId) {
-      const { error } = await supabase
-        .from('user_numerology_settings')
-        .delete()
-        .eq('user_id', userId)
-        .eq('card_name', cardName);
-      
-      if (error) {
+      try {
+        await deleteNumerologySetting(userId, cardName);
+      } catch (error) {
         console.error('Error deleting numerology:', error);
         return false;
       }

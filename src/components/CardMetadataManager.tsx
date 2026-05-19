@@ -3,8 +3,8 @@ import { motion, AnimatePresence } from 'motion/react';
 import { Search, Save, RotateCcw, Info, ChevronRight, Filter, Book, Sparkles, MessageSquare, History, Calendar, Pencil, Hash } from 'lucide-react';
 import { TarotCardMetadata, TarotReading } from '../types';
 import { getCardImageUrl } from '../constants';
-import { supabase } from '../lib/supabase';
 import { useCardNumerology } from '../hooks/useCardNumerology';
+import { getCardAnnotations, saveCardAnnotation } from '../lib/firebaseData';
 
 interface CardMetadataManagerProps {
   metadata: TarotCardMetadata[];
@@ -192,17 +192,10 @@ export function CardMetadataManager({ metadata, onUpdate, readings, onShowSnackb
   useEffect(() => {
     const loadMeanings = async () => {
       if (isLoggedIn && userId) {
-        const { data, error } = await supabase
-          .from('card_annotations')
-          .select('card_name, personal_meaning')
-          .eq('user_id', userId);
-        
-        if (data) {
-          const meaningsMap: Record<string, string> = {};
-          data.forEach(item => {
-            meaningsMap[item.card_name] = item.personal_meaning;
-          });
-          setPersonalMeanings(meaningsMap);
+        try {
+          setPersonalMeanings(await getCardAnnotations(userId));
+        } catch (error) {
+          console.error('Error loading annotations:', error);
         }
       } else {
         const saved = localStorage.getItem('tarot_personal_meanings');
@@ -257,16 +250,9 @@ export function CardMetadataManager({ metadata, onUpdate, readings, onShowSnackb
     const meaning = personalMeanings[cardName] || '';
 
     if (isLoggedIn && userId) {
-      const { error } = await supabase
-        .from('card_annotations')
-        .upsert({
-          user_id: userId,
-          card_name: cardName,
-          personal_meaning: meaning,
-          updated_at: new Date().toISOString()
-        }, { onConflict: 'user_id,card_name' });
-      
-      if (error) {
+      try {
+        await saveCardAnnotation(userId, cardName, meaning);
+      } catch (error) {
         console.error('Error saving annotation:', error);
       }
     } else {

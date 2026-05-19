@@ -1,8 +1,8 @@
 import React, { useState, useRef } from 'react';
-import { User, Sparkles, Edit3, Save, X, Calendar, BookOpen, Award, Check, Lock, ShieldCheck, Camera, Copy, Upload } from 'lucide-react';
+import { User, Sparkles, Edit3, Save, X, Calendar, BookOpen, Award, Check, Lock, ShieldCheck, Camera, Copy, Upload, LogOut } from 'lucide-react';
 import { TarotReading, TarotCardMetadata, UserProfile } from '../types';
-import { supabase } from '../lib/supabase';
 import { AvatarCropModal } from './AvatarCropModal';
+import { uploadUserAvatar } from '../lib/firebaseData';
 
 interface ProfileViewProps {
   authorName: string;
@@ -16,6 +16,7 @@ interface ProfileViewProps {
   onUpdateProfile: (updated: Partial<UserProfile>) => Promise<void>;
   profile: UserProfile | null;
   onViewAll?: () => void;
+  onLogout?: () => void;
 }
 
 export function ProfileView({ 
@@ -28,7 +29,8 @@ export function ProfileView({
   onTogglePublic,
   onUpdateProfile,
   profile,
-  onViewAll
+  onViewAll,
+  onLogout
 }: ProfileViewProps) {
   const [isEditingName, setIsEditingName] = useState(false);
   const [isEditingBio, setIsEditingBio] = useState(false);
@@ -98,38 +100,7 @@ export function ProfileView({
 
     try {
       setIsUploading(true);
-      const filePath = `${profile.id}/avatar.jpg`;
-
-      // Try to ensure bucket exists (ignore errors if permission denied or exists)
-      try {
-        await supabase.storage.createBucket('avatars', { public: true });
-      } catch (e) {
-        // Silently ignore - either exists or no permission to create
-      }
-
-      // Upload to avatars bucket
-      const { error: uploadError } = await supabase.storage
-        .from('avatars')
-        .upload(filePath, croppedBlob, {
-          contentType: 'image/jpeg',
-          upsert: true
-        });
-
-      if (uploadError) {
-        // If bucket doesn't exist, this might fail, though we expect it to exist or be created by admin
-        // We'll try to get public URL anyway if error is something else
-        if (uploadError.message.includes('bucket not found')) {
-          throw new Error('“avatars” 存储桶未在此项目的 Supabase 中配置。请先在控制台创建该公开存储桶。');
-        }
-        throw uploadError;
-      }
-
-      const { data: { publicUrl } } = supabase.storage
-        .from('avatars')
-        .getPublicUrl(filePath);
-
-      // Add actual timestamp to bust cache if needed
-      const publicUrlWithCacheBust = `${publicUrl}?t=${Date.now()}`;
+      const publicUrlWithCacheBust = await uploadUserAvatar(profile.id, croppedBlob);
       await onUpdateProfile({ avatar_url: publicUrlWithCacheBust });
     } catch (error: any) {
       console.error('Upload error:', error);
@@ -276,6 +247,17 @@ export function ProfileView({
               <span>手记累积：{authorReadings.length} 条</span>
             </div>
           </div>
+
+          {/* 登出按钮 */}
+          {onLogout && (
+            <button 
+              onClick={onLogout}
+              className="flex items-center gap-2 px-6 py-3 bg-forest-accent/10 text-forest-accent rounded-full text-sm font-bold hover:bg-forest-accent/20 transition-all"
+            >
+              <LogOut size={16} />
+              封印离阁
+            </button>
+          )}
         </div>
       </div>
 

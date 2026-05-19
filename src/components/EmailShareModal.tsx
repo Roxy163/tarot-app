@@ -22,12 +22,14 @@ export const EmailShareModal: React.FC<EmailShareModalProps> = ({
 }) => {
   const [email, setEmail] = useState('');
   const [status, setStatus] = useState<'idle' | 'sending' | 'success' | 'error'>('idle');
+  const [errorMessage, setErrorMessage] = useState('');
 
   const handleSend = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!email) return;
 
     setStatus('sending');
+    setErrorMessage('');
     const content = emailService.generateReadingReport(question, cardSlots, interpretation);
     
     try {
@@ -38,10 +40,16 @@ export const EmailShareModal: React.FC<EmailShareModalProps> = ({
         setStatus('idle');
         setEmail('');
       }, 2000);
-    } catch (error) {
+    } catch (error: any) {
       console.error(error);
+      setErrorMessage(error.message || '发送失败，请稍后重试');
       setStatus('error');
     }
+  };
+
+  const handleRetry = () => {
+    setStatus('idle');
+    setErrorMessage('');
   };
 
   return (
@@ -57,6 +65,29 @@ export const EmailShareModal: React.FC<EmailShareModalProps> = ({
             >
               <CheckCircle2 size={48} className="animate-bounce" />
               <p className="font-bold">邮件已成功投递！</p>
+            </motion.div>
+          ) : status === 'error' ? (
+            <motion.div 
+              key="error"
+              initial={{ opacity: 0, scale: 0.9 }} 
+              animate={{ opacity: 1, scale: 1 }} 
+              className="flex flex-col items-center justify-center py-6 space-y-3 text-red-600"
+            >
+              <motion.div 
+                initial={{ scale: 0 }}
+                animate={{ scale: 1 }}
+                className="w-16 h-16 rounded-full bg-red-100 flex items-center justify-center"
+              >
+                <X size={32} />
+              </motion.div>
+              <p className="font-bold">投递失败</p>
+              <p className="text-xs text-center px-4">{errorMessage}</p>
+              <button
+                onClick={handleRetry}
+                className="mt-2 px-4 py-2 bg-forest-accent text-white text-sm rounded-full hover:bg-forest-accent/90 transition-colors"
+              >
+                重试
+              </button>
             </motion.div>
           ) : (
             <motion.form 

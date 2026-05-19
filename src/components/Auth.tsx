@@ -1,399 +1,756 @@
 import React, { useState, useEffect } from 'react';
-import { supabase } from '../lib/supabase';
 import { motion, AnimatePresence } from 'motion/react';
-import { Mail, Send, Sparkles, Lock, UserPlus, LogIn, Key } from 'lucide-react';
+import { Mail, Lock, Send, Sparkles, ArrowRight, CloudOff, Home, Clock, CheckCircle, X, AlertCircle } from 'lucide-react';
+import { useAuth } from '../context/AuthContext';
+import { checkIfMagicLink, confirmPasswordReset } from '../lib/firebase';
 
-type AuthMode = 'magic-link' | 'password-login' | 'password-signup';
-
-export const Auth: React.FC = () => {
+export const Auth: React.FC<{ onClose?: () => void }> = ({ onClose }) => {
+  const { session, lastLogin, signIn, signUp, signOut, resetPassword, updatePassword } = useAuth();
+  
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [token, setToken] = useState(''); // 新增：验证码状态
   const [loading, setLoading] = useState(false);
-  const [sent, setSent] = useState(false);
-  const [countdown, setCountdown] = useState(0);
   const [error, setError] = useState<string | null>(null);
-  const [mode, setMode] = useState<AuthMode | 'reset-password'>('magic-link');
-  const [hasActiveSession, setHasActiveSession] = useState(false);
+  const [showResetPassword, setShowResetPassword] = useState(false);
+  const [showSetNewPassword, setShowSetNewPassword] = useState(false);
+  const [showChangePassword, setShowChangePassword] = useState(false);
+  const [resetEmail, setResetEmail] = useState('');
+  const [resetMessage, setResetMessage] = useState('');
+  const [resetError, setResetError] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [oobCode, setOobCode] = useState<string | null>(null);
+  // 修改密码相关状态
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPasswordForChange, setNewPasswordForChange] = useState('');
+  const [confirmNewPassword, setConfirmNewPassword] = useState('');
+  const [changePasswordMessage, setChangePasswordMessage] = useState('');
+  const [changePasswordError, setChangePasswordError] = useState('');
 
-  // ... (previous logic)
-
-  const handleResetPassword = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!email || loading) return;
-    setLoading(true);
-    setError(null);
-
-    const { error } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: `${window.location.origin}/reset-password`,
-    });
-
-    if (error) {
-      if (error.status === 429) setError("重置请求过于频繁，请 1 小时后再试。");
-      else setError(error.message);
-    } else {
-      setSent(true);
-      setError("重置灵钥已发往您的邮箱，请点击其中的链接重设密码。");
-    }
-    setLoading(false);
-  };
-
+  // 检查是否是密码重置链接
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setHasActiveSession(!!session);
-    });
+    const magicLinkData = checkIfMagicLink();
+    if (magicLinkData && magicLinkData.mode === 'resetPassword') {
+      // 直接设置 OOB 码，稍后在设置密码时验证
+      setOobCode(magicLinkData.oobCode);
+      setShowSetNewPassword(true);
+    }
   }, []);
 
-  const handleLogoutInAuth = async () => {
-    await supabase.auth.signOut();
-    setHasActiveSession(false);
-    setError("阁主印鉴已封印。您可以输入新邮箱执印入阁。");
-    setTimeout(() => setError(null), 3000);
-  };
-
-  useEffect(() => {
-    let timer: number;
-    if (countdown > 0) {
-      timer = window.setInterval(() => {
-        setCountdown((prev) => prev - 1);
-      }, 1000);
-    }
-    return () => clearInterval(timer);
-  }, [countdown]);
-
-  const handleMagicLink = async (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!email || loading) return;
+    const normalizedEmail = email.trim();
+    if (!normalizedEmail || !password || loading) return;
 
     setLoading(true);
     setError(null);
 
     try {
-      // 恢复标准调用参数，并确保捕获所有阶段的异常
-      const { error } = await supabase.auth.signInWithOtp({
-        email,
-        options: {
-          emailRedirectTo: window.location.origin,
-        }
-      });
-
-      if (error) {
-        // 关键：针对 Supabase 默认邮件服务 3次/小时 的限制进行精准提示
-        if (error.status === 429 || error.message.toLowerCase().includes('rate limit')) {
-          setError("「限流警告」Supabase 默认邮件每小时仅限发送 3 次。由于近期操作频繁，请 1 小时后再试，或改用密码登录。");
-        } else {
-          setError(`发送失败: ${error.message}`);
-        }
-      } else {
-        setSent(true);
-        setCountdown(60);
-      }
+      await signIn(normalizedEmail, password);
     } catch (err: any) {
-      setError("阁内灵力连接不稳，请刷新页面后重试。");
+      let errorMessage = err.message || "登录失败，请重试。";
+      
+      switch (err.code) {
+        case 'auth/invalid-credential':
+          errorMessage = "邮箱或密码不正确，请重试。";
+          break;
+        case 'auth/invalid-email':
+          errorMessage = "请输入有效的邮箱地址。";
+          break;
+        case 'auth/too-many-requests':
+          errorMessage = "尝试次数过多，请稍后再试。";
+          break;
+        case 'auth/user-not-found':
+          errorMessage = "该邮箱尚未注册，请先注册账号。";
+          break;
+        case 'auth/wrong-password':
+          errorMessage = "密码错误，请重试。";
+          break;
+        case 'auth/user-disabled':
+          errorMessage = "账号已被禁用，请联系管理员。";
+          break;
+      }
+      
+      setError(errorMessage);
     } finally {
       setLoading(false);
     }
   };
 
-  // 新增：处理验证码验证
-  const handleVerifyOtp = async (otpToken?: string) => {
-    const finalToken = otpToken || token;
-    if (!finalToken || finalToken.length < 6) return;
+  const handleSignUp = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const normalizedEmail = email.trim();
+    if (!normalizedEmail || !password || loading) return;
 
     setLoading(true);
     setError(null);
 
     try {
-      const { data, error } = await supabase.auth.verifyOtp({
-        email,
-        token: finalToken,
-        type: 'magiclink'
-      });
-
-      if (error) {
-        setError("验证码错误或已过期，请重试。");
-        setLoading(false);
-      } else if (data.session) {
-        // 验证成功！显示一点点成功反馈再让 App.tsx 接管切换
-        setSent(false); // 隐藏发送成功提示
-        // 这里不调用 setLoading(false)，让加载动画持续到页面切换，显得更连贯
-      } else {
-        setLoading(false);
+      await signUp(normalizedEmail, password);
+    } catch (err: any) {
+      let errorMessage = err.message || "注册失败，请重试。";
+      
+      switch (err.code) {
+        case 'auth/invalid-email':
+          errorMessage = "请输入有效的邮箱地址。";
+          break;
+        case 'auth/weak-password':
+          errorMessage = "密码强度不足，请使用至少6位字符。";
+          break;
+        case 'auth/email-already-in-use':
+          errorMessage = "该邮箱已被注册，请尝试找回密码。";
+          setResetEmail(email);
+          setShowResetPassword(true);
+          break;
       }
-    } catch (err) {
-      setError("网络连接异常，请稍后重试。");
+      
+      setError(errorMessage);
+    } finally {
       setLoading(false);
     }
   };
 
-  const handlePasswordAuth = async (e: React.FormEvent) => {
+  const handleResetPassword = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!email || !password) return;
+    if (!resetEmail) return;
 
     setLoading(true);
-    setError(null);
+    setResetMessage('');
+    setResetError('');
 
-    let result;
-    if (mode === 'password-signup') {
-      result = await supabase.auth.signUp({
-        email,
-        password,
-      });
-    } else {
-      result = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      });
+    try {
+      await resetPassword(resetEmail);
+      setResetMessage('密码重置邮件已发送，请查收您的邮箱。');
+      setResetEmail('');
+    } catch (err: any) {
+      setResetError(err.message || '发送失败，请重试。');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSetNewPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newPassword || !confirmPassword || !oobCode) return;
+
+    if (newPassword !== confirmPassword) {
+      setResetError('两次输入的密码不一致，请重新输入。');
+      return;
     }
 
-    if (result.error) {
-      setError(result.error.message);
+    setLoading(true);
+    setResetMessage('');
+    setResetError('');
+
+    try {
+      await confirmPasswordReset(oobCode, newPassword);
+      setResetMessage('密码重置成功！现在可以使用新密码登录。');
+      setNewPassword('');
+      setConfirmPassword('');
+      setOobCode(null);
+      
+      // 清除URL中的参数
+      window.history.replaceState({}, document.title, window.location.pathname);
+      
+      // 3秒后返回登录表单
+      setTimeout(() => {
+        setShowSetNewPassword(false);
+      }, 3000);
+    } catch (err: any) {
+      setResetError(err.message || '密码重置失败，请重试。');
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
+  };
+
+  const handleLogout = async () => {
+    await signOut();
+    if (onClose) onClose();
+  };
+
+  // 修改密码
+  const handleChangePassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!currentPassword || !newPasswordForChange || !confirmNewPassword || loading) return;
+
+    if (newPasswordForChange !== confirmNewPassword) {
+      setChangePasswordError('两次输入的密码不一致');
+      return;
+    }
+
+    setLoading(true);
+    setChangePasswordMessage('');
+    setChangePasswordError('');
+
+    try {
+      await updatePassword(currentPassword, newPasswordForChange);
+      setChangePasswordMessage('密码修改成功！');
+      setCurrentPassword('');
+      setNewPasswordForChange('');
+      setConfirmNewPassword('');
+      
+      // 3秒后关闭弹窗
+      setTimeout(() => {
+        setShowChangePassword(false);
+      }, 3000);
+    } catch (err: any) {
+      setChangePasswordError(err.message || '修改密码失败，请重试');
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
-    <div className="min-h-screen bg-forest-bg flex items-center justify-center p-4">
-      <motion.div 
+    <div className="min-h-screen bg-forest-bg flex flex-col items-center justify-center p-4">
+      <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
-        className="max-w-md w-full bg-white rounded-3xl shadow-xl border border-forest-border p-8 space-y-6"
+        transition={{ duration: 0.5 }}
+        className="w-full max-w-md"
       >
-        <div className="text-center space-y-2">
-          <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-forest-accent/10 text-forest-accent mb-2">
-            <Sparkles size={32} />
-          </div>
-          <h1 className="text-3xl font-serif font-bold text-forest-ink">执印入阁</h1>
-          <p className="text-forest-muted text-xs leading-relaxed max-w-[280px] mx-auto">
-            {mode === 'magic-link' ? (
-              <>
-                <span className="text-forest-accent font-bold">「特别提示」</span> 
-                因资源有限，每号每日仅限接收 3 次灵钥。建议入阁后前往“安全印鉴”设置通行密码。
-              </>
-            ) : mode === 'password-login' ? (
-              '欢迎归阁，请输入您的通行密码以验证印鉴。'
-            ) : (
-              '欢迎新阁主，请拟定您的入阁邮箱与密码。'
-            )}
-          </p>
-        </div>
-
-        <div className="flex p-1 bg-forest-bg/50 rounded-xl border border-forest-accent/5">
-          <button 
-            onClick={() => { setMode('magic-link'); setError(null); }}
-            className={`flex-1 flex items-center justify-center gap-1.5 py-2 text-[10px] font-bold rounded-lg transition-all ${mode === 'magic-link' ? 'bg-white text-forest-accent shadow-sm' : 'text-forest-muted hover:text-forest-accent'}`}
-          >
-            <Key size={12} /> 免密登录
-          </button>
-          <button 
-            onClick={() => { setMode('password-login'); setError(null); }}
-            className={`flex-1 flex items-center justify-center gap-1.5 py-2 text-[10px] font-bold rounded-lg transition-all ${mode === 'password-login' ? 'bg-white text-forest-accent shadow-sm' : 'text-forest-muted hover:text-forest-accent'}`}
-          >
-            <LogIn size={12} /> 密码登录
-          </button>
-          <button 
-            onClick={() => { setMode('password-signup'); setError(null); }}
-            className={`flex-1 flex items-center justify-center gap-1.5 py-2 text-[10px] font-bold rounded-lg transition-all ${mode === 'password-signup' ? 'bg-white text-forest-accent shadow-sm' : 'text-forest-muted hover:text-forest-accent'}`}
-          >
-            <UserPlus size={12} /> 注册新号
-          </button>
-        </div>
-
-        <form 
-          className="space-y-4" 
-          onSubmit={(e) => {
-            e.preventDefault();
-            if (mode === 'magic-link') {
-              if (sent) handleVerifyOtp();
-              else handleMagicLink(e);
-            } else {
-              handlePasswordAuth(e);
-            }
-          }}
+        <motion.div
+          initial={{ opacity: 0, scale: 0.9 }}
+          animate={{ opacity: 1, scale: 1 }}
+          transition={{ delay: 0.2 }}
+          className="bg-white rounded-3xl shadow-2xl border border-forest-border overflow-hidden"
         >
-          <div className="space-y-1.5">
-            <label className="text-[11px] font-bold text-forest-muted uppercase tracking-wider flex items-center gap-2">
-              <Mail size={12} /> 阁主邮箱
-            </label>
-            <div className="relative">
-              <input
-                type="email"
-                required
-                disabled={loading || (mode === 'magic-link' && sent && countdown > 0)}
-                className="w-full pl-10 pr-4 py-3 bg-forest-bg/30 border border-forest-accent/10 rounded-xl focus:ring-2 focus:ring-forest-accent/20 transition-all outline-none text-sm"
-                placeholder="example@email.com"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-              />
-              <Mail className="absolute left-3 top-1/2 -translate-y-1/2 text-forest-muted" size={16} />
+          <div className="relative">
+            <div className="absolute inset-0 bg-gradient-to-br from-forest-accent/5 to-forest-pink/5" />
+            <div className="relative p-8">
+              <div className="flex flex-col items-center mb-8">
+                <div className="w-16 h-16 rounded-full bg-gradient-to-br from-forest-accent to-forest-pink flex items-center justify-center text-forest-card font-serif text-2xl shadow-lg mb-4">
+                  <Sparkles size={24} />
+                </div>
+                <h1 className="font-serif text-xl font-bold text-forest-ink">执印入阁</h1>
+                <p className="text-xs text-forest-muted mt-1">塔罗研习阁 · 身份验证</p>
+              </div>
+
+              {!!session ? (
+                <div className="space-y-6 text-center">
+                  <div className="w-16 h-16 rounded-full bg-forest-accent/10 flex items-center justify-center mx-auto">
+                    <CheckCircle className="text-forest-accent" size={32} />
+                  </div>
+                  <div>
+                    <h2 className="font-serif text-lg font-bold text-forest-ink">印鉴已验证</h2>
+                    <p className="text-xs text-forest-muted mt-1">欢迎归来，研习阁主</p>
+                  </div>
+                  
+                  {lastLogin && (
+                    <div className="bg-forest-bg/30 rounded-xl p-4 text-left">
+                      <p className="text-xs text-forest-muted flex items-center gap-2">
+                        <Clock size={12} />
+                        上次入阁：{lastLogin.displayDate}
+                      </p>
+                      <p className="text-xs text-forest-accent mt-1">{lastLogin.type} · {lastLogin.identifier}</p>
+                    </div>
+                  )}
+
+                  <button
+                    onClick={() => setShowChangePassword(true)}
+                    className="w-full py-3 bg-forest-accent/10 text-forest-accent rounded-xl font-medium hover:bg-forest-accent/20 transition-colors"
+                  >
+                    修改密码
+                  </button>
+
+                  <button
+                    onClick={handleLogout}
+                    className="w-full py-3 bg-forest-accent/10 text-forest-accent rounded-xl font-medium hover:bg-forest-accent/20 transition-colors"
+                  >
+                    封印离阁
+                  </button>
+
+                  <button
+                    onClick={onClose}
+                    className="w-full py-3 text-forest-muted hover:text-forest-accent transition-colors text-sm"
+                  >
+                    返回研习阁
+                  </button>
+                </div>
+              ) : (
+                <form onSubmit={handleLogin} className="space-y-5">
+                  <div className="space-y-2">
+                    <label className="text-xs font-bold text-forest-muted uppercase tracking-wider flex items-center gap-2">
+                      <Mail size={12} /> 邮箱
+                    </label>
+                    <div className="relative">
+                      <input
+                        type="email"
+                        required
+                        disabled={loading}
+                        className="w-full pl-10 pr-4 py-3.5 bg-forest-bg/30 border border-forest-accent/10 rounded-xl focus:ring-2 focus:ring-forest-accent/20 transition-all outline-none text-sm"
+                        placeholder="example@email.com"
+                        value={email}
+                        onChange={(e) => setEmail(e.target.value)}
+                      />
+                      <Mail className="absolute left-3 top-1/2 -translate-y-1/2 text-forest-muted" size={16} />
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="text-xs font-bold text-forest-muted uppercase tracking-wider flex items-center gap-2">
+                      <Lock size={12} /> 密码
+                    </label>
+                    <div className="relative">
+                      <input
+                        type="password"
+                        required
+                        disabled={loading}
+                        className="w-full pl-10 pr-4 py-3.5 bg-forest-bg/30 border border-forest-accent/10 rounded-xl focus:ring-2 focus:ring-forest-accent/20 transition-all outline-none text-sm"
+                        placeholder="至少6位字符"
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
+                      />
+                      <Lock className="absolute left-3 top-1/2 -translate-y-1/2 text-forest-muted" size={16} />
+                    </div>
+                  </div>
+
+                  {error && (
+                    <motion.div
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      className="text-xs text-red-500 bg-red-50 p-3 rounded-lg border border-red-100"
+                    >
+                      <p className="text-center">{error}</p>
+                      {(error.includes('密码错误') || error.includes('密码不正确') || error.includes('找回密码')) && (
+                        <motion.button
+                          initial={{ opacity: 0 }}
+                          animate={{ opacity: 1 }}
+                          onClick={() => {
+                            setShowResetPassword(true);
+                            setResetEmail(email);
+                          }}
+                          className="block w-full mt-2 py-1.5 text-xs text-forest-accent hover:underline transition-colors"
+                        >
+                          忘记密码？点击找回
+                        </motion.button>
+                      )}
+                    </motion.div>
+                  )}
+
+                  <button
+                    type="submit"
+                    disabled={loading || !email || !password}
+                    className="w-full py-3.5 bg-forest-accent text-white rounded-xl font-bold text-sm hover:bg-forest-accent/90 transition-all disabled:opacity-50 shadow-lg shadow-forest-accent/20 flex items-center justify-center gap-2"
+                  >
+                    {loading ? (
+                      <motion.div animate={{ rotate: 360 }} transition={{ repeat: Infinity, duration: 1, ease: "linear" }}>
+                        <Send size={16} />
+                      </motion.div>
+                    ) : (
+                      <>
+                        <Sparkles size={16} />
+                        执印入阁
+                      </>
+                    )}
+                  </button>
+
+                  <div className="pt-4 border-t border-forest-accent/5 space-y-3">
+                    <div className="flex items-center justify-center gap-2">
+                      <span className="text-xs text-forest-muted">尚未执印入阁？</span>
+                      <button
+                        type="button"
+                        onClick={handleSignUp}
+                        className="text-xs font-bold text-forest-accent hover:underline transition-colors"
+                      >
+                        注册新号
+                      </button>
+                    </div>
+                    
+                    <div className="flex items-center justify-center">
+                      <button
+                        type="button"
+                        onClick={() => setShowResetPassword(true)}
+                        className="text-xs text-forest-muted hover:text-forest-accent transition-colors flex items-center gap-1"
+                      >
+                        <AlertCircle size={10} />
+                        忘记密码？
+                      </button>
+                    </div>
+                  </div>
+                </form>
+              )}
+
+              <div className="mt-8 pt-6 border-t border-forest-accent/5">
+                <div className="flex items-center justify-center gap-4 text-[10px] text-forest-muted">
+                  <span className="flex items-center gap-1">
+                    <CloudOff size={12} />
+                    数据加密传输
+                  </span>
+                  <span className="flex items-center gap-1">
+                    <Lock size={12} />
+                    安全存储
+                  </span>
+                </div>
+                <p className="text-center text-[10px] text-forest-muted mt-3">
+                  🔐 你的数据，只属于你。所有记录安全保存在云端。
+                </p>
+                <p className="text-[10px] text-forest-muted text-center opacity-60">
+                  塔罗研习阁 · Firebase 安全认证
+                </p>
+              </div>
             </div>
           </div>
+        </motion.div>
 
-          <AnimatePresence mode="wait">
-            {mode === 'magic-link' && sent && (
-              <motion.div 
-                key="otp-field"
-                initial={{ opacity: 0, height: 0 }}
-                animate={{ opacity: 1, height: 'auto' }}
-                className="space-y-1.5 overflow-hidden"
-              >
-                <label className="text-[11px] font-bold text-forest-accent uppercase tracking-wider flex items-center gap-2">
-                  <Key size={12} /> 灵钥验证码
-                </label>
-                <div className="relative">
-                  <input
-                    type="text"
-                    required
-                    maxLength={6}
-                    pattern="\d{6}"
-                    inputMode="numeric"
-                    autoFocus
-                    disabled={loading}
-                    className="w-full pl-10 pr-4 py-3 bg-forest-accent/5 border border-forest-accent/20 rounded-xl focus:ring-2 focus:ring-forest-accent/30 transition-all outline-none text-center text-lg font-mono tracking-[0.6em] text-forest-accent"
-                    placeholder="0 0 0 0 0 0"
-                    value={token}
-                    onChange={(e) => {
-                      const val = e.target.value.replace(/\D/g, '');
-                      setToken(val);
-                      if (val.length === 6) {
-                        handleVerifyOtp(val);
-                      }
-                    }}
-                  />
-                  <Key className="absolute left-3 top-1/2 -translate-y-1/2 text-forest-accent/60" size={16} />
-                </div>
-                <p className="text-[9px] text-forest-muted text-right">验证成功后将自动跳转入阁</p>
-              </motion.div>
-            )}
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: 0.4 }}
+          className="mt-6 text-center"
+        >
+          <button
+            onClick={onClose}
+            className="text-xs text-forest-muted hover:text-forest-accent transition-colors flex items-center gap-2 mx-auto"
+          >
+            <Home size={14} />
+            返回访客模式
+          </button>
+        </motion.div>
+      </motion.div>
 
-            {mode !== 'magic-link' && (
-              <motion.div 
-                key="password-field"
-                initial={{ opacity: 0, height: 0 }}
-                animate={{ opacity: 1, height: 'auto' }}
-                exit={{ opacity: 0, height: 0 }}
-                className="space-y-1.5 overflow-hidden"
-              >
-                <label className="text-[11px] font-bold text-forest-muted uppercase tracking-wider flex items-center gap-2">
-                  <Lock size={12} /> 通行密码
-                </label>
-                <div className="relative">
-                  <input
-                    type="password"
-                    required
-                    minLength={6}
-                    disabled={loading}
-                    className="w-full pl-10 pr-4 py-3 bg-forest-bg/30 border border-forest-accent/10 rounded-xl focus:ring-2 focus:ring-forest-accent/20 transition-all outline-none text-sm"
-                    placeholder="••••••••"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                  />
-                  <Lock className="absolute left-3 top-1/2 -translate-y-1/2 text-forest-muted" size={16} />
-                </div>
-                {mode === 'password-login' && (
-                  <button 
-                    type="button"
-                    onClick={() => setMode('reset-password')}
-                    className="text-[10px] text-forest-muted hover:text-forest-accent underline decoration-dotted mt-2 block w-full text-right"
-                  >
-                    忘记密码或从未设置？
-                  </button>
-                )}
-              </motion.div>
-            )}
-
-            {mode === 'reset-password' && (
-              <motion.div 
-                key="reset-mode"
-                initial={{ opacity: 0, height: 0 }}
-                animate={{ opacity: 1, height: 'auto' }}
-                className="space-y-4"
-              >
-                <button
-                  type="button"
-                  onClick={() => setMode('password-login')}
-                  className="text-[10px] text-forest-accent hover:underline mb-2"
-                >
-                  ← 返回密码登录
-                </button>
-                <button
-                  type="button"
-                  onClick={handleResetPassword}
-                  disabled={loading}
-                  className="w-full py-3 bg-forest-bg border border-forest-accent/20 text-forest-accent rounded-xl text-xs font-bold hover:bg-forest-accent/5 transition-all"
-                >
-                  发送重置灵钥至邮箱
-                </button>
-              </motion.div>
-            )}
-          </AnimatePresence>
-
-          {sent && mode === 'magic-link' && (
-            <motion.div 
+      {/* 密码重置弹窗 */}
+      <AnimatePresence>
+        {showResetPassword && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-forest-text/20 backdrop-blur-sm"
+            onClick={() => setShowResetPassword(false)}
+          >
+            <motion.div
               initial={{ opacity: 0, scale: 0.9 }}
               animate={{ opacity: 1, scale: 1 }}
-              className="p-4 bg-forest-accent/5 rounded-xl border border-forest-accent/10 text-center"
+              exit={{ opacity: 0, scale: 0.9 }}
+              onClick={(e) => e.stopPropagation()}
+              className="w-full max-w-sm bg-white rounded-3xl shadow-xl border border-forest-border p-6 space-y-5"
             >
-              <p className="text-xs text-forest-accent font-medium leading-relaxed">
-                入阁灵钥已发送！请查收邮件并填入 6 位验证码。
-              </p>
-              <p className="text-[10px] text-forest-muted mt-2">若未收到，请检查垃圾邮件箱。</p>
-            </motion.div>
-          )}
-
-          {hasActiveSession && !sent && (
-            <button
-              type="button"
-              onClick={handleLogoutInAuth}
-              className="w-full py-2.5 text-[10px] text-forest-muted hover:text-forest-accent border border-dashed border-forest-accent/20 rounded-xl transition-all"
-            >
-              当前已执印入阁。点击此处“封印离阁”以切换账号。
-            </button>
-          )}
-
-          {error && (
-            <div className="space-y-2">
-              <p className="text-[10px] text-red-500 bg-red-50 p-2.5 rounded-lg border border-red-100 italic leading-snug">
-                {error}
-              </p>
-              {(error.includes('rate limit') || error.includes('限流')) && (
-                <button 
-                  onClick={() => setMode('password-login')}
-                  className="w-full py-2 text-[10px] text-forest-accent font-bold hover:underline"
+              <div className="flex items-center justify-between">
+                <div>
+                  <h2 className="text-lg font-serif font-bold text-forest-ink">找回密码</h2>
+                  <p className="text-xs text-forest-muted mt-1">输入注册时使用的邮箱</p>
+                </div>
+                <button
+                  onClick={() => setShowResetPassword(false)}
+                  className="p-2 hover:bg-forest-bg rounded-full transition-colors"
                 >
-                  已有密码？尝试密码登录 →
+                  <X size={18} className="text-forest-muted" />
                 </button>
-              )}
-            </div>
-          )}
+              </div>
 
-          <button
-            type="submit"
-            disabled={loading || (mode === 'magic-link' && sent && countdown > 0)}
-            className="group relative w-full py-3 bg-forest-accent text-white rounded-xl font-bold text-sm hover:bg-forest-accent/90 transition-all flex items-center justify-center gap-2 disabled:opacity-50 shadow-lg shadow-forest-accent/20"
+              <form onSubmit={handleResetPassword} className="space-y-4">
+                <div className="space-y-2">
+                  <label className="text-xs font-bold text-forest-muted uppercase tracking-wider flex items-center gap-2">
+                    <Mail size={12} /> 注册邮箱
+                  </label>
+                  <div className="relative">
+                    <input
+                      type="email"
+                      required
+                      disabled={loading}
+                      className="w-full pl-10 pr-4 py-3.5 bg-forest-bg/30 border border-forest-accent/10 rounded-xl focus:ring-2 focus:ring-forest-accent/20 transition-all outline-none text-sm"
+                      placeholder="example@email.com"
+                      value={resetEmail}
+                      onChange={(e) => setResetEmail(e.target.value)}
+                    />
+                    <Mail className="absolute left-3 top-1/2 -translate-y-1/2 text-forest-muted" size={16} />
+                  </div>
+                </div>
+
+                {resetError && (
+                  <motion.div
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    className="text-xs text-red-500 bg-red-50 p-3 rounded-lg border border-red-100 text-center"
+                  >
+                    {resetError}
+                  </motion.div>
+                )}
+
+                {resetMessage && (
+                  <motion.div
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    className="text-xs text-green-500 bg-green-50 p-3 rounded-lg border border-green-100 text-center"
+                  >
+                    {resetMessage}
+                  </motion.div>
+                )}
+
+                <button
+                  type="submit"
+                  disabled={loading || !resetEmail}
+                  className="w-full py-3.5 bg-forest-accent text-white rounded-xl font-bold text-sm hover:bg-forest-accent/90 transition-all disabled:opacity-50 shadow-lg shadow-forest-accent/20"
+                >
+                  {loading ? (
+                    <motion.div animate={{ rotate: 360 }} transition={{ repeat: Infinity, duration: 1, ease: "linear" }}>
+                      <Send size={16} />
+                    </motion.div>
+                  ) : (
+                    '发送重置邮件'
+                  )}
+                </button>
+              </form>
+
+              <button
+                onClick={() => setShowResetPassword(false)}
+                className="w-full py-2 text-xs text-forest-muted hover:text-forest-accent transition-colors"
+              >
+                返回登录
+              </button>
+            </motion.div>
+          </motion.div>
+        )}
+
+        {/* 设置新密码弹窗（通过链接进入） */}
+        {showSetNewPassword && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-forest-text/20 backdrop-blur-sm"
+            onClick={() => {
+              setShowSetNewPassword(false);
+              window.history.replaceState({}, document.title, window.location.pathname);
+            }}
           >
-            {loading ? (
-              <motion.div animate={{ rotate: 360 }} transition={{ repeat: Infinity, duration: 1, ease: "linear" }}>
-                <Send size={16} />
-              </motion.div>
-            ) : (
-              <Send size={16} className="group-hover:translate-x-1 group-hover:-translate-y-1 transition-transform" />
-            )}
-            {mode === 'magic-link' 
-              ? (sent ? '验证灵钥并入阁' : '发送入阁灵钥') 
-              : mode === 'password-login' ? '立即入阁' : '开启研习之路'}
-          </button>
-        </form>
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.9 }}
+              onClick={(e) => e.stopPropagation()}
+              className="w-full max-w-sm bg-white rounded-3xl shadow-xl border border-forest-border p-6 space-y-5"
+            >
+              <div className="flex items-center justify-between">
+                <div>
+                  <h2 className="text-lg font-serif font-bold text-forest-ink">设置新密码</h2>
+                  <p className="text-xs text-forest-muted mt-1">请设置您的新密码</p>
+                </div>
+                <button
+                  onClick={() => {
+                    setShowSetNewPassword(false);
+                    window.history.replaceState({}, document.title, window.location.pathname);
+                  }}
+                  className="p-2 hover:bg-forest-bg rounded-full transition-colors"
+                >
+                  <X size={18} className="text-forest-muted" />
+                </button>
+              </div>
 
-        <div className="pt-4 border-t border-forest-accent/5 space-y-3">
-          <p className="text-[10px] text-forest-muted text-center leading-relaxed">
-            🔐 你的数据，只属于你。我们承诺：绝不分析、绝不共享你的个人记录。
-          </p>
-          <p className="text-[10px] text-forest-muted text-center leading-relaxed opacity-60">
-            塔罗研习阁 • 森林感性设计
-          </p>
-        </div>
-      </motion.div>
+              <form onSubmit={handleSetNewPassword} className="space-y-4">
+                <div className="space-y-2">
+                  <label className="text-xs font-bold text-forest-muted uppercase tracking-wider flex items-center gap-2">
+                    <Lock size={12} /> 新密码
+                  </label>
+                  <div className="relative">
+                    <input
+                      type="password"
+                      required
+                      disabled={loading}
+                      className="w-full pl-10 pr-4 py-3.5 bg-forest-bg/30 border border-forest-accent/10 rounded-xl focus:ring-2 focus:ring-forest-accent/20 transition-all outline-none text-sm"
+                      placeholder="至少6位字符"
+                      value={newPassword}
+                      onChange={(e) => setNewPassword(e.target.value)}
+                    />
+                    <Lock className="absolute left-3 top-1/2 -translate-y-1/2 text-forest-muted" size={16} />
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-xs font-bold text-forest-muted uppercase tracking-wider flex items-center gap-2">
+                    <Lock size={12} /> 确认密码
+                  </label>
+                  <div className="relative">
+                    <input
+                      type="password"
+                      required
+                      disabled={loading}
+                      className="w-full pl-10 pr-4 py-3.5 bg-forest-bg/30 border border-forest-accent/10 rounded-xl focus:ring-2 focus:ring-forest-accent/20 transition-all outline-none text-sm"
+                      placeholder="再次输入密码"
+                      value={confirmPassword}
+                      onChange={(e) => setConfirmPassword(e.target.value)}
+                    />
+                    <Lock className="absolute left-3 top-1/2 -translate-y-1/2 text-forest-muted" size={16} />
+                  </div>
+                </div>
+
+                {resetError && (
+                  <motion.div
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    className="text-xs text-red-500 bg-red-50 p-3 rounded-lg border border-red-100 text-center"
+                  >
+                    {resetError}
+                  </motion.div>
+                )}
+
+                {resetMessage && (
+                  <motion.div
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    className="text-xs text-green-500 bg-green-50 p-3 rounded-lg border border-green-100 text-center"
+                  >
+                    {resetMessage}
+                  </motion.div>
+                )}
+
+                <button
+                  type="submit"
+                  disabled={loading || !newPassword || !confirmPassword}
+                  className="w-full py-3.5 bg-forest-accent text-white rounded-xl font-bold text-sm hover:bg-forest-accent/90 transition-all disabled:opacity-50 shadow-lg shadow-forest-accent/20"
+                >
+                  {loading ? (
+                    <motion.div animate={{ rotate: 360 }} transition={{ repeat: Infinity, duration: 1, ease: "linear" }}>
+                      <Send size={16} />
+                    </motion.div>
+                  ) : (
+                    '确认重置密码'
+                  )}
+                </button>
+              </form>
+
+              <button
+                onClick={() => {
+                  setShowSetNewPassword(false);
+                  window.history.replaceState({}, document.title, window.location.pathname);
+                }}
+                className="w-full py-2 text-xs text-forest-muted hover:text-forest-accent transition-colors"
+              >
+                返回登录
+              </button>
+            </motion.div>
+          </motion.div>
+        )}
+
+        {/* 修改密码弹窗 */}
+        {showChangePassword && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-forest-text/20 backdrop-blur-sm"
+            onClick={() => setShowChangePassword(false)}
+          >
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.9 }}
+              onClick={(e) => e.stopPropagation()}
+              className="w-full max-w-sm bg-white rounded-3xl shadow-xl border border-forest-border p-6 space-y-5"
+            >
+              <div className="flex items-center justify-between">
+                <div>
+                  <h2 className="text-lg font-serif font-bold text-forest-ink">修改密码</h2>
+                  <p className="text-xs text-forest-muted mt-1">请验证当前密码并设置新密码</p>
+                </div>
+                <button
+                  onClick={() => setShowChangePassword(false)}
+                  className="p-2 hover:bg-forest-bg rounded-full transition-colors"
+                >
+                  <X size={18} className="text-forest-muted" />
+                </button>
+              </div>
+
+              <form onSubmit={handleChangePassword} className="space-y-4">
+                <div className="space-y-2">
+                  <label className="text-xs font-bold text-forest-muted uppercase tracking-wider flex items-center gap-2">
+                    <Lock size={12} /> 当前密码
+                  </label>
+                  <div className="relative">
+                    <input
+                      type="password"
+                      required
+                      disabled={loading}
+                      className="w-full pl-10 pr-4 py-3.5 bg-forest-bg/30 border border-forest-accent/10 rounded-xl focus:ring-2 focus:ring-forest-accent/20 transition-all outline-none text-sm"
+                      placeholder="请输入当前密码"
+                      value={currentPassword}
+                      onChange={(e) => setCurrentPassword(e.target.value)}
+                    />
+                    <Lock className="absolute left-3 top-1/2 -translate-y-1/2 text-forest-muted" size={16} />
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-xs font-bold text-forest-muted uppercase tracking-wider flex items-center gap-2">
+                    <Lock size={12} /> 新密码
+                  </label>
+                  <div className="relative">
+                    <input
+                      type="password"
+                      required
+                      disabled={loading}
+                      className="w-full pl-10 pr-4 py-3.5 bg-forest-bg/30 border border-forest-accent/10 rounded-xl focus:ring-2 focus:ring-forest-accent/20 transition-all outline-none text-sm"
+                      placeholder="至少6位字符"
+                      value={newPasswordForChange}
+                      onChange={(e) => setNewPasswordForChange(e.target.value)}
+                    />
+                    <Lock className="absolute left-3 top-1/2 -translate-y-1/2 text-forest-muted" size={16} />
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-xs font-bold text-forest-muted uppercase tracking-wider flex items-center gap-2">
+                    <Lock size={12} /> 确认新密码
+                  </label>
+                  <div className="relative">
+                    <input
+                      type="password"
+                      required
+                      disabled={loading}
+                      className="w-full pl-10 pr-4 py-3.5 bg-forest-bg/30 border border-forest-accent/10 rounded-xl focus:ring-2 focus:ring-forest-accent/20 transition-all outline-none text-sm"
+                      placeholder="再次输入新密码"
+                      value={confirmNewPassword}
+                      onChange={(e) => setConfirmNewPassword(e.target.value)}
+                    />
+                    <Lock className="absolute left-3 top-1/2 -translate-y-1/2 text-forest-muted" size={16} />
+                  </div>
+                </div>
+
+                {changePasswordError && (
+                  <motion.div
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    className="text-xs text-red-500 bg-red-50 p-3 rounded-lg border border-red-100 text-center"
+                  >
+                    {changePasswordError}
+                  </motion.div>
+                )}
+
+                {changePasswordMessage && (
+                  <motion.div
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    className="text-xs text-green-500 bg-green-50 p-3 rounded-lg border border-green-100 text-center"
+                  >
+                    {changePasswordMessage}
+                  </motion.div>
+                )}
+
+                <button
+                  type="submit"
+                  disabled={loading || !currentPassword || !newPasswordForChange || !confirmNewPassword}
+                  className="w-full py-3.5 bg-forest-accent text-white rounded-xl font-bold text-sm hover:bg-forest-accent/90 transition-all disabled:opacity-50 shadow-lg shadow-forest-accent/20"
+                >
+                  {loading ? (
+                    <motion.div animate={{ rotate: 360 }} transition={{ repeat: Infinity, duration: 1, ease: "linear" }}>
+                      <Send size={16} />
+                    </motion.div>
+                  ) : (
+                    '确认修改'
+                  )}
+                </button>
+              </form>
+
+              <button
+                onClick={() => setShowChangePassword(false)}
+                className="w-full py-2 text-xs text-forest-muted hover:text-forest-accent transition-colors"
+              >
+                取消
+              </button>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };

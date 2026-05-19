@@ -121,7 +121,7 @@ export const ReadingCard: React.FC<ReadingCardProps> = ({
     const isCeltic = reading.layoutType === 'celtic-cross' || reading.spread === '凯尔特十字牌阵';
 
     const content = (
-      <div className={`${reading.layoutType ? layout?.class : 'flex flex-wrap gap-4'}`}>
+      <div className={`${reading.layoutType ? layout?.class : 'flex flex-wrap justify-center gap-1'}`}>
         {reading.cards.map((card, idx) => {
           const cardData = TAROT_CARDS.find(c => 
             c.name === card.name || 
@@ -131,22 +131,21 @@ export const ReadingCard: React.FC<ReadingCardProps> = ({
           const posClass = reading.slotPositions?.[idx] || layout?.itemClasses[idx] || '';
           const label = reading.slotLabels?.[idx];
           
-          // Special handling for Celtic Cross center cards or custom rotated slots
           const isRotated = reading.rotatedSlots?.includes(idx) || (isCeltic && idx === 1);
-          const celticCrossedClasses = isRotated ? 'absolute inset-0 rotate-90 z-20 translate-y-1' : '';
+          const celticCrossedClasses = isRotated ? 'absolute inset-0 rotate-90 z-20 translate-y-0.5' : '';
 
           return (
             <div 
               key={idx} 
-              className={`flex flex-col items-center gap-1.5 ${posClass} ${isRotated ? 'relative' : ''} cursor-pointer group/card`}
+              className={`flex flex-col items-center gap-0.5 ${posClass} ${isRotated ? 'relative' : ''} cursor-pointer group/card`}
               onClick={(e) => {
                 e.stopPropagation();
                 setSelectedCardIdx(selectedCardIdx === idx ? null : idx);
               }}
             >
-              <div className={`relative ${isMini ? 'w-12 h-18' : 'w-16 h-24'} rounded-lg overflow-hidden border-2 transition-all ${selectedCardIdx === idx ? 'border-forest-accent ring-4 ring-forest-accent/10 scale-105' : 'border-forest-accent/10 group-hover/card:border-forest-accent/30'} shadow-sm ${card.isReversed ? 'rotate-180' : ''} ${celticCrossedClasses}`}>
+              <div className={`relative ${isMini ? 'w-10 h-16' : 'w-12 h-18'} rounded-lg overflow-hidden border-2 transition-all ${selectedCardIdx === idx ? 'border-forest-accent ring-4 ring-forest-accent/10 scale-105' : 'border-forest-accent/10 group-hover/card:border-forest-accent/30'} shadow-sm ${card.isReversed ? 'rotate-180' : ''} ${celticCrossedClasses}`}>
                 {showSlotNumbers && !isMini && (
-                  <div className="absolute top-1 left-1/2 -translate-x-1/2 bg-forest-text/40 text-white text-[8px] px-1 rounded-sm z-20 font-black">
+                  <div className="absolute top-0.5 left-1/2 -translate-x-1/2 bg-forest-text/40 text-white text-[7px] px-1 rounded-sm z-20 font-black">
                     {idx + 1}
                   </div>
                 )}
@@ -157,17 +156,17 @@ export const ReadingCard: React.FC<ReadingCardProps> = ({
                   referrerPolicy="no-referrer"
                 />
                 {!isMini && (
-                  <div className="absolute inset-x-0 bottom-0 bg-forest-text/60 text-white text-[7px] py-0.5 text-center font-sans">
+                  <div className="absolute inset-x-0 bottom-0 bg-forest-text/60 text-white text-[6px] py-0.5 text-center font-sans">
                     {cardData?.name || card.name}
                   </div>
                 )}
               </div>
               {!isMini && label && (
-                <span className={`text-[9px] font-medium px-1.5 py-0.5 rounded leading-tight transition-colors ${selectedCardIdx === idx ? 'bg-forest-accent text-white' : 'text-forest-accent bg-forest-accent/5'}`}>
+                <span className={`text-[7px] font-medium px-1 py-0.5 rounded leading-tight transition-colors ${selectedCardIdx === idx ? 'bg-forest-accent text-white' : 'text-forest-accent bg-forest-accent/5'}`}>
                   {label}
                 </span>
               )}
-              {!isMini && card.isReversed && !label && <span className="text-[9px] text-red-500">逆位</span>}
+              {!isMini && card.isReversed && !label && <span className="text-[7px] text-red-500">逆位</span>}
             </div>
           );
         })}
@@ -176,15 +175,15 @@ export const ReadingCard: React.FC<ReadingCardProps> = ({
 
     if (isMini) {
       return (
-        <div className="w-full flex-1 overflow-hidden relative rounded-[2rem] bg-forest-bg/40 p-4 border-2 border-forest-border/40 group-hover/viz:bg-forest-bg/60 transition-all duration-500 min-h-[220px] flex items-center justify-center">
-          <div className="scale-[1.6] sm:scale-[1.8] transform-gpu transition-all duration-700 group-hover/viz:scale-[1.7] group-hover/viz:rotate-2">
+        <div className="w-full flex-1 overflow-hidden relative rounded-[2rem] bg-forest-bg/40 p-3 border-2 border-forest-border/40 group-hover/viz:bg-forest-bg/60 transition-all duration-500 min-h-[180px] flex items-center justify-center">
+          <div className="scale-[1.7] sm:scale-[1.9] transform-gpu transition-all duration-700 group-hover/viz:scale-[1.8] group-hover/viz:rotate-2">
             {content}
           </div>
         </div>
       );
     }
 
-    return <div className="mb-6">{content}</div>;
+    return <div className="mb-3">{content}</div>;
   };
 
   return (
