@@ -9,9 +9,7 @@ import {
   saveLoginHistory, 
   getLastLoginInfo, 
   sendPasswordReset,
-  updateUserPassword,
-  sendCurrentUserEmailVerification,
-  refreshCurrentUser
+  updateUserPassword
 } from '../lib/firebase';
 
 interface LoginHistory {
@@ -23,15 +21,12 @@ interface LoginHistory {
 interface AuthContextType {
   session: User | null;
   isLoading: boolean;
-  isEmailVerified: boolean;
   lastLogin: LoginHistory | null;
   signIn: (email: string, password: string) => Promise<void>;
   signUp: (email: string, password: string) => Promise<void>;
   signOut: () => Promise<void>;
   resetPassword: (email: string) => Promise<void>;
   updatePassword: (currentPassword: string, newPassword: string) => Promise<void>;
-  sendVerificationEmail: () => Promise<void>;
-  refreshUser: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -39,13 +34,11 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [session, setSession] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [isEmailVerified, setIsEmailVerified] = useState(false);
   const [lastLogin, setLastLogin] = useState<LoginHistory | null>(null);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChangedListener((user) => {
       setSession(user);
-      setIsEmailVerified(!!user?.emailVerified);
       setIsLoading(false);
       if (user) {
         const info = getLastLoginInfo(user.uid);
@@ -57,7 +50,6 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
     const user = getCurrentUser();
     setSession(user);
-    setIsEmailVerified(!!user?.emailVerified);
     if (user) {
       const info = getLastLoginInfo(user.uid);
       setLastLogin(info);
@@ -84,9 +76,6 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   const signUp = useCallback(async (email: string, password: string) => {
     const userCredential = await signUpWithEmail(email, password);
-    sendCurrentUserEmailVerification().catch(error => {
-      console.warn('Failed to send verification email:', error);
-    });
     
     const now = new Date();
     const loginRecord = {
@@ -98,13 +87,11 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     saveLoginHistory(loginRecord);
     setLastLogin({ type: '邮箱', identifier: loginRecord.identifier, displayDate: loginRecord.displayDate });
     setSession(userCredential.user);
-    setIsEmailVerified(userCredential.user.emailVerified);
   }, []);
 
   const signOut = useCallback(async () => {
     await signOutUser();
     setSession(null);
-    setIsEmailVerified(false);
     setLastLogin(null);
   }, []);
 
@@ -116,30 +103,17 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     await updateUserPassword(currentPassword, newPassword);
   }, []);
 
-  const sendVerificationEmail = useCallback(async () => {
-    await sendCurrentUserEmailVerification();
-  }, []);
-
-  const refreshUser = useCallback(async () => {
-    const user = await refreshCurrentUser();
-    setSession(user ? ({ ...user } as User) : null);
-    setIsEmailVerified(!!user?.emailVerified);
-  }, []);
-
   return (
     <AuthContext.Provider
       value={{
         session,
         isLoading,
-        isEmailVerified,
         lastLogin,
         signIn,
         signUp,
         signOut,
         resetPassword,
         updatePassword,
-        sendVerificationEmail,
-        refreshUser,
       }}
     >
       {children}

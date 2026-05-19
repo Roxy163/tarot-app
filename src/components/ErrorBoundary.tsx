@@ -1,4 +1,4 @@
-import React, { ReactNode } from 'react';
+import React, { Component, ReactNode } from 'react';
 import { AlertCircle, RefreshCw, Home } from 'lucide-react';
 
 interface ErrorBoundaryProps {
@@ -11,11 +11,7 @@ interface ErrorBoundaryState {
   errorInfo: React.ErrorInfo | null;
 }
 
-export class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundaryState> {
-  declare props: Readonly<ErrorBoundaryProps>;
-  declare state: Readonly<ErrorBoundaryState>;
-  declare setState: (state: Partial<ErrorBoundaryState>) => void;
-
+export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
   constructor(props: ErrorBoundaryProps) {
     super(props);
     this.state = {

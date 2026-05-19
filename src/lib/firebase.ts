@@ -1,5 +1,5 @@
 import { initializeApp, getApps, getApp } from 'firebase/app';
-import { getAuth, signInWithPhoneNumber, RecaptchaVerifier, signOut, onAuthStateChanged, User, ConfirmationResult, createUserWithEmailAndPassword, signInWithEmailAndPassword, updatePhoneNumber, updateEmail, linkWithCredential, PhoneAuthProvider, EmailAuthProvider, sendPasswordResetEmail, sendEmailVerification, applyActionCode, verifyPasswordResetCode, confirmPasswordReset as firebaseConfirmPasswordReset, signInAnonymously, reauthenticateWithCredential, updatePassword, reload } from 'firebase/auth';
+import { getAuth, signInWithPhoneNumber, RecaptchaVerifier, signOut, onAuthStateChanged, User, ConfirmationResult, createUserWithEmailAndPassword, signInWithEmailAndPassword, updatePhoneNumber, updateEmail, linkWithCredential, PhoneAuthProvider, EmailAuthProvider, sendPasswordResetEmail, applyActionCode, verifyPasswordResetCode, confirmPasswordReset as firebaseConfirmPasswordReset, signInAnonymously, reauthenticateWithCredential, updatePassword } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
 
@@ -200,32 +200,6 @@ export const signInWithPassword = async (email: string, password: string) => {
 export const signUpWithEmail = async (email: string, password: string) => {
   if (!auth) throw new Error('Firebase not configured');
   return await createUserWithEmailAndPassword(auth, email, password);
-};
-
-export const sendCurrentUserEmailVerification = async (): Promise<void> => {
-  if (!auth) throw new Error('Firebase not configured');
-  const user = auth.currentUser;
-
-  if (!user) throw new Error('用户未登录');
-  if (!user.email) throw new Error('用户邮箱未设置');
-  if (user.emailVerified) return;
-
-  const actionCodeSettings = {
-    url: window.location.origin,
-    handleCodeInApp: false,
-  };
-
-  await sendEmailVerification(user, actionCodeSettings);
-};
-
-export const refreshCurrentUser = async (): Promise<User | null> => {
-  if (!auth) throw new Error('Firebase not configured');
-  const user = auth.currentUser;
-
-  if (!user) return null;
-
-  await reload(user);
-  return auth.currentUser;
 };
 
 // 修改密码（需要先验证当前密码）
