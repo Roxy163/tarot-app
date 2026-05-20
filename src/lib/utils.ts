@@ -31,7 +31,7 @@ export const formatDate = (dateString: string): string => {
 };
 
 export const generateId = (): string => {
-  return `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+  return crypto.randomUUID();
 };
 
 export const truncateText = (text: string, maxLength: number): string => {
