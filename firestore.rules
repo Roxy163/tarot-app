@@ -3,12 +3,49 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
     match /profiles/{userId} {
-      allow read: if request.auth != null && request.auth.uid == userId;
+      allow read: if request.auth != null;
+      allow create: if request.auth != null && request.auth.uid == userId;
+      allow update: if request.auth != null && request.auth.uid == userId && isValidProfileUpdate(request.resource.data);
+      allow delete: if request.auth != null && request.auth.uid == userId;
+    }
+
+    match /users/{userId}/readings/{readingId} {
+      allow read: if request.auth != null && (request.auth.uid == userId || resource.data.isPublic == true);
+      allow create: if request.auth != null && request.auth.uid == userId && isValidReading(request.resource.data);
+      allow update: if request.auth != null && request.auth.uid == userId && isValidReadingUpdate(request.resource.data);
+      allow delete: if request.auth != null && request.auth.uid == userId;
+    }
+
+    match /users/{userId}/settings/{settingId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+
+    match /users/{userId}/cardAnnotations/{cardName} {
+      allow read: if request.auth != null && (request.auth.uid == userId || canReadPublicAnnotation(resource.data));
       allow create, update, delete: if request.auth != null && request.auth.uid == userId;
     }
 
-    match /users/{userId}/{document=**} {
+    match /users/{userId}/numerologySettings/{cardName} {
       allow read, write: if request.auth != null && request.auth.uid == userId;
     }
   }
+}
+
+function isValidProfileUpdate(data) {
+  return !data.keys().hasAny(['id', 'user_public_id', 'createdAt']);
+}
+
+function isValidReading(data) {
+  return data.hasAll(['question', 'cards', 'date']) && 
+         data.cards is list && 
+         data.cards.size() > 0 &&
+         data.cards.every(card => card.hasAll(['name', 'isReversed']));
+}
+
+function isValidReadingUpdate(data) {
+  return !data.keys().hasAny(['id', 'date', 'userId']);
+}
+
+function canReadPublicAnnotation(data) {
+  return data.isPublic == true;
 }

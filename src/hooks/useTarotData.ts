@@ -89,7 +89,7 @@ export function useTarotData() {
       const keywords = await extractKeywords(fullText);
       
       const reading: TarotReading = {
-        id: Math.random().toString(36).substr(2, 9),
+        id: crypto.randomUUID(),
         userId: 'user1',
         date: new Date().toISOString(),
         ...newReading,

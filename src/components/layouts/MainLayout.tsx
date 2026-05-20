@@ -3,10 +3,12 @@ import { motion, AnimatePresence } from 'motion/react';
 import { Menu, History, Plus, BookOpen, Globe, User, LogIn } from 'lucide-react';
 import { TabButton } from '../TabButton';
 
+type TabType = 'home' | 'add' | 'private' | 'public' | 'metadata' | 'profile';
+
 interface MainLayoutProps {
   children: React.ReactNode;
-  activeTab: string;
-  setActiveTab: (tab: string) => void;
+  activeTab: TabType;
+  setActiveTab: (tab: TabType) => void;
   isSidebarOpen: boolean;
   setIsSidebarOpen: (open: boolean) => void;
   session: { uid?: string; email?: string } | null;

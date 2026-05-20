@@ -1,5 +1,5 @@
 import { initializeApp, getApps, getApp } from 'firebase/app';
-import { getAuth, signInWithPhoneNumber, RecaptchaVerifier, signOut, onAuthStateChanged, User, ConfirmationResult, createUserWithEmailAndPassword, signInWithEmailAndPassword, updatePhoneNumber, updateEmail, linkWithCredential, PhoneAuthProvider, EmailAuthProvider, sendPasswordResetEmail, applyActionCode, verifyPasswordResetCode, confirmPasswordReset as firebaseConfirmPasswordReset, signInAnonymously, reauthenticateWithCredential, updatePassword } from 'firebase/auth';
+import { getAuth, signInWithPhoneNumber, RecaptchaVerifier, signOut, onAuthStateChanged, User, ConfirmationResult, createUserWithEmailAndPassword, signInWithEmailAndPassword, updatePhoneNumber, updateEmail, linkWithCredential, PhoneAuthProvider, EmailAuthProvider, sendPasswordResetEmail, sendEmailVerification, applyActionCode, verifyPasswordResetCode, confirmPasswordReset as firebaseConfirmPasswordReset, signInAnonymously, reauthenticateWithCredential, updatePassword, reload } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
 
@@ -320,6 +320,32 @@ export const sendPasswordReset = async (email: string): Promise<void> => {
 };
 
 // 确认密码重置
+export const sendCurrentUserEmailVerification = async (): Promise<void> => {
+  if (!auth) throw new Error('Firebase not configured');
+
+  const user = auth.currentUser;
+  if (!user) throw new Error('请先登录后再发送验证邮件。');
+  if (!user.email) throw new Error('当前账号没有绑定邮箱。');
+
+  await reload(user);
+  if (user.emailVerified) return;
+
+  await sendEmailVerification(user, {
+    url: window.location.origin,
+    handleCodeInApp: false,
+  });
+};
+
+export const refreshCurrentUser = async (): Promise<User> => {
+  if (!auth) throw new Error('Firebase not configured');
+
+  const user = auth.currentUser;
+  if (!user) throw new Error('请先登录后再刷新验证状态。');
+
+  await reload(user);
+  return auth.currentUser || user;
+};
+
 export const confirmPasswordReset = async (oobCode: string, newPassword: string): Promise<void> => {
   if (!auth) throw new Error('Firebase not configured');
   

@@ -8,7 +8,8 @@ import { Auth } from './components/Auth';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { CardMetadataManager } from './components/CardMetadataManager';
 import { checkIfMagicLink, verifyMagicLink } from './lib/firebase';
-import { getOrCreateUserProfile, updateUserProfile } from './lib/firebaseData';
+import { getOrCreateUserProfile, updateUserProfile, replaceUserReadings, saveUserSpreads, saveUserCardMetadata } from './lib/firebaseData';
+import { isValidPassword } from './lib/utils';
 import { HomeTab } from './components/tabs/HomeTab';
 import { AddTab } from './components/tabs/AddTab';
 import { PrivateTab } from './components/tabs/PrivateTab';
@@ -155,16 +156,6 @@ function AppContent() {
       });
     }
   }, [activeTab, session]);
-
-  useEffect(() => {
-    if (!session?.uid || isEmailVerified) return;
-
-    const promptKey = `tarot_email_verification_prompt_${session.uid}`;
-    if (window.sessionStorage.getItem(promptKey) === 'seen') return;
-
-    window.sessionStorage.setItem(promptKey, 'seen');
-    setShowAuthPage(true);
-  }, [isEmailVerified, session?.uid]);
 
   // Profile loading
   useEffect(() => {
@@ -356,6 +347,7 @@ function AppContent() {
         const importedData = JSON.parse(text);
         
         let importedCount = 0;
+        const uid = session?.uid;
         
         if (importedData.readings && Array.isArray(importedData.readings)) {
           const importableReadings = importedData.readings.filter((reading: TarotReading) => (
@@ -369,6 +361,11 @@ function AppContent() {
               importedCount += newReadings.length;
               return [...newReadings, ...prev];
             });
+            
+            if (uid) {
+              const currentReadings = readings.filter((r: TarotReading) => !r.isExample);
+              await replaceUserReadings(uid, [...importableReadings, ...currentReadings]);
+            }
           }
         }
         
@@ -379,6 +376,23 @@ function AppContent() {
             importedCount += newSpreads.length;
             return [...prev, ...newSpreads];
           });
+          
+          if (uid) {
+            await saveUserSpreads(uid, spreads);
+          }
+        }
+        
+        if (importedData.cardMetadata && Array.isArray(importedData.cardMetadata)) {
+          setCardMetadata(prev => {
+            const existingNames = new Set(prev.map((m: TarotCardMetadata) => m.name));
+            const newMetadata = importedData.cardMetadata.filter((m: TarotCardMetadata) => !existingNames.has(m.name));
+            importedCount += newMetadata.length;
+            return [...prev, ...newMetadata];
+          });
+          
+          if (uid) {
+            await saveUserCardMetadata(uid, cardMetadata);
+          }
         }
         
         setSnackbar({ isOpen: true, message: `✨ 成功导入 ${importedCount} 条记录。` });
@@ -637,9 +651,9 @@ function AppContent() {
   return (
     <MainLayout
       activeTab={activeTab}
-      setActiveTab={(tab) => {
+      setActiveTab={(tab: 'home' | 'add' | 'private' | 'public' | 'metadata' | 'profile') => {
         if (tab !== 'add') setEditingReading(null);
-        setActiveTab(tab as any);
+        setActiveTab(tab);
       }}
       isSidebarOpen={isSidebarOpen}
       setIsSidebarOpen={setIsSidebarOpen}
@@ -857,7 +871,7 @@ function AppContent() {
                     setSnackbar({ isOpen: true, message: '❌ 请先输入当前密码。' });
                     return;
                   }
-                  if (!pwd || pwd.length < 6) {
+                  if (!pwd || !isValidPassword(pwd)) {
                     setSnackbar({ isOpen: true, message: '❌ 密码强度不足，请至少输入 6 位。' });
                     return;
                   }
@@ -1046,9 +1060,9 @@ function AppContent() {
             dailyProverb={dailyProverb}
             readings={readings}
             cardMetadata={cardMetadata}
-            onNavigate={(tab) => {
+            onNavigate={(tab: 'home' | 'add' | 'private' | 'public' | 'metadata' | 'profile') => {
               if (tab !== 'add') setEditingReading(null);
-              setActiveTab(tab as any);
+              setActiveTab(tab);
             }}
             onSearch={setSearchQuery}
           />
@@ -1061,9 +1075,9 @@ function AppContent() {
             setSearchQuery={setSearchQuery}
             searchTags={searchTags}
             onToggleTag={toggleTag}
-            onNavigate={(tab) => {
+            onNavigate={(tab: 'home' | 'add' | 'private' | 'public' | 'metadata' | 'profile') => {
               if (tab !== 'add') setEditingReading(null);
-              setActiveTab(tab as any);
+              setActiveTab(tab);
             }}
             onTogglePublic={togglePublic}
             onDelete={handleDeleteReading}

@@ -109,6 +109,7 @@ export const Auth: React.FC<AuthProps> = ({ onClose, onSignedOut }) => {
 
     try {
       await signUp(normalizedEmail, password);
+      if (onClose) onClose();
       setVerificationMessage('验证邮件已发送，请前往邮箱完成验证。');
     } catch (err: any) {
       let errorMessage = err.message || "注册失败，请重试。";

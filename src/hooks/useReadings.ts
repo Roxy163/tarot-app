@@ -160,7 +160,7 @@ export const useReadings = (session: { uid?: string; email?: string | null } | n
         onShowSnackbar?.('✨ 灵见手帖已更新。');
       } else {
         const reading: TarotReading = {
-          id: Math.random().toString(36).substr(2, 9),
+          id: crypto.randomUUID(),
           userId: session?.uid || 'anonymous',
           date: new Date().toISOString(),
           authorName: profile?.display_name || profile?.nickname || session?.email?.split('@')[0] || '研习阁主',
