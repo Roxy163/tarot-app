@@ -28,6 +28,16 @@ service cloud.firestore {
     match /users/{userId}/numerologySettings/{cardName} {
       allow read, write: if request.auth != null && request.auth.uid == userId;
     }
+
+    // 公开阅读记录 - 用于广场功能
+    match /publicReadings/{readingId} {
+      allow read: if true;
+      allow create: if request.auth != null
+        && request.resource.data.userId == request.auth.uid
+        && isValidPublicReading(request.resource.data);
+      allow update, delete: if request.auth != null
+        && resource.data.userId == request.auth.uid;
+    }
   }
 }
 
@@ -48,4 +58,10 @@ function isValidReadingUpdate(data) {
 
 function canReadPublicAnnotation(data) {
   return data.isPublic == true;
+}
+
+function isValidPublicReading(data) {
+  return data.hasAll(['question', 'cards', 'date', 'userId']) &&
+         data.cards is list &&
+         data.cards.size() > 0;
 }
