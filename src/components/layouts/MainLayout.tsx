@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { Menu, History, Plus, BookOpen, Globe, User, LogIn } from 'lucide-react';
 import { TabButton } from '../TabButton';
 
-type TabType = 'home' | 'add' | 'private' | 'public' | 'metadata' | 'profile';
+type TabType = 'home' | 'add' | 'private' | 'public' | 'metadata' | 'profile' | 'canvas';
 
 interface MainLayoutProps {
   children: React.ReactNode;

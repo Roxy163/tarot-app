@@ -3,6 +3,9 @@ import { motion } from 'motion/react';
 import { BookOpen, PenLine } from 'lucide-react';
 import { TarotReading, TarotCardMetadata } from '../../types';
 import { StudyPavilionModules } from '../StudyPavilionModules';
+import { DailyFortuneCard } from '../DailyFortuneCard';
+import { QuickSpreadButtons } from '../QuickSpreadButtons';
+import { useDailyFortune } from '../../hooks/useDailyFortune';
 
 interface HomeTabProps {
   session: { uid?: string; email?: string } | null;
@@ -12,6 +15,7 @@ interface HomeTabProps {
   cardMetadata: TarotCardMetadata[];
   onNavigate: (tab: string) => void;
   onSearch: (query: string) => void;
+  onSelectSpread: (spread: string, category?: string) => void;
 }
 
 export const HomeTab: React.FC<HomeTabProps> = ({
@@ -21,11 +25,16 @@ export const HomeTab: React.FC<HomeTabProps> = ({
   readings,
   cardMetadata,
   onNavigate,
-  onSearch
+  onSearch,
+  onSelectSpread
 }) => {
+  const { getToday, generateDailyFortune, generateDailyFortuneWithNumber, reshuffleDailyFortune, addReflection } = useDailyFortune();
+  
   const displayName = session
     ? `${profile?.display_name || profile?.nickname || session.email?.split('@')[0]}阁主`
     : '访客 · 观阁中';
+
+  const todayFortune = getToday();
 
   return (
     <motion.div
@@ -64,6 +73,16 @@ export const HomeTab: React.FC<HomeTabProps> = ({
           </span>
         </div>
       </button>
+
+      <DailyFortuneCard
+        fortune={todayFortune}
+        onGenerate={generateDailyFortune}
+        onGenerateWithNumber={generateDailyFortuneWithNumber}
+        onReshuffle={reshuffleDailyFortune}
+        onAddReflection={addReflection}
+      />
+
+      <QuickSpreadButtons onSelectSpread={onSelectSpread} />
 
       <StudyPavilionModules
         readings={readings}

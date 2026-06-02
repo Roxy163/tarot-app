@@ -1,5 +1,5 @@
 import { initializeApp, getApps, getApp } from 'firebase/app';
-import { getAuth, signInWithPhoneNumber, RecaptchaVerifier, signOut, onAuthStateChanged, User, ConfirmationResult, createUserWithEmailAndPassword, signInWithEmailAndPassword, updatePhoneNumber, updateEmail, linkWithCredential, PhoneAuthProvider, EmailAuthProvider, sendPasswordResetEmail, sendEmailVerification, applyActionCode, verifyPasswordResetCode, confirmPasswordReset as firebaseConfirmPasswordReset, signInAnonymously, reauthenticateWithCredential, updatePassword, reload } from 'firebase/auth';
+import { getAuth, signInWithPhoneNumber, RecaptchaVerifier, signOut, onAuthStateChanged, User, ConfirmationResult, createUserWithEmailAndPassword, signInWithEmailAndPassword, linkWithCredential, PhoneAuthProvider, EmailAuthProvider, sendPasswordResetEmail, sendEmailVerification, applyActionCode, verifyPasswordResetCode, confirmPasswordReset as firebaseConfirmPasswordReset, reauthenticateWithCredential, updatePassword, reload, deleteUser } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
 
@@ -344,6 +344,15 @@ export const refreshCurrentUser = async (): Promise<User> => {
 
   await reload(user);
   return auth.currentUser || user;
+};
+
+export const deleteUserAccount = async (): Promise<void> => {
+  if (!auth) throw new Error('Firebase not configured');
+  
+  const user = auth.currentUser;
+  if (!user) throw new Error('用户未登录');
+  
+  await deleteUser(user);
 };
 
 export const confirmPasswordReset = async (oobCode: string, newPassword: string): Promise<void> => {

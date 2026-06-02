@@ -63,6 +63,7 @@ export const Auth: React.FC<AuthProps> = ({ onClose, onSignedOut }) => {
 
     try {
       await signIn(normalizedEmail, password);
+      if (onClose) onClose();
     } catch (err: any) {
       let errorMessage = err.message || "登录失败，请重试。";
       
@@ -315,13 +316,41 @@ export const Auth: React.FC<AuthProps> = ({ onClose, onSignedOut }) => {
 
               {!!session ? (
                 <div className="space-y-6 text-center">
-                  <div className="w-16 h-16 rounded-full bg-forest-accent/10 flex items-center justify-center mx-auto">
-                    <CheckCircle className="text-forest-accent" size={32} />
-                  </div>
-                  <div>
+                  <motion.div
+                    initial={{ scale: 0.8, opacity: 0 }}
+                    animate={{ scale: 1, opacity: 1 }}
+                    className="w-16 h-16 rounded-full bg-forest-accent/10 flex items-center justify-center mx-auto"
+                  >
+                    <motion.div
+                      animate={{ rotate: 360 }}
+                      transition={{ duration: 0.5 }}
+                    >
+                      <CheckCircle className="text-forest-accent" size={32} />
+                    </motion.div>
+                  </motion.div>
+                  <motion.div
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: 0.3 }}
+                  >
                     <h2 className="font-serif text-lg font-bold text-forest-ink">印鉴已验证</h2>
                     <p className="text-xs text-forest-muted mt-1">欢迎归来，研习阁主</p>
-                  </div>
+                  </motion.div>
+                  
+                  <motion.div
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    transition={{ delay: 0.5 }}
+                  >
+                    <div className="text-xs text-forest-muted">正在返回研习阁...</div>
+                  </motion.div>
+                  
+                  {(() => {
+                    setTimeout(() => {
+                      if (onClose) onClose();
+                    }, 1500);
+                    return null;
+                  })()}
 
                   {!isEmailVerified ? (
                     <div className="bg-amber-50 border border-amber-100 rounded-2xl p-4 text-left space-y-3">
@@ -365,16 +394,6 @@ export const Auth: React.FC<AuthProps> = ({ onClose, onSignedOut }) => {
                     </div>
                   )}
                   
-                  {lastLogin && (
-                    <div className="bg-forest-bg/30 rounded-xl p-4 text-left">
-                      <p className="text-xs text-forest-muted flex items-center gap-2">
-                        <Clock size={12} />
-                        上次入阁：{lastLogin.displayDate}
-                      </p>
-                      <p className="text-xs text-forest-accent mt-1">{lastLogin.type} · {lastLogin.identifier}</p>
-                    </div>
-                  )}
-
                   <button
                     onClick={() => setShowChangePassword(true)}
                     className="w-full py-3 bg-forest-accent/10 text-forest-accent rounded-xl font-medium hover:bg-forest-accent/20 transition-colors"

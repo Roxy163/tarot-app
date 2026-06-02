@@ -128,40 +128,40 @@ export const INITIAL_READINGS = [
 export const LAYOUT_TEMPLATES: Record<string, { name: string, class: string, itemClasses: string[], defaultSlots: string[] }> = {
   'horizontal': { 
     name: '横排布局', 
-    class: 'flex flex-wrap justify-center gap-1', 
+    class: 'flex flex-wrap justify-center gap-3 sm:gap-4', 
     itemClasses: ['col-start-1 row-start-2', 'col-start-2 row-start-2', 'col-start-3 row-start-2', 'col-start-4 row-start-2', 'col-start-5 row-start-2'],
     defaultSlots: ['第一张', '第二张', '第三张', '第四张', '第五张']
   },
   'triangle': { 
     name: '圣三角牌阵', 
-    class: 'grid grid-cols-5 gap-y-1 gap-x-1 max-w-[280px] mx-auto justify-items-center', 
+    class: 'grid grid-cols-5 gap-y-4 gap-x-4 max-w-[360px] mx-auto justify-items-center', 
     itemClasses: ['col-start-3 row-start-3', 'col-start-2 row-start-2', 'col-start-4 row-start-2'],
     defaultSlots: ['现状/行动', '阻碍/情感', '结果/灵性']
   },
   'cross': { 
     name: '十字牌阵', 
-    class: 'grid grid-cols-3 gap-0.5 max-w-[220px] mx-auto justify-items-center', 
+    class: 'grid grid-cols-3 gap-6 max-w-[360px] mx-auto justify-items-center', 
     itemClasses: ['col-start-2 row-start-2', 'col-start-1 row-start-2', 'col-start-3 row-start-2', 'col-start-2 row-start-1', 'col-start-2 row-start-3'],
     defaultSlots: ['中心', '左侧', '右侧', '上方', '下方']
   },
   'choice': { 
     name: '选择牌阵', 
-    class: 'grid grid-cols-3 gap-y-0.5 gap-x-1.5 max-w-[280px] mx-auto justify-items-center', 
+    class: 'grid grid-cols-3 gap-y-6 gap-x-8 max-w-[360px] mx-auto justify-items-center', 
     itemClasses: ['col-start-2 row-start-3', 'col-start-1 row-start-2', 'col-start-3 row-start-2', 'col-start-1 row-start-1', 'col-start-3 row-start-1'],
     defaultSlots: ['现状', '选项A-1', '选项B-1', '选项A-2', '选项B-2']
   },
   'seasons': { 
     name: '四季牌阵', 
-    class: 'grid grid-cols-3 gap-0.5 max-w-[220px] mx-auto justify-items-center', 
+    class: 'grid grid-cols-3 gap-6 max-w-[360px] mx-auto justify-items-center', 
     itemClasses: ['col-start-2 row-start-2', 'col-start-2 row-start-1', 'col-start-3 row-start-2', 'col-start-2 row-start-3', 'col-start-1 row-start-2'],
     defaultSlots: ['大牌（核心课题）', '权杖牌组（火）', '星币牌组（土）', '宝剑牌组（风）', '圣杯牌组（水）']
   },
   'celtic': {
     name: '凯尔特十字牌阵',
-    class: 'grid grid-cols-5 gap-x-6 gap-y-3 max-w-[520px] mx-auto justify-items-center items-center',
+    class: 'grid grid-cols-5 gap-x-8 gap-y-6 max-w-[560px] mx-auto justify-items-center items-center',
     itemClasses: [
       'col-start-2 row-start-2', // 1. 现状
-      'col-start-2 row-start-2', // 2. 挑战
+      'col-start-2 row-start-2', // 2. 挑战 (叠加在现状上)
       'col-start-2 row-start-3', // 3. 基础
       'col-start-1 row-start-2', // 4. 过去
       'col-start-2 row-start-1', // 5. 目标
@@ -175,9 +175,29 @@ export const LAYOUT_TEMPLATES: Record<string, { name: string, class: string, ite
   },
   'custom': {
     name: '自由网格',
-    class: 'grid grid-cols-5 gap-4 max-w-[350px] mx-auto justify-items-center',
+    class: 'grid grid-cols-5 gap-4 max-w-[400px] mx-auto justify-items-center',
     itemClasses: ['col-start-3 row-start-3'],
     defaultSlots: ['第一张']
+  },
+  'yearly': {
+    name: '年运十二宫牌阵',
+    class: 'grid grid-cols-13 gap-0 max-w-[520px] mx-auto justify-items-center',
+    itemClasses: [
+      'col-start-1 row-start-4', // 1. 一月
+      'col-start-2 row-start-5', // 2. 二月
+      'col-start-4 row-start-6', // 3. 三月
+      'col-start-7 row-start-7', // 4. 四月
+      'col-start-10 row-start-6', // 5. 五月
+      'col-start-12 row-start-5', // 6. 六月
+      'col-start-13 row-start-4', // 7. 七月
+      'col-start-12 row-start-3', // 8. 八月
+      'col-start-10 row-start-2', // 9. 九月
+      'col-start-7 row-start-1', // 10. 十月
+      'col-start-4 row-start-2', // 11. 十一月
+      'col-start-2 row-start-3', // 12. 十二月
+      'col-start-7 row-start-4'  // 13. 底牌
+    ],
+    defaultSlots: ['一月', '二月', '三月', '四月', '五月', '六月', '七月', '八月', '九月', '十月', '十一月', '十二月', '底牌']
   }
 };
 
@@ -189,7 +209,8 @@ export const SPREAD_TO_LAYOUT: Record<string, string> = {
   '十字牌阵': 'cross',
   '选择牌阵': 'choice',
   '四季牌阵': 'seasons',
-  '凯尔特十字牌阵': 'celtic'
+  '凯尔特十字牌阵': 'celtic',
+  '年运十二宫牌阵': 'yearly'
 };
 
 export const OFFICIAL_SPREADS = [
@@ -206,7 +227,7 @@ export const OFFICIAL_SPREADS = [
     name: '选择牌阵', 
     layout: 'choice', 
     slots: ['现状', '选项A-1', '选项B-1', '选项A-2', '选项B-2'],
-    slotPositions: ['col-start-3 row-start-3', 'col-start-2 row-start-2', 'col-start-4 row-start-2', 'col-start-1 row-start-1', 'col-start-5 row-start-1']
+    slotPositions: ['col-start-2 row-start-3', 'col-start-1 row-start-2', 'col-start-3 row-start-2', 'col-start-1 row-start-1', 'col-start-3 row-start-1']
   },
   { 
     name: '十字牌阵', 
@@ -237,6 +258,28 @@ export const OFFICIAL_SPREADS = [
       'col-start-5 row-start-1'  // 10. 结果
     ],
     rotatedSlots: [1]
+  },
+  { 
+    name: '年运十二宫牌阵', 
+    layout: 'yearly', 
+    slots: ['一月', '二月', '三月', '四月', '五月', '六月', '七月', '八月', '九月', '十月', '十一月', '十二月', '底牌'],
+    slotPositions: [
+      'col-start-1 row-start-4', // 1. 一月
+      'col-start-2 row-start-5', // 2. 二月
+      'col-start-4 row-start-6', // 3. 三月
+      'col-start-7 row-start-7', // 4. 四月
+      'col-start-10 row-start-6', // 5. 五月
+      'col-start-12 row-start-5', // 6. 六月
+      'col-start-13 row-start-4', // 7. 七月
+      'col-start-12 row-start-3', // 8. 八月
+      'col-start-10 row-start-2', // 9. 九月
+      'col-start-7 row-start-1', // 10. 十月
+      'col-start-4 row-start-2', // 11. 十一月
+      'col-start-2 row-start-3', // 12. 十二月
+      'col-start-7 row-start-4'  // 13. 底牌
+    ],
+    gridCols: 13,
+    gridRows: 7
   }
 ];
 

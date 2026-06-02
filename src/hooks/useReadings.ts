@@ -41,30 +41,33 @@ export const useReadings = (session: { uid?: string; email?: string | null } | n
 
     const loadData = async () => {
       setLoadedDataKey(null);
+      const localReadings = parseSavedArray<TarotReading>(session?.uid ? 'tarot_readings' : 'tarot_guest_data') || [];
+      const savedSpreads = parseSavedArray<SpreadDefinition>('tarot_spreads') || [];
+      const localSpreads = [...OFFICIAL_SPREADS, ...savedSpreads.filter(s => !OFFICIAL_SPREADS.some(os => os.name === s.name))];
+      const localMetadata = parseSavedArray<TarotCardMetadata>('tarot_card_metadata') || [];
+      
+      if (!session?.uid) {
+        setReadings([...exampleReadings, ...localReadings]);
+        setSpreads(localSpreads);
+        setCardMetadata(localMetadata);
+        setLoadedDataKey(activeDataKey);
+        return;
+      }
+
       try {
-        const localReadings = parseSavedArray<TarotReading>(session?.uid ? 'tarot_readings' : 'tarot_guest_data') || [];
-        const localSpreads = parseSavedArray<SpreadDefinition>('tarot_spreads') || OFFICIAL_SPREADS;
-        const localMetadata = parseSavedArray<TarotCardMetadata>('tarot_card_metadata') || [];
 
-        if (session?.uid) {
-          const [cloudReadings, cloudSpreads, cloudMetadata] = await Promise.all([
-            getUserReadings(session.uid),
-            getUserSpreads(session.uid),
-            getUserCardMetadata(session.uid),
-          ]);
+        const [cloudReadings, cloudSpreads, cloudMetadata] = await Promise.all([
+          getUserReadings(session.uid),
+          getUserSpreads(session.uid),
+          getUserCardMetadata(session.uid),
+        ]);
 
-          if (cancelled) return;
+        if (cancelled) return;
 
-          setReadings([...exampleReadings, ...(cloudReadings.length > 0 ? cloudReadings : localReadings)]);
-          setSpreads(cloudSpreads && cloudSpreads.length > 0 ? cloudSpreads : localSpreads);
-          setCardMetadata(cloudMetadata && cloudMetadata.length > 0 ? cloudMetadata : localMetadata);
-        } else {
-          if (cancelled) return;
-
-          setReadings([...exampleReadings, ...localReadings]);
-          setSpreads(localSpreads);
-          setCardMetadata(localMetadata);
-        }
+        setReadings([...exampleReadings, ...(cloudReadings.length > 0 ? cloudReadings : localReadings)]);
+        const mergedSpreads = [...OFFICIAL_SPREADS, ...(cloudSpreads && cloudSpreads.length > 0 ? cloudSpreads : savedSpreads).filter(s => !OFFICIAL_SPREADS.some(os => os.name === s.name))];
+        setSpreads(mergedSpreads);
+        setCardMetadata(cloudMetadata && cloudMetadata.length > 0 ? cloudMetadata : localMetadata);
       } catch (error) {
         console.error('Failed to load data:', error);
       } finally {
@@ -209,12 +212,26 @@ export const useReadings = (session: { uid?: string; email?: string | null } | n
     try {
       const fullText = `${reading.interpretation.singleCard} ${reading.interpretation.combination}`;
       
-      const [recognizedCards, keywords] = await Promise.all([
+      const [recognizedCardsResult, keywords] = await Promise.all([
         (reading.cards?.length > 0 
           ? Promise.resolve(reading.cards) 
           : recognizeCards(reading.question || '')),
         extractKeywords(fullText)
       ]);
+
+      let recognizedCards: { name: string; isReversed: boolean }[] = [];
+      if (Array.isArray(recognizedCardsResult)) {
+        recognizedCards = recognizedCardsResult;
+      } else if (typeof recognizedCardsResult === 'string') {
+        recognizedCards = recognizedCardsResult.split('\n').filter(line => line.trim())
+          .map(line => {
+            const match = line.match(/(.+)\((正位|逆位)\)/);
+            if (match) {
+              return { name: match[1].trim(), isReversed: match[2] === '逆位' };
+            }
+            return { name: line.trim(), isReversed: false };
+          });
+      }
 
       setReadings(prev => prev.map(r => r.id === id ? {
         ...r,
@@ -232,13 +249,13 @@ export const useReadings = (session: { uid?: string; email?: string | null } | n
 
   // 切换公开状态
   const togglePublic = useCallback((id: string) => {
-    setReadings(readings.map(r => r.id === id ? { ...r, isPublic: !r.isPublic } : r));
-  }, [readings]);
+    setReadings(prev => prev.map(r => r.id === id ? { ...r, isPublic: !r.isPublic } : r));
+  }, []);
 
   // 删除阅读记录
   const handleDeleteReading = useCallback((id: string) => {
-    setReadings(readings.filter(r => r.id !== id));
-  }, [readings]);
+    setReadings(prev => prev.filter(r => r.id !== id));
+  }, []);
 
   // 编辑阅读记录
   const handleEditReading = useCallback((reading: TarotReading) => {

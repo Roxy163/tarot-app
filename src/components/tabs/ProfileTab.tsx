@@ -9,7 +9,7 @@ interface ProfileTabProps {
   readings: TarotReading[];
   cardMetadata: TarotCardMetadata[];
   onLogout: () => void;
-  onUpdateProfile: (updated: Partial<UserProfile>) => void;
+  onUpdateProfile: (updated: Partial<UserProfile>) => Promise<void>;
   onTagClick: (tag: string) => void;
   onViewAll: () => void;
   onEditReading: (reading: TarotReading) => void;

@@ -1,14 +1,13 @@
 import React, { useCallback, useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Plus, History, Globe, BookOpen, Search, Sparkles, X, User, Menu, ChevronRight, Settings, Info, LogOut, Database, ShieldCheck, ArrowRight, LogIn, Book, Upload, Moon, Sun, CheckCircle, AlertCircle, Mail } from 'lucide-react';
+import { Plus, History, Globe, BookOpen, Sparkles, X, User, Menu, ChevronRight, Settings, Info, LogOut, Database, ShieldCheck, ArrowRight, LogIn, Book, Upload, Moon, CheckCircle, AlertCircle, AlertTriangle, Mail } from 'lucide-react';
 import { TarotReading, SpreadDefinition, TarotCardMetadata, UserProfile } from './types';
 import { PAVILION_PROVERBS } from './constants';
 import { Modal } from './components/Modal';
 import { Auth } from './components/Auth';
 import { AuthProvider, useAuth } from './context/AuthContext';
-import { CardMetadataManager } from './components/CardMetadataManager';
-import { checkIfMagicLink, verifyMagicLink } from './lib/firebase';
-import { getOrCreateUserProfile, updateUserProfile, replaceUserReadings, saveUserSpreads, saveUserCardMetadata } from './lib/firebaseData';
+import { checkIfMagicLink, verifyMagicLink, deleteUserAccount } from './lib/firebase';
+import { getOrCreateUserProfile, updateUserProfile, replaceUserReadings, saveUserSpreads, saveUserCardMetadata, deleteUserAccount as deleteUserAccountData } from './lib/firebaseData';
 import { isValidPassword } from './lib/utils';
 import { HomeTab } from './components/tabs/HomeTab';
 import { AddTab } from './components/tabs/AddTab';
@@ -16,7 +15,12 @@ import { PrivateTab } from './components/tabs/PrivateTab';
 import { PublicTab } from './components/tabs/PublicTab';
 import { ProfileTab } from './components/tabs/ProfileTab';
 import { MainLayout } from './components/layouts/MainLayout';
+import { CardMetadataManager } from './components/CardMetadataManager';
 import { useReadings } from './hooks/useReadings';
+import { useOnboarding } from './context/OnboardingContext';
+import { FirstEntryGuide } from './components/onboarding/FirstEntryGuide';
+import { SmartTipBanner } from './components/onboarding/SmartTipBanner';
+import { useSmartTips } from './hooks/useSmartTips';
 
 // --- Auth Wrapper ---
 type SnackbarState = {
@@ -25,10 +29,23 @@ type SnackbarState = {
   showLoginAction?: boolean;
 };
 
+type AppTab = 'home' | 'add' | 'private' | 'public' | 'metadata' | 'profile' | 'canvas';
+
+const APP_TABS: AppTab[] = ['home', 'add', 'private', 'public', 'metadata', 'profile', 'canvas'];
+
+const isAppTab = (value: string | null): value is AppTab => (
+  !!value && APP_TABS.includes(value as AppTab)
+);
 function AppContent() {
   const { session, isEmailVerified, signOut, updatePassword, sendVerificationEmail, refreshUser } = useAuth();
+  const { state: onboardingState, checkAndUnlockAchievements } = useOnboarding();
   
-  const [activeTab, setActiveTab] = useState<'home' | 'add' | 'private' | 'public' | 'metadata' | 'profile'>('home');
+  const [activeTab, setActiveTab] = useState<AppTab>(
+    () => {
+      const saved = localStorage.getItem('tarot_active_tab');
+      return isAppTab(saved) ? saved : 'home';
+    }
+  );
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [selectedAuthor, setSelectedAuthor] = useState<string | null>(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
@@ -51,10 +68,20 @@ function AppContent() {
   const [snackbar, setSnackbar] = useState<SnackbarState>({ isOpen: false, message: '' });
   const [isVerificationActionLoading, setIsVerificationActionLoading] = useState(false);
   
+  // Account Delete Confirmation
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [isDeletingAccount, setIsDeletingAccount] = useState(false);
+  const [hasNavigatedOnLogin, setHasNavigatedOnLogin] = useState(false);
+  
+  // Password Change Modal
+  const [showPasswordModal, setShowPasswordModal] = useState(false);
+  
   // Narrative Elements
-  const [showFirstEntryScroll, setShowFirstEntryScroll] = useState(false);
   const [showPromotionCeremony, setShowPromotionCeremony] = useState<{ isOpen: boolean; rank: string }>({ isOpen: false, rank: '' });
+  const [showFirstEntryScroll, setShowFirstEntryScroll] = useState(false);
   const [dailyProverb, setDailyProverb] = useState('');
+  const [formQuestion, setFormQuestion] = useState('');
+  const [hasCards, setHasCards] = useState(false);
 
   // Dark Mode
   const [isDarkMode, setIsDarkMode] = useState(() => {
@@ -103,11 +130,31 @@ function AppContent() {
     setProfile(null);
     setSelectedAuthor(null);
     setEditingReading(null);
-    setShowFirstEntryScroll(false);
     setShowLogoutConfirm(false);
     setIsSecurityModalOpen(false);
     setActiveTab(current => (forceHome || current === 'profile' ? 'home' : current));
   }, [setEditingReading]);
+
+  const readingCount = readings.filter(r => !r.isExample).length;
+  const hasPublicReading = readings.some(r => r.isPublic);
+  const aiUsageCount = readings.filter(r => r.interpretation?.combination?.includes('AI') || r.processedByAi).length;
+  
+  useEffect(() => {
+    checkAndUnlockAchievements(readingCount, hasPublicReading, aiUsageCount, 0);
+  }, [readingCount, hasPublicReading, aiUsageCount, checkAndUnlockAchievements]);
+
+  const { currentTip, isVisible: isTipVisible, dismissTip } = useSmartTips(
+    readingCount,
+    !!formQuestion,
+    hasCards
+  );
+
+  const handleTipAction = () => {
+    dismissTip();
+    if (currentTip?.id === 'no-readings' || currentTip?.id === 'daily-reading') {
+      setActiveTab('add');
+    }
+  };
 
   const resetSignedOutView = useCallback(() => {
     resetPrivateSessionState(true);
@@ -120,9 +167,15 @@ function AppContent() {
 
   useEffect(() => {
     if (!session) {
-      resetPrivateSessionState();
+      resetSignedOutView();
+      setHasNavigatedOnLogin(false);
+      localStorage.removeItem('has_navigated_on_login');
+    } else if (!hasNavigatedOnLogin && !localStorage.getItem('has_navigated_on_login')) {
+      setHasNavigatedOnLogin(true);
+      localStorage.setItem('has_navigated_on_login', 'true');
+      setActiveTab('profile');
     }
-  }, [resetPrivateSessionState, session]);
+  }, [resetSignedOutView, session, hasNavigatedOnLogin]);
 
   // Daily Proverb & First Entry Scroll
   useEffect(() => {
@@ -144,6 +197,11 @@ function AppContent() {
       localStorage.setItem('proverb_content', randomProverb);
     }
   }, [session]);
+
+  // Save active tab to localStorage
+  useEffect(() => {
+    localStorage.setItem('tarot_active_tab', activeTab);
+  }, [activeTab]);
 
   // Security check for restricted pages
   useEffect(() => {
@@ -261,17 +319,49 @@ function AppContent() {
   const handleLogout = async () => {
     const verificationPromptKey = session?.uid ? `tarot_email_verification_prompt_${session.uid}` : null;
 
-    resetSignedOutView();
+    setActiveTab('home');
+    resetPrivateSessionState(true);
+    setSearchQuery('');
+    setSearchTags([]);
+    setIsSidebarOpen(false);
+    setShowAuthPage(false);
+    setLoginPrompt(prev => ({ ...prev, isOpen: false }));
+    
     if (verificationPromptKey) {
       window.sessionStorage.removeItem(verificationPromptKey);
     }
 
     try {
       await signOut();
-      resetSignedOutView();
       setSnackbar({ isOpen: true, message: '您已安全离阁，期待下次相逢。' });
     } catch (error: any) {
       setSnackbar({ isOpen: true, message: `❌ ${error.message || '离阁失败，请稍后再试。'}` });
+    }
+  };
+
+  // Handle Account Delete
+  const handleDeleteAccount = async () => {
+    if (!session?.uid) return;
+    setIsDeletingAccount(true);
+    
+    try {
+      await deleteUserAccountData(session.uid);
+      await deleteUserAccount();
+      
+      setActiveTab('home');
+      resetPrivateSessionState(true);
+      setSearchQuery('');
+      setSearchTags([]);
+      setIsSidebarOpen(false);
+      setShowAuthPage(false);
+      setLoginPrompt(prev => ({ ...prev, isOpen: false }));
+      
+      setShowDeleteConfirm(false);
+      setSnackbar({ isOpen: true, message: '账号已注销，感谢您在研习阁的时光。' });
+    } catch (error: any) {
+      setSnackbar({ isOpen: true, message: `❌ ${error.message || '注销失败，请稍后再试。'}` });
+    } finally {
+      setIsDeletingAccount(false);
     }
   };
 
@@ -725,6 +815,39 @@ function AppContent() {
         </div>
       </Modal>
 
+      {/* Account Delete Confirmation Modal */}
+      <Modal
+        isOpen={showDeleteConfirm}
+        onClose={() => setShowDeleteConfirm(false)}
+        title="确认注销账号"
+        icon={<AlertTriangle size={24} className="text-red-500" />}
+      >
+        <div className="space-y-6 text-center">
+          <div className="py-4">
+            <p className="text-lg font-bold text-red-600">此操作将永久删除您的账号！</p>
+            <p className="text-sm text-forest-muted mt-2 leading-loose">
+              删除后，您的所有研习记录、日运数据将被彻底清除，且无法恢复。<br/>
+              请确认您的决定。
+            </p>
+          </div>
+          <div className="flex gap-3">
+            <button
+              onClick={() => setShowDeleteConfirm(false)}
+              className="flex-1 py-3 bg-forest-bg text-forest-ink rounded-xl text-sm font-bold hover:bg-forest-accent/10 transition-colors"
+            >
+              取消
+            </button>
+            <button
+              onClick={handleDeleteAccount}
+              disabled={isDeletingAccount}
+              className="flex-1 py-3 bg-red-500 text-white rounded-xl text-sm font-bold hover:bg-red-600 transition-colors disabled:opacity-50"
+            >
+              {isDeletingAccount ? '处理中...' : '确认注销'}
+            </button>
+          </div>
+        </div>
+      </Modal>
+
       <Modal 
         isOpen={showMigrationPrompt} 
         onClose={() => handleMigration(false)}
@@ -759,69 +882,85 @@ function AppContent() {
       <Modal 
         isOpen={isSecurityModalOpen} 
         onClose={() => setIsSecurityModalOpen(false)} 
-        title="账号与系统设置"
+        title="账号安全"
       >
-        <div className="space-y-6">
+        <div className="space-y-4">
           {session && (
-            <div className="p-6 bg-forest-bg/30 rounded-2xl border border-forest-border/50">
-              <div className="flex items-center gap-3 text-forest-ink font-bold mb-3">
-                <Mail size={20} className="text-forest-accent" />
-                <h4>邮箱验证</h4>
-              </div>
-              <div className="p-4 bg-white rounded-xl border border-forest-border/30 space-y-3">
-                <div className="flex items-start gap-3">
-                  {isEmailVerified ? (
-                    <CheckCircle size={18} className="text-green-500 mt-0.5" />
-                  ) : (
-                    <AlertCircle size={18} className="text-amber-500 mt-0.5" />
-                  )}
-                  <div className="space-y-1">
-                    <p className="text-sm font-bold text-forest-ink">
-                      {isEmailVerified ? '邮箱已验证' : '邮箱尚未验证'}
-                    </p>
-                    <p className="text-xs text-forest-muted leading-relaxed">
-                      {isEmailVerified
-                        ? `${session.email || '当前邮箱'} 已完成验证。`
-                        : `请前往 ${session.email || '注册邮箱'} 点击验证链接，完成后刷新状态。`}
-                    </p>
+            <button
+              onClick={() => {
+                handleSendVerificationFromSettings();
+              }}
+              disabled={isEmailVerified || isVerificationActionLoading}
+              className="w-full p-4 bg-white rounded-xl border border-forest-border/50 hover:border-forest-accent/50 transition-all text-left"
+            >
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-forest-accent/10 flex items-center justify-center">
+                    <Mail size={18} className="text-forest-accent" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-bold text-forest-ink">邮箱管理</p>
+                    <p className="text-xs text-forest-muted">{isEmailVerified ? '邮箱已验证' : '发送验证邮件'}</p>
                   </div>
                 </div>
-                {!isEmailVerified && (
-                  <div className="grid grid-cols-2 gap-2">
-                    <button
-                      onClick={handleSendVerificationFromSettings}
-                      disabled={isVerificationActionLoading}
-                      className="py-2 bg-white border border-forest-accent/20 text-forest-accent rounded-xl text-xs font-bold hover:bg-forest-accent/5 transition-colors disabled:opacity-50"
-                    >
-                      重发验证邮件
-                    </button>
-                    <button
-                      onClick={handleRefreshVerificationFromSettings}
-                      disabled={isVerificationActionLoading}
-                      className="py-2 bg-forest-accent text-white rounded-xl text-xs font-bold hover:bg-forest-accent/90 transition-colors disabled:opacity-50"
-                    >
-                      我已验证
-                    </button>
-                  </div>
+                {isEmailVerified ? (
+                  <CheckCircle size={18} className="text-green-500" />
+                ) : (
+                  <ChevronRight size={18} className="text-forest-muted" />
                 )}
               </div>
-            </div>
+            </button>
           )}
 
-          <div className="p-6 bg-forest-bg/30 rounded-2xl border border-forest-border/50">
-            <div className="flex items-center gap-3 text-forest-ink font-bold mb-3">
-              <Moon size={20} className="text-forest-accent" />
-              <h4>主题设置</h4>
-            </div>
-            <div className="flex items-center justify-between p-4 bg-white rounded-xl border border-forest-border/30">
+          <button
+            onClick={() => setShowPasswordModal(true)}
+            className="w-full p-4 bg-white rounded-xl border border-forest-border/50 hover:border-forest-accent/50 transition-all text-left"
+          >
+            <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${isDarkMode ? 'bg-forest-bg-dark' : 'bg-forest-bg'}`}>
-                  {isDarkMode ? <Sun size={20} className="text-forest-accent" /> : <Moon size={20} className="text-forest-accent" />}
+                <div className="w-10 h-10 rounded-xl bg-forest-accent/10 flex items-center justify-center">
+                  <ShieldCheck size={18} className="text-forest-accent" />
                 </div>
                 <div>
-                  <p className="text-sm font-bold text-forest-ink">{isDarkMode ? '深色模式' : '浅色模式'}</p>
-                  <p className="text-xs text-forest-muted">切换界面主题</p>
+                  <p className="text-sm font-bold text-forest-ink">密码管理</p>
+                  <p className="text-xs text-forest-muted">修改登录密码</p>
                 </div>
+              </div>
+              <ChevronRight size={18} className="text-forest-muted" />
+            </div>
+          </button>
+
+          {session && (
+            <button
+              onClick={() => {
+                setIsSecurityModalOpen(false);
+                setShowDeleteConfirm(true);
+              }}
+              className="w-full p-4 bg-red-50 rounded-xl border border-red-200 hover:border-red-300 transition-all text-left"
+            >
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-red-100 flex items-center justify-center">
+                    <AlertTriangle size={18} className="text-red-500" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-bold text-red-600">注销账户</p>
+                    <p className="text-xs text-red-500/70">永久删除账号及所有记录</p>
+                  </div>
+                </div>
+                <ChevronRight size={18} className="text-red-400" />
+              </div>
+            </button>
+          )}
+
+          <div className="p-4 bg-forest-bg/30 rounded-xl">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-forest-accent/10 flex items-center justify-center">
+                <Moon size={18} className="text-forest-accent" />
+              </div>
+              <div className="flex-1">
+                <p className="text-sm font-bold text-forest-ink">主题设置</p>
+                <p className="text-xs text-forest-muted">{isDarkMode ? '深色模式' : '浅色模式'}</p>
               </div>
               <button 
                 onClick={toggleDarkMode}
@@ -831,84 +970,83 @@ function AppContent() {
               </button>
             </div>
           </div>
+        </div>
+      </Modal>
 
-          <div className="p-6 bg-forest-bg/30 rounded-2xl border border-forest-border/50">
-            <div className="flex items-center gap-3 text-forest-ink font-bold mb-3">
-              <ShieldCheck size={20} className="text-forest-accent" />
-              <h4>入阁通行密码</h4>
+      <Modal
+        isOpen={showPasswordModal}
+        onClose={() => setShowPasswordModal(false)}
+        title="修改密码"
+      >
+        <div className="space-y-6">
+          <p className="text-xs text-forest-muted">
+            为了您的阁中记录安全，请设置独立密码。
+          </p>
+          <div className="space-y-4">
+            <div className="space-y-1.5">
+              <label className="text-[10px] text-forest-muted font-bold ml-1">当前密码</label>
+              <input 
+                id="password-modal-current-input"
+                type="password" 
+                placeholder="请输入当前密码" 
+                className="w-full px-5 py-3.5 bg-white border border-forest-accent/10 rounded-xl text-sm outline-none focus:ring-4 focus:ring-forest-accent/5 transition-all font-mono"
+              />
             </div>
-            <p className="text-xs text-forest-muted mb-6 leading-relaxed">
-              为了您的阁中记录安全，设置独立密码后，您可以使用密码直接入阁，无需依赖邮箱验证码。
-            </p>
-            
-              <div className="space-y-4">
-              <div className="space-y-1.5">
-                <label className="text-[10px] text-forest-muted font-bold ml-1">当前密码</label>
-                <input 
-                  id="sidebar-current-password-input"
-                  type="password" 
-                  placeholder="请输入当前密码" 
-                  className="w-full px-5 py-3.5 bg-white border border-forest-accent/10 rounded-xl text-sm outline-none focus:ring-4 focus:ring-forest-accent/5 transition-all font-mono"
-                />
-              </div>
-              <div className="space-y-1.5">
-                <label className="text-[10px] text-forest-muted font-bold ml-1">新密码</label>
-                <input 
-                  id="sidebar-password-input"
-                  type="password" 
-                  placeholder="不少于 6 位" 
-                  className="w-full px-5 py-3.5 bg-white border border-forest-accent/10 rounded-xl text-sm outline-none focus:ring-4 focus:ring-forest-accent/5 transition-all font-mono"
-                />
-              </div>
-              <button 
-                onClick={async () => {
-                  const currentInput = document.getElementById('sidebar-current-password-input') as HTMLInputElement;
-                  const input = document.getElementById('sidebar-password-input') as HTMLInputElement;
-                  const button = document.getElementById('sidebar-update-password-btn') as HTMLButtonElement;
-                  const currentPwd = currentInput?.value;
-                  const pwd = input?.value;
-                  if (!currentPwd) {
-                    setSnackbar({ isOpen: true, message: '❌ 请先输入当前密码。' });
-                    return;
+            <div className="space-y-1.5">
+              <label className="text-[10px] text-forest-muted font-bold ml-1">新密码</label>
+              <input 
+                id="password-modal-new-input"
+                type="password" 
+                placeholder="不少于 6 位" 
+                className="w-full px-5 py-3.5 bg-white border border-forest-accent/10 rounded-xl text-sm outline-none focus:ring-4 focus:ring-forest-accent/5 transition-all font-mono"
+              />
+            </div>
+            <button 
+              onClick={async () => {
+                const currentInput = document.getElementById('password-modal-current-input') as HTMLInputElement;
+                const input = document.getElementById('password-modal-new-input') as HTMLInputElement;
+                const button = document.getElementById('password-modal-update-btn') as HTMLButtonElement;
+                const currentPwd = currentInput?.value;
+                const pwd = input?.value;
+                if (!currentPwd) {
+                  setSnackbar({ isOpen: true, message: '❌ 请先输入当前密码。' });
+                  return;
+                }
+                if (!pwd || !isValidPassword(pwd)) {
+                  setSnackbar({ isOpen: true, message: '❌ 密码强度不足，请至少输入 6 位。' });
+                  return;
+                }
+                
+                if (button) {
+                  button.disabled = true;
+                  button.innerHTML = '<div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mx-auto"></div>';
+                }
+                
+                try {
+                  await updatePassword(currentPwd, pwd);
+                  currentInput.value = '';
+                  input.value = '';
+                  setShowPasswordModal(false);
+                  setSnackbar({ isOpen: true, message: '✨ 通行密码已更新。' });
+                } catch (error: any) {
+                  const errorMsg = error.message || '更新失败';
+                  if (errorMsg.includes('network') || errorMsg.includes('timeout') || errorMsg.includes('interrupted')) {
+                    setSnackbar({ isOpen: true, message: '❌ 网络连接失败，请检查网络设置或稍后再试。' });
+                  } else {
+                    setSnackbar({ isOpen: true, message: `❌ ${errorMsg}` });
                   }
-                  if (!pwd || !isValidPassword(pwd)) {
-                    setSnackbar({ isOpen: true, message: '❌ 密码强度不足，请至少输入 6 位。' });
-                    return;
-                  }
-                  
-                  // Show loading state
+                } finally {
                   if (button) {
-                    button.disabled = true;
-                    button.innerHTML = '<div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mx-auto"></div>';
+                    button.disabled = false;
+                    button.innerHTML = '确认修改';
                   }
-                  
-                  try {
-                    await updatePassword(currentPwd, pwd);
-                    currentInput.value = '';
-                    input.value = '';
-                    setSnackbar({ isOpen: true, message: '✨ 通行密码已更新。' });
-                  } catch (error: any) {
-                    const errorMsg = error.message || '更新失败';
-                    if (errorMsg.includes('network') || errorMsg.includes('timeout') || errorMsg.includes('interrupted')) {
-                      setSnackbar({ isOpen: true, message: '❌ 网络连接失败，请检查网络设置或稍后再试。如果问题持续，请尝试使用密码重置功能。' });
-                    } else {
-                      setSnackbar({ isOpen: true, message: `❌ ${errorMsg}` });
-                    }
-                  } finally {
-                    // Reset button state
-                    if (button) {
-                      button.disabled = false;
-                      button.innerHTML = '更新密码';
-                    }
-                  }
-                  setIsSecurityModalOpen(false);
-                }}
-                id="sidebar-update-password-btn"
-                className="w-full py-3 bg-forest-accent text-white rounded-xl font-bold text-sm hover:bg-forest-accent/90 transition-all disabled:opacity-50"
-              >
-                更新密码
-              </button>
-            </div>
+                }
+              }}
+              id="password-modal-update-btn"
+              className="w-full py-3 bg-forest-accent text-white rounded-xl font-bold text-sm hover:bg-forest-accent/90 transition-all disabled:opacity-50"
+            >
+              确认修改
+            </button>
           </div>
         </div>
       </Modal>
@@ -974,43 +1112,18 @@ function AppContent() {
 
       {/* First Entry Scroll */}
       <AnimatePresence>
-        {showFirstEntryScroll && (
-          <motion.div 
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[300] flex items-center justify-center p-6 bg-forest-text/40 backdrop-blur-md"
-          >
-            <motion.div 
-              initial={{ scale: 0.9, y: 20 }}
-              animate={{ scale: 1, y: 0 }}
-              className="max-w-lg w-full p-10 rounded-[2rem] shadow-2xl border-4 border-forest-accent/10 text-center space-y-8 relative overflow-hidden bg-white"
-            >
-              <div className="absolute top-0 left-0 w-full h-2 bg-gradient-to-r from-transparent via-forest-accent/30 to-transparent" />
-              <div className="absolute bottom-0 left-0 w-full h-2 bg-gradient-to-r from-transparent via-forest-accent/30 to-transparent" />
-              
-              <Sparkles className="mx-auto text-forest-accent animate-pulse" size={48} />
-              
-              <div className="space-y-6">
-                <h2 className="text-3xl font-serif text-forest-accent leading-relaxed">入阁敕令</h2>
-                <p className="text-lg text-forest-text leading-loose font-serif italic">
-                  “今有问道者一人，于虚无中开辟一方灵台，赐号‘塔罗研习阁’，汝为第一任阁主。愿汝勤加研习，自注牌义，成一家之言。”
-                </p>
-              </div>
-
-              <button 
-                onClick={() => {
-                  setShowFirstEntryScroll(false);
-                  localStorage.setItem('has_seen_first_entry_scroll', 'true');
-                }}
-                className="px-10 py-4 bg-forest-pink text-white rounded-full font-bold text-lg hover:bg-forest-pink/90 transition-all shadow-xl shadow-forest-pink/30"
-              >
-                执印入阁
-              </button>
-            </motion.div>
-          </motion.div>
-        )}
+        {onboardingState.showFirstEntry && <FirstEntryGuide />}
       </AnimatePresence>
+
+      {/* Smart Tips Banner */}
+      {currentTip && (
+        <SmartTipBanner
+          tip={currentTip}
+          isVisible={isTipVisible}
+          onDismiss={dismissTip}
+          onAction={handleTipAction}
+        />
+      )}
 
       {/* Promotion Ceremony */}
       <AnimatePresence>
@@ -1065,6 +1178,32 @@ function AppContent() {
               setActiveTab(tab);
             }}
             onSearch={setSearchQuery}
+            onSelectSpread={(spread: string, category?: string) => {
+              const spreadDef = spreads.find(s => s.name === spread);
+              if (spreadDef) {
+                setEditingReading({
+                  id: '',
+                  userId: '',
+                  date: new Date().toISOString(),
+                  question: '',
+                  cards: [],
+                  interpretation: { singleCard: '', combination: '', summary: '' },
+                  keywords: [],
+                  spread: spread,
+                  layoutType: spreadDef.layout,
+                  slotLabels: spreadDef.slots,
+                  slotPositions: spreadDef.slotPositions || [],
+                  isPublic: false,
+                  isAnonymous: false,
+                  isForClient: false,
+                  authorName: '',
+                  isExample: false,
+                  readingDate: new Date().toISOString(),
+                  category: category || ''
+                });
+                setActiveTab('add');
+              }
+            }}
           />
         )}
 
@@ -1154,6 +1293,7 @@ function AppContent() {
               readings={readings}
               isLoggedIn={!!session}
               userId={session?.uid}
+              onAddReading={handleAddReadingWithSnackbar}
               onShowSnackbar={(msg) => {
                 setSnackbar({ isOpen: true, message: msg });
                 setTimeout(() => setSnackbar(prev => ({ ...prev, isOpen: false })), 3000);

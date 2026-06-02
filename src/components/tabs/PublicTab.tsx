@@ -1,8 +1,9 @@
-import React from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { motion } from 'motion/react';
 import { Globe, Sparkles } from 'lucide-react';
 import { TarotReading, TarotCardMetadata } from '../../types';
 import { ReadingCard } from '../ReadingCard';
+import { getPublicReadings } from '../../lib/firebaseData';
 
 interface PublicTabProps {
   readings: TarotReading[];
@@ -19,7 +20,46 @@ export const PublicTab: React.FC<PublicTabProps> = ({
   onAuthorClick,
   onProcessAi
 }) => {
-  const publicReadings = readings.filter(r => r.isPublic);
+  const [cloudPublicReadings, setCloudPublicReadings] = useState<TarotReading[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadPublicReadings = async () => {
+      setIsLoading(true);
+      try {
+        const loaded = await getPublicReadings();
+        if (!cancelled) setCloudPublicReadings(loaded);
+      } catch (error) {
+        console.error('Failed to load public readings:', error);
+        if (!cancelled) setCloudPublicReadings([]);
+      } finally {
+        if (!cancelled) setIsLoading(false);
+      }
+    };
+
+    loadPublicReadings();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const publicReadings = useMemo(() => {
+    const byId = new Map<string, TarotReading>();
+
+    cloudPublicReadings.forEach(reading => {
+      if (reading.isPublic) byId.set(reading.id, reading);
+    });
+
+    readings.filter(reading => reading.isPublic).forEach(reading => {
+      byId.set(reading.id, reading);
+    });
+
+    return Array.from(byId.values()).sort(
+      (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
+    );
+  }, [cloudPublicReadings, readings]);
 
   return (
     <motion.div 
@@ -29,7 +69,11 @@ export const PublicTab: React.FC<PublicTabProps> = ({
       exit={{ opacity: 0, x: 20 }} 
       className="space-y-6"
     >
-      {publicReadings.length === 0 ? (
+      {isLoading ? (
+        <div className="text-center py-20 text-forest-muted text-sm">
+          正在翻阅广场手记...
+        </div>
+      ) : publicReadings.length === 0 ? (
         <div className="text-center py-20">
           <div className="w-20 h-20 mx-auto mb-6 rounded-full bg-forest-accent/10 flex items-center justify-center">
             <Globe className="text-forest-accent/40" size={40} />

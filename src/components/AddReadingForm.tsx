@@ -1,6 +1,6 @@
 import React, { useState, useEffect, FormEvent } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Plus, Sparkles, Layers, ChevronDown, ImageIcon, User, MessageSquare, RotateCcw, FileText, BookOpen, X, Calendar, Tag, Settings, Save, Mail } from 'lucide-react';
+import { Sparkles, Layers, User, MessageSquare, RotateCcw, BookOpen, X, Settings, Save } from 'lucide-react';
 import { SpreadDefinition, TarotCardMetadata, ReadingSlotData, TarotReading, ReadingFormData } from '../types';
 import { LAYOUT_TEMPLATES, TAROT_CARDS, getCardImageUrl, OFFICIAL_SPREADS } from '../constants';
 import { CardPicker } from './CardPicker';
@@ -12,7 +12,6 @@ import { ReadingDetailView } from './ReadingDetailView';
 import { ReadingSpreadDisplay } from './ReadingSpreadDisplay';
 import { BasicInfoSection } from './BasicInfoSection';
 import { EmailShareModal } from './EmailShareModal';
-import { useCardNumerology } from '../hooks/useCardNumerology';
 
 interface AddReadingFormProps {
   onSubmit: (data: Partial<ReadingFormData>) => void;
@@ -53,7 +52,7 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
     clientFeedback: initialData?.clientFeedback || '',
     userFeedback: initialData?.userFeedback || '',
     readingDate: initialData?.readingDate ? new Date(initialData.readingDate).toISOString().slice(0, 16) : new Date().toISOString().slice(0, 16),
-    isTimePrecise: initialData?.isTimePrecise !== undefined ? initialData.isTimePrecise : false,
+    isTimePrecise: false,
     category: initialData?.category || '',
     skipAi: initialData?.skipAi !== undefined 
       ? initialData.skipAi 
@@ -178,7 +177,7 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
     setIsLongPressActive(false);
     const timer = setTimeout(() => {
       const newSlots = [...cardSlots];
-      if (newSlots[index].name) {
+      if (newSlots[index] && newSlots[index].name) {
         newSlots[index] = { ...newSlots[index], name: '', isReversed: false };
         setCardSlots(newSlots);
         setIsLongPressActive(true);
@@ -211,16 +210,20 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
 
   const handleCardSelect = (card: typeof TAROT_CARDS[0], isReversed: boolean) => {
     const newSlots = [...cardSlots];
-    newSlots[activeSlotIndex] = { ...newSlots[activeSlotIndex], name: card.name, isReversed };
-    updateCardSlotsWithHistory(newSlots);
+    if (newSlots[activeSlotIndex]) {
+      newSlots[activeSlotIndex] = { ...newSlots[activeSlotIndex], name: card.name, isReversed };
+      updateCardSlotsWithHistory(newSlots);
+    }
     setShowPicker(false);
   };
 
   const toggleReverse = (index: number, e: React.MouseEvent) => {
     e.stopPropagation();
     const newSlots = [...cardSlots];
-    newSlots[index] = { ...newSlots[index], isReversed: !newSlots[index].isReversed };
-    updateCardSlotsWithHistory(newSlots);
+    if (newSlots[index]) {
+      newSlots[index] = { ...newSlots[index], isReversed: !newSlots[index].isReversed };
+      updateCardSlotsWithHistory(newSlots);
+    }
   };
 
   const addSlot = () => {
@@ -259,7 +262,13 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
       slotPositions: cardSlots.map(s => s.position || ''),
       rotatedSlots: cardSlots.map((s, i) => s.isRotated ? i : -1).filter(i => i !== -1),
       gridCols: gridCols,
-      gridRows: gridRows
+      gridRows: gridRows,
+      freePositions: cardSlots.map(s => ({
+        x: s.x,
+        y: s.y,
+        rotation: s.rotation,
+        scale: s.scale
+      }))
     };
 
     const existingIndex = spreads.findIndex(s => s.name === name);
@@ -489,7 +498,6 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
 
     onSubmit({ 
       ...rest, 
-      date: new Date().toISOString(),
       readingDate: new Date(readingDate).toISOString(),
       interpretation: { singleCard, combination: finalCombination },
       cards: cardSlots.filter(s => s.name),
@@ -639,7 +647,11 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
                   isReversed: false, 
                   position: s.slotPositions?.[i] || '', 
                   label,
-                  isRotated: s.rotatedSlots?.includes(i) || false
+                  isRotated: s.rotatedSlots?.includes(i) || false,
+                  x: s.freePositions?.[i]?.x,
+                  y: s.freePositions?.[i]?.y,
+                  rotation: s.freePositions?.[i]?.rotation,
+                  scale: s.freePositions?.[i]?.scale
                 })));
                 setIsEditingSession(false);
               }}
@@ -657,8 +669,14 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
                   setNewSpreadName(`${formData.spread} (自定义)`);
                 }
                 setIsEditingSession(true);
-                setGridCols(5);
-                setGridRows(5);
+                const spreadDef = spreads.find(s => s.name === formData.spread);
+                if (spreadDef?.gridCols && spreadDef?.gridRows) {
+                  setGridCols(spreadDef.gridCols);
+                  setGridRows(spreadDef.gridRows);
+                } else {
+                  setGridCols(5);
+                  setGridRows(5);
+                }
                 const template = LAYOUT_TEMPLATES[layout];
                 if (template) {
                   setCardSlots(template.defaultSlots.map((label, i) => ({
@@ -694,6 +712,10 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
                   setDesignActiveSlot(Math.max(0, newSlots.length - 1));
                   setIsEditingSession(true);
                 }
+              }}
+              onUpdateSlots={(slots) => {
+                updateCardSlotsWithHistory(slots);
+                setIsEditingSession(true);
               }}
               onRestoreDefaults={(name) => {
                 setShowRestoreConfirm({ name });

@@ -12,10 +12,6 @@ interface ErrorBoundaryState {
 }
 
 export class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundaryState> {
-  declare state: ErrorBoundaryState;
-  declare props: Readonly<ErrorBoundaryProps>;
-  declare setState: (state: Partial<ErrorBoundaryState>) => void;
-
   constructor(props: ErrorBoundaryProps) {
     super(props);
     this.state = {
@@ -66,7 +62,7 @@ export class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoun
               <span>返回首页</span>
             </button>
           </div>
-          {process.env.NODE_ENV === 'development' && this.state.error && (
+          {import.meta.env.DEV && this.state.error && (
             <div className="mt-8 p-4 bg-forest-bg/50 rounded-xl max-w-md text-left">
               <p className="text-xs text-forest-muted font-bold mb-2">错误信息（开发环境）</p>
               <pre className="text-xs text-forest-text/60 whitespace-pre-wrap font-mono">

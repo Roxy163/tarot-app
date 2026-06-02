@@ -41,8 +41,15 @@ ${cardLines}
 ${interpretation || '暂无解读记录'}
 
 ---
+🌲 塔罗研习阁 (Tarot Pavilion)
 愿森林的宁静指引您的方向。
-塔罗研习阁 (Tarot Pavilion)
+
+✨ 探索更多：
+📱 下载塔罗研习阁：https://tarot-pavilion.netlify.app/
+🔮 开启您的灵性探索之旅
+
+---
+「牌是镜子，照见的是你自己。」
     `.trim();
   },
 

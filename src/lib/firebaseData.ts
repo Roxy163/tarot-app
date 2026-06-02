@@ -14,52 +14,39 @@ const getCardDocId = (cardName: string) => encodeURIComponent(cardName);
 
 const withoutUndefined = <T,>(value: T): T => JSON.parse(JSON.stringify(value));
 
-const PUBLIC_ID_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+const PUBLIC_ID_ALPHABET = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
+const PUBLIC_ID_LENGTH = 8;
 
-const createPublicIdCode = (input: string, length = 8) => {
+const generatePublicId = (uid: string): string => {
   let hash = 0x811c9dc5;
+
+  for (let index = 0; index < uid.length; index += 1) {
+    hash ^= uid.charCodeAt(index);
+    hash = Math.imul(hash, 0x01000193);
+  }
+
+  let value = hash >>> 0;
   let code = '';
 
-  for (let i = 0; i < input.length; i += 1) {
-    hash ^= input.charCodeAt(i);
-    hash = Math.imul(hash, 0x01000193) >>> 0;
+  for (let index = 0; index < PUBLIC_ID_LENGTH; index += 1) {
+    value = (Math.imul(value, 1664525) + 1013904223) >>> 0;
+    code += PUBLIC_ID_ALPHABET[value % PUBLIC_ID_ALPHABET.length];
   }
 
-  for (let i = 0; i < length; i += 1) {
-    hash ^= hash << 13;
-    hash ^= hash >>> 17;
-    hash ^= hash << 5;
-    hash >>>= 0;
-    code += PUBLIC_ID_ALPHABET.charAt(hash % PUBLIC_ID_ALPHABET.length);
-  }
-
-  return code;
-};
-
-const formatPublicIdDate = (createdAt: string) => {
-  const date = new Date(createdAt);
-  const safeDate = Number.isNaN(date.getTime()) ? new Date() : date;
-  const yy = String(safeDate.getFullYear()).slice(-2);
-  const mm = String(safeDate.getMonth() + 1).padStart(2, '0');
-  const dd = String(safeDate.getDate()).padStart(2, '0');
-
-  return `${yy}${mm}${dd}`;
-};
-
-const generatePublicId = (uid: string, createdAt: string) => {
-  const dateCode = formatPublicIdDate(createdAt);
-  const identityCode = createPublicIdCode(`${uid}:${createdAt}`);
-
-  return `TAROT-${dateCode}-${identityCode}`;
+  return `TAROT-${code}`;
 };
 
 const shouldRefreshPublicId = (publicId?: string) => (
   !publicId
   || publicId === 'TAROT-INIT-0000'
+  || publicId === 'TAROT-PENDING'
   || /^TAROT-\d{4}-[A-Z2-9]{4}$/.test(publicId)
+  || /^TAROT-\d{6}-[A-Z0-9]{8,}$/.test(publicId)
+  || /^TAROT-\d{6}-[A-Za-z0-9]+$/.test(publicId)
+  || !/^TAROT-[A-Z0-9]{8}$/.test(publicId)
 );
 
-const createDefaultProfile = (user: User): UserProfile => {
+const createDefaultProfile = (user: User, publicId: string): UserProfile => {
   const createdAt = new Date().toISOString();
   const displayName = user.displayName || user.email?.split('@')[0] || '研习阁主';
 
@@ -68,7 +55,7 @@ const createDefaultProfile = (user: User): UserProfile => {
     display_name: displayName,
     bio: '研精覃思，洞见未来',
     createdAt,
-    user_public_id: generatePublicId(user.uid, createdAt),
+    user_public_id: publicId,
   };
 };
 
@@ -82,15 +69,22 @@ export const getOrCreateUserProfile = async (user: User): Promise<UserProfile> =
     const profile = { id: user.uid, ...snapshot.data() } as UserProfile;
 
     if (shouldRefreshPublicId(profile.user_public_id)) {
-      const user_public_id = generatePublicId(user.uid, profile.createdAt || new Date().toISOString());
-      await updateDoc(profileRef, { user_public_id });
+      const user_public_id = generatePublicId(user.uid);
+
+      try {
+        await updateDoc(profileRef, { user_public_id });
+      } catch (error) {
+        console.warn('Failed to persist refreshed public id:', error);
+      }
+
       return { ...profile, user_public_id };
     }
 
     return profile;
   }
 
-  const profile = createDefaultProfile(user);
+  const publicId = generatePublicId(user.uid);
+  const profile = createDefaultProfile(user, publicId);
   await setDoc(profileRef, profile);
   return profile;
 };
@@ -108,6 +102,23 @@ export const updateUserProfile = async (uid: string, updated: Partial<UserProfil
   if (!snapshot.exists()) throw new Error('用户资料不存在');
 
   return { id: uid, ...snapshot.data() } as UserProfile;
+};
+
+export const deleteUserAccount = async (uid: string): Promise<void> => {
+  if (!firebaseDb) throw new Error('Firebase Firestore 未配置');
+
+  await deleteDoc(doc(firebaseDb, 'profiles', uid));
+  
+  const userReadingsRef = collection(firebaseDb, 'users', uid, 'readings');
+  const readingsSnapshot = await getDocs(userReadingsRef);
+  const deletePromises = readingsSnapshot.docs.flatMap(item => {
+    const reading = item.data() as TarotReading;
+    return [
+      deleteDoc(item.ref),
+      ...(reading.isPublic ? [deletePublicReading(item.id)] : []),
+    ];
+  });
+  await Promise.all(deletePromises);
 };
 
 export const uploadUserAvatar = async (uid: string, avatar: Blob): Promise<string> => {
@@ -195,21 +206,66 @@ export const getUserReadings = async (uid: string): Promise<TarotReading[]> => {
     .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 };
 
+export const getPublicReadings = async (): Promise<TarotReading[]> => {
+  if (!firebaseDb) throw new Error('Firebase Firestore 未配置');
+
+  const readingsRef = collection(firebaseDb, 'publicReadings');
+  const snapshot = await getDocs(readingsRef);
+
+  return snapshot.docs
+    .map(item => ({ id: item.id, ...item.data() }) as TarotReading)
+    .filter(reading => reading.isPublic)
+    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+};
+
+export const savePublicReading = async (reading: TarotReading): Promise<void> => {
+  if (!firebaseDb) throw new Error('Firebase Firestore 未配置');
+
+  const publicRef = doc(firebaseDb, 'publicReadings', reading.id);
+  await setDoc(publicRef, withoutUndefined({
+    ...reading,
+    isPublic: true,
+    updatedAt: new Date().toISOString(),
+  }));
+};
+
+export const deletePublicReading = async (readingId: string): Promise<void> => {
+  if (!firebaseDb) throw new Error('Firebase Firestore 未配置');
+
+  const publicRef = doc(firebaseDb, 'publicReadings', readingId);
+  const publicSnapshot = await getDoc(publicRef);
+
+  if (publicSnapshot.exists()) {
+    await deleteDoc(publicRef);
+  }
+};
+
 export const replaceUserReadings = async (uid: string, readings: TarotReading[]): Promise<void> => {
   if (!firebaseDb) throw new Error('Firebase Firestore 未配置');
 
   const readingsRef = collection(firebaseDb, 'users', uid, 'readings');
   const snapshot = await getDocs(readingsRef);
-  const incomingIds = new Set(readings.map(reading => reading.id));
+  const previousReadingsById = new Map(snapshot.docs.map(item => [item.id, item.data() as TarotReading]));
+  const ownedReadings = readings.map(reading => ({ ...reading, userId: uid }));
+  const incomingIds = new Set(ownedReadings.map(reading => reading.id));
 
   await Promise.all([
-    ...readings.map(reading => setDoc(
+    ...ownedReadings.map(reading => setDoc(
       doc(firebaseDb, 'users', uid, 'readings', reading.id),
       withoutUndefined(reading),
     )),
+    ...ownedReadings.map(reading => {
+      if (reading.isPublic) return savePublicReading(reading);
+
+      const wasPublic = previousReadingsById.get(reading.id)?.isPublic === true;
+      return wasPublic ? deletePublicReading(reading.id) : Promise.resolve();
+    }),
     ...snapshot.docs
       .filter(item => !incomingIds.has(item.id))
       .map(item => deleteDoc(doc(firebaseDb, 'users', uid, 'readings', item.id))),
+    ...snapshot.docs
+      .filter(item => !incomingIds.has(item.id) && item.data().isPublic === true)
+      .map(item => deletePublicReading(item.id)),
   ]);
 };
 

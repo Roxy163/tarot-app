@@ -4,6 +4,10 @@ export interface ReadingSlotData {
   position?: string;
   label?: string;
   isRotated?: boolean;
+  x?: number;
+  y?: number;
+  rotation?: number;
+  scale?: number;
 }
 
 export interface UserProfile {
@@ -29,6 +33,48 @@ export interface TarotCardMetadata {
     house?: string;
     element?: string;
   };
+  keywords?: string[];
+  meaning?: string;
+  reversedMeaning?: string;
+}
+
+export interface CardAnnotation {
+  cardId: string;
+  userId: string;
+  numerology: string | null;
+  planet: string | null;
+  zodiac: string | null;
+  house: string | null;
+  element: string | null;
+  uprightMeaning: string;
+  reversedMeaning: string;
+  keywords: string[];
+  personalNotes: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface OfficialCardAnnotation {
+  cardId: string;
+  arcana: 'major' | 'minor';
+  suit?: 'wands' | 'cups' | 'swords' | 'pentacles';
+  cardNumber: number | null;
+  courtNumber?: 11 | 12 | 13 | 14;
+  numerology: string | null;
+  planet: string | null;
+  zodiac: string | null;
+  house: string | null;
+  element: string | null;
+  uprightMeaning: string;
+  reversedMeaning: string;
+  keywords: string[];
+}
+
+export interface UserAnnotationData {
+  userId: string;
+  annotations: Record<string, Partial<CardAnnotation>>;
+  version: number;
+  lastUpdated: string;
 }
 
 export interface TarotReading {
@@ -60,7 +106,16 @@ export interface TarotReading {
   readingDate?: string;
   category?: string;
   isAiProcessed?: boolean;
+  processedByAi?: boolean;
   skipAi?: boolean;
+  showSlotNumbers?: boolean;
+}
+
+export interface FreePosition {
+  x?: number;
+  y?: number;
+  rotation?: number;
+  scale?: number;
 }
 
 export interface SpreadDefinition {
@@ -71,6 +126,7 @@ export interface SpreadDefinition {
   rotatedSlots?: number[];
   gridCols?: number;
   gridRows?: number;
+  freePositions?: FreePosition[];
 }
 
 export interface LayoutTemplate {
@@ -104,4 +160,32 @@ export interface ReadingFormData {
   slotLabels: string[];
   slotPositions: string[];
   rotatedSlots: number[];
+}
+
+export interface DailyFortune {
+  id: string;
+  userId: string;
+  date: string;
+  cardName: string;
+  isReversed: boolean;
+  interpretation: string;
+  keywords: string[];
+  reflection?: string;
+  createdAt: string;
+  isRevealed?: boolean;
+  isLocked?: boolean;
+}
+
+export interface FortuneSummary {
+  period: string;
+  periodType: 'day' | 'week' | 'month' | 'year' | 'season';
+  cards: string[];
+  insights: {
+    mostFrequentCard: string;
+    reversedCount: number;
+    keyThemes: string[];
+    advice: string;
+  };
+  startDate: string;
+  endDate: string;
 }

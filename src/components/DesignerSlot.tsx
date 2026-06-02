@@ -24,9 +24,9 @@ export const DesignerSlot: React.FC<DesignerSlotProps> = ({
     setLocalIdx((idx + 1).toString());
   }, [idx]);
 
-  const baseClasses = `rounded-md transition-all flex flex-col items-center justify-between p-1 shadow-sm select-none cursor-pointer`;
-  const activeClasses = `bg-forest-accent text-white ring-2 ring-white shadow-xl z-30 scale-105`;
-  const inactiveClasses = `bg-white text-forest-accent border border-forest-accent/20 hover:border-forest-accent/40`;
+  const baseClasses = `rounded-lg transition-all flex flex-col items-center justify-between p-2 shadow-sm select-none cursor-pointer`;
+  const activeClasses = `bg-gradient-to-br from-forest-accent to-forest-pink text-white ring-2 ring-white shadow-xl z-30 scale-105`;
+  const inactiveClasses = `bg-white text-forest-accent border-2 border-forest-accent/10 hover:border-forest-accent/40 hover:shadow-md`;
   
   const isSecondary = stackIndex > 0;
   const isRotated = slot.isRotated || (isCelticCenter && stackIndex === 1);
@@ -47,42 +47,25 @@ export const DesignerSlot: React.FC<DesignerSlotProps> = ({
         e.stopPropagation();
         onSetActive(idx);
       }}
+      whileHover={{ scale: 1.08 }}
+      whileTap={{ scale: 0.95 }}
     >
-      <div className="flex flex-col items-center justify-center flex-1">
-        <div className="flex items-center gap-1">
-          <input 
-            type="text"
-            inputMode="numeric"
-            pattern="[0-9]*"
-            className={`w-6 text-center font-black bg-transparent border-none focus:ring-0 p-0 ${isCelticCenter ? 'text-[10px]' : 'text-[12px]'} ${isActive ? 'text-white' : 'text-forest-ink'}`}
-            value={localIdx}
-            onChange={(e) => {
-              const val = e.target.value;
-              setLocalIdx(val);
-              const num = parseInt(val);
-              if (!isNaN(num) && num > 0) {
-                onSwapSlotIndex(idx, num - 1);
-              }
-            }}
-            onBlur={() => {
-              setLocalIdx((idx + 1).toString());
-            }}
-            onClick={e => e.stopPropagation()}
-          />
-        </div>
-        {!isCelticCenter && !isSecondary && slot?.isStacked && (
-          <div className={`text-[8px] font-black mt-0.5 ${isActive ? 'text-white/90' : 'text-forest-accent/80'}`}>叠放</div>
-        )}
+      <div className="flex items-center justify-center w-full">
+        <span className={`text-center font-black ${isCelticCenter ? 'text-[10px]' : 'text-lg'} ${isActive ? 'text-white' : 'text-forest-ink'}`}>
+          {idx + 1}
+        </span>
       </div>
+      
       <input 
-        className={`w-full px-0.5 py-0 font-bold text-center bg-transparent border-none focus:ring-0 transition-all ${
-          isCelticCenter ? 'text-[8px]' : 'text-[9px]'
-        } ${isActive ? 'text-white placeholder:text-white/50' : 'text-forest-ink/70 placeholder:text-forest-ink/30'}`}
-        placeholder="位置"
+        className={`w-full px-1 py-1 font-bold text-center bg-transparent border-none focus:ring-0 transition-all rounded ${
+          isCelticCenter ? 'text-[8px]' : 'text-xs'
+        } ${isActive ? 'text-white placeholder:text-white/50 bg-white/10' : 'text-forest-ink/70 placeholder:text-forest-ink/30 bg-forest-accent/5'}`}
+        placeholder="位置标签"
         value={slot?.label || ''}
         onClick={e => e.stopPropagation()}
         onChange={e => onUpdateLabel(idx, e.target.value)}
       />
+      
       {isActive && (
         <button
           type="button"
@@ -90,9 +73,9 @@ export const DesignerSlot: React.FC<DesignerSlotProps> = ({
             e.stopPropagation();
             onRemove(idx);
           }}
-          className="absolute -top-1.5 -right-1.5 p-1 bg-red-500 text-white rounded-full shadow-md hover:bg-red-600 transition-colors z-50"
+          className="absolute -top-2 -right-2 p-1.5 bg-red-500 text-white rounded-full shadow-lg hover:bg-red-600 transition-all z-50 hover:scale-110"
         >
-          <X size={8} />
+          <X size={10} />
         </button>
       )}
     </motion.div>

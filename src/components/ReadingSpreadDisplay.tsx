@@ -17,8 +17,8 @@ interface ReadingSpreadDisplayProps {
   onSlotClick: (index: number) => void;
   handleLongPressStart: (index: number) => void;
   handleLongPressEnd: () => void;
-  toggleReverse: (index: number) => void;
-  removeSlot: (index: number) => void;
+  toggleReverse: (index: number, e: React.MouseEvent) => void;
+  removeSlot: (index: number, e: React.MouseEvent) => void;
   handleCycleSlot: (index: number, e: React.MouseEvent) => void;
   onConfirmSync: (spreadName: string) => void;
   onCancelSync: () => void;

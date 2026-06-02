@@ -1,5 +1,6 @@
 import React, { useState, useRef } from 'react';
-import { User, Sparkles, Edit3, Save, X, Calendar, BookOpen, Award, Check, Lock, ShieldCheck, Copy, LogOut, Camera } from 'lucide-react';
+import { User, Sparkles, Edit3, Save, X, Calendar, BookOpen, Award, Check, Lock, ShieldCheck, Copy, LogOut, Camera, HelpCircle } from 'lucide-react';
+import { FeatureGuide } from './FeatureGuide';
 import { TarotReading, TarotCardMetadata, UserProfile } from '../types';
 import { AvatarCropModal } from './AvatarCropModal';
 import { uploadUserAvatar } from '../lib/firebaseData';
@@ -37,6 +38,7 @@ export function ProfileView({
   const [isUploading, setIsUploading] = useState(false);
   const [cropImage, setCropImage] = useState<string | null>(null);
   const [isCropModalOpen, setIsCropModalOpen] = useState(false);
+  const [isGuideOpen, setIsGuideOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   
   const [editName, setEditName] = useState(profile?.display_name || profile?.nickname || authorName);
@@ -246,17 +248,30 @@ export function ProfileView({
             </div>
           </div>
 
-          {/* 登出按钮 */}
-          {onLogout && (
+          <div className="flex gap-3">
+            {/* 功能介绍入口 */}
             <button 
-              onClick={onLogout}
-              className="flex items-center gap-2 px-6 py-3 bg-forest-accent/10 text-forest-accent rounded-full text-sm font-bold hover:bg-forest-accent/20 transition-all"
+              onClick={() => setIsGuideOpen(true)}
+              className="flex items-center gap-2 px-4 py-3 bg-forest-bg/50 text-forest-accent rounded-full text-sm font-bold hover:bg-forest-accent/10 transition-all border border-forest-border/50"
             >
-              <LogOut size={16} />
-              封印离阁
+              <HelpCircle size={16} />
+              功能介绍
             </button>
-          )}
+            
+            {/* 登出按钮 */}
+            {onLogout && (
+              <button 
+                onClick={onLogout}
+                className="flex items-center gap-2 px-4 py-3 bg-forest-accent/10 text-forest-accent rounded-full text-sm font-bold hover:bg-forest-accent/20 transition-all"
+              >
+                <LogOut size={16} />
+                封印离阁
+              </button>
+            )}
+          </div>
         </div>
+
+        <FeatureGuide isOpen={isGuideOpen} onClose={() => setIsGuideOpen(false)} />
       </div>
 
       {/* 数据概览 */}
