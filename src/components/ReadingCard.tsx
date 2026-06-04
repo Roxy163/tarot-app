@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { ZoomIn, ZoomOut, RefreshCw, Copy, Share2, ChevronDown, ChevronUp, BookOpen, ExternalLink, Trash2, Lock } from 'lucide-react';
-import { TarotReading, TarotCardMetadata } from '../types';
+import { ZoomIn, ZoomOut, RefreshCw, Copy, Share2, ChevronDown, ChevronUp, BookOpen, ExternalLink, Trash2, Lock, Sparkles, Check, Loader2 } from 'lucide-react';
+import { ReadingKeywordCandidate, TarotReading, TarotCardMetadata } from '../types';
 import { TAROT_CARDS, getCardImageUrl, LAYOUT_TEMPLATES } from '../constants';
 
 interface ReadingCardProps {
@@ -12,6 +12,8 @@ interface ReadingCardProps {
   activeTags?: string[];
   onAuthorClick?: (author: string) => void;
   onProcessAi?: (id: string) => void;
+  onExtractKeywordCandidates?: (id: string) => Promise<ReadingKeywordCandidate[]>;
+  onConfirmKeywordCandidates?: (id: string, candidates: ReadingKeywordCandidate[]) => void;
   isMini?: boolean;
   onTogglePublic?: () => void;
   isPublicView?: boolean;
@@ -26,6 +28,8 @@ export const ReadingCard: React.FC<ReadingCardProps> = ({
   activeTags,
   onAuthorClick,
   onProcessAi,
+  onExtractKeywordCandidates,
+  onConfirmKeywordCandidates,
   isMini = false,
   onTogglePublic,
   isPublicView = false,
@@ -36,6 +40,11 @@ export const ReadingCard: React.FC<ReadingCardProps> = ({
   const [scale, setScale] = useState(1);
   const [position, setPosition] = useState({ x: 0, y: 0 });
   const [isDragging, setIsDragging] = useState(false);
+  const [keywordCandidates, setKeywordCandidates] = useState<ReadingKeywordCandidate[]>([]);
+  const [selectedKeywordIds, setSelectedKeywordIds] = useState<string[]>([]);
+  const [showKeywordReview, setShowKeywordReview] = useState(false);
+  const [isExtractingKeywords, setIsExtractingKeywords] = useState(false);
+  const [keywordNotice, setKeywordNotice] = useState('');
   const lastPosition = useRef({ x: 0, y: 0 });
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -103,6 +112,57 @@ export const ReadingCard: React.FC<ReadingCardProps> = ({
         copyToClipboard(window.location.href);
       }
     }
+  };
+
+  const canReviewKeywords = !isPublicView && !reading.isExample && !!onExtractKeywordCandidates && !!onConfirmKeywordCandidates;
+
+  const groupedKeywordCandidates = keywordCandidates.reduce<Record<string, ReadingKeywordCandidate[]>>((groups, candidate) => {
+    if (!groups[candidate.cardName]) groups[candidate.cardName] = [];
+    groups[candidate.cardName].push(candidate);
+    return groups;
+  }, {});
+
+  const handleExtractKeywords = async () => {
+    if (!onExtractKeywordCandidates) return;
+
+    setIsExtractingKeywords(true);
+    setKeywordNotice('');
+    try {
+      const candidates = await onExtractKeywordCandidates(reading.id);
+      setKeywordCandidates(candidates);
+      setSelectedKeywordIds(candidates.map(candidate => candidate.id));
+      setShowKeywordReview(true);
+      if (candidates.length === 0) {
+        setKeywordNotice('这条手记里暂时没有提取到可保存的关键词。');
+      }
+    } catch (error) {
+      console.error('Failed to extract keyword candidates:', error);
+      setKeywordNotice('关键词整理暂时失败，可以稍后再试。');
+    } finally {
+      setIsExtractingKeywords(false);
+    }
+  };
+
+  const toggleKeywordCandidate = (candidateId: string) => {
+    setSelectedKeywordIds(prev => (
+      prev.includes(candidateId)
+        ? prev.filter(id => id !== candidateId)
+        : [...prev, candidateId]
+    ));
+  };
+
+  const handleConfirmKeywords = () => {
+    if (!onConfirmKeywordCandidates) return;
+
+    const selectedCandidates = keywordCandidates.filter(candidate => selectedKeywordIds.includes(candidate.id));
+    if (selectedCandidates.length === 0) {
+      setKeywordNotice('至少保留一个关键词，才会写入牌义记忆。');
+      return;
+    }
+
+    onConfirmKeywordCandidates(reading.id, selectedCandidates);
+    setShowKeywordReview(false);
+    setKeywordNotice(`已将 ${selectedCandidates.length} 个关键词纳入个人牌义记忆。`);
   };
 
   const renderCards = () => {
@@ -421,6 +481,90 @@ export const ReadingCard: React.FC<ReadingCardProps> = ({
                       {kw}
                     </span>
                   ))}
+                </div>
+              )}
+
+              {canReviewKeywords && (
+                <div className="rounded-2xl border border-forest-accent/10 bg-forest-accent/5 p-3 space-y-3">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                    <div>
+                      <h4 className="text-xs font-bold text-forest-accent flex items-center gap-1.5">
+                        <Sparkles size={13} />
+                        个人关键词
+                      </h4>
+                      {keywordNotice && (
+                        <p className="mt-1 text-[10px] text-forest-muted">{keywordNotice}</p>
+                      )}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleExtractKeywords}
+                      disabled={isExtractingKeywords}
+                      className="min-h-11 px-3 py-2 rounded-xl bg-white border border-forest-accent/20 text-forest-accent text-xs font-bold flex items-center justify-center gap-2 hover:bg-forest-accent/10 disabled:opacity-60 transition-colors"
+                    >
+                      {isExtractingKeywords ? (
+                        <Loader2 size={14} className="animate-spin" />
+                      ) : (
+                        <Sparkles size={14} />
+                      )}
+                      {reading.isAiProcessed ? '重新整理' : 'AI 整理'}
+                    </button>
+                  </div>
+
+                  <AnimatePresence>
+                    {showKeywordReview && keywordCandidates.length > 0 && (
+                      <motion.div
+                        initial={{ opacity: 0, y: 6 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -6 }}
+                        className="space-y-3"
+                      >
+                        {Object.entries(groupedKeywordCandidates).map(([cardName, candidates]) => (
+                          <div key={cardName} className="rounded-xl bg-white border border-forest-accent/10 p-3 space-y-2">
+                            <p className="text-[10px] font-bold text-forest-ink">{cardName}</p>
+                            <div className="flex flex-wrap gap-2">
+                              {candidates.map(candidate => {
+                                const selected = selectedKeywordIds.includes(candidate.id);
+                                return (
+                                  <button
+                                    key={candidate.id}
+                                    type="button"
+                                    onClick={() => toggleKeywordCandidate(candidate.id)}
+                                    className={`min-h-11 px-3 py-2 rounded-full text-xs font-bold border transition-all flex items-center gap-1.5 ${
+                                      selected
+                                        ? 'bg-forest-accent text-white border-forest-accent shadow-sm'
+                                        : 'bg-white text-forest-muted border-forest-accent/20 hover:border-forest-accent/40'
+                                    }`}
+                                  >
+                                    {selected && <Check size={12} />}
+                                    {candidate.keyword}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        ))}
+
+                        <div className="flex items-center justify-end gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setShowKeywordReview(false)}
+                            className="min-h-11 px-4 py-2 rounded-xl bg-white text-forest-muted border border-forest-accent/10 text-xs font-bold hover:text-forest-accent transition-colors"
+                          >
+                            稍后
+                          </button>
+                          <button
+                            type="button"
+                            onClick={handleConfirmKeywords}
+                            className="min-h-11 px-4 py-2 rounded-xl bg-forest-accent text-white text-xs font-bold flex items-center gap-2 shadow-sm hover:bg-forest-accent/90 transition-colors"
+                          >
+                            <Check size={14} />
+                            纳入记忆
+                          </button>
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
                 </div>
               )}
             </div>

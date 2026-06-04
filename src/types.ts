@@ -38,6 +38,28 @@ export interface TarotCardMetadata {
   reversedMeaning?: string;
 }
 
+export interface ReadingKeywordCandidate {
+  id: string;
+  cardName: string;
+  keyword: string;
+  sourceText?: string;
+}
+
+export interface CardKeywordMemoryEntry {
+  keyword: string;
+  count: number;
+  readingIds: string[];
+  examples: string[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CardKeywordMemory {
+  cardName: string;
+  keywords: CardKeywordMemoryEntry[];
+  updatedAt: string;
+}
+
 export interface CardAnnotation {
   cardId: string;
   userId: string;

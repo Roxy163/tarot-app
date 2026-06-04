@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Search, Save, RotateCcw, Info, ChevronRight, Filter, Book, Sparkles, MessageSquare, History, Calendar, Pencil, Hash, Sun, Plus, ChevronDown, ChevronUp, Edit3 } from 'lucide-react';
-import { TarotCardMetadata, TarotReading, DailyFortune } from '../types';
+import { CardKeywordMemory, TarotCardMetadata, TarotReading, DailyFortune } from '../types';
 import { getCardImageUrl, TAROT_CARDS } from '../constants';
 import { useCardNumerology } from '../hooks/useCardNumerology';
 import { getCardAnnotations, saveCardAnnotation } from '../lib/firebaseData';
@@ -12,6 +12,7 @@ interface CardMetadataManagerProps {
   metadata: TarotCardMetadata[];
   onUpdate: (updated: TarotCardMetadata[]) => void;
   readings: TarotReading[];
+  cardKeywordMemory?: CardKeywordMemory[];
   onShowSnackbar?: (message: string) => void;
   isLoggedIn?: boolean;
   userId?: string;
@@ -183,7 +184,7 @@ function CardNumerologyCard({ cardName, isLoggedIn, userId }: CardNumerologyCard
   );
 }
 
-export function CardMetadataManager({ metadata, onUpdate, readings, onShowSnackbar, isLoggedIn, userId, onAddReading }: CardMetadataManagerProps) {
+export function CardMetadataManager({ metadata, onUpdate, readings, cardKeywordMemory = [], onShowSnackbar, isLoggedIn, userId, onAddReading }: CardMetadataManagerProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [editingCardId, setEditingCardId] = useState<string | null>(null);
   const [localMetadata, setLocalMetadata] = useState<TarotCardMetadata[]>(metadata);
@@ -309,6 +310,22 @@ export function CardMetadataManager({ metadata, onUpdate, readings, onShowSnackb
       ...prev,
       [cardName]: value
     }));
+  };
+
+  const getCardKeywordMemory = (cardName: string) => (
+    cardKeywordMemory.find(item => item.cardName === cardName)?.keywords || []
+  );
+
+  const appendKeywordToPersonalMeaning = (cardName: string, keyword: string) => {
+    setPersonalMeanings(prev => {
+      const current = prev[cardName] || '';
+      if (current.includes(keyword)) return prev;
+
+      return {
+        ...prev,
+        [cardName]: current ? `${current}\n- ${keyword}` : `- ${keyword}`
+      };
+    });
   };
 
   const savePersonalMeaning = async (cardName: string) => {
@@ -517,6 +534,7 @@ export function CardMetadataManager({ metadata, onUpdate, readings, onShowSnackb
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {filteredCards.map(card => {
           const insights = getDetailedInsights(card.name);
+          const personalKeywordStats = getCardKeywordMemory(card.name).slice(0, 8);
           return (
             <motion.div 
               layout
@@ -549,6 +567,15 @@ export function CardMetadataManager({ metadata, onUpdate, readings, onShowSnackb
                     <div className="mt-2 flex items-center gap-1 text-[9px] text-forest-accent font-bold">
                       <Sparkles size={10} />
                       <span>{insights.length} 条研习记录</span>
+                    </div>
+                  )}
+                  {personalKeywordStats.length > 0 && (
+                    <div className="mt-2 flex flex-wrap gap-1">
+                      {personalKeywordStats.slice(0, 3).map(item => (
+                        <span key={item.keyword} className="text-[8px] px-2 py-0.5 bg-forest-pink/10 rounded-full text-forest-pink border border-forest-pink/10">
+                          {item.keyword} ×{item.count}
+                        </span>
+                      ))}
                     </div>
                   )}
                 </div>
@@ -585,6 +612,34 @@ export function CardMetadataManager({ metadata, onUpdate, readings, onShowSnackb
                         isLoggedIn={isLoggedIn || false} 
                         userId={userId} 
                       />
+
+                      {personalKeywordStats.length > 0 && (
+                        <div className="space-y-3 rounded-[1.5rem] bg-white border border-forest-pink/10 p-4 shadow-sm">
+                          <h5 className="text-[10px] font-bold text-forest-pink uppercase tracking-widest flex items-center gap-2">
+                            <Sparkles size={12} />
+                            高频理解
+                          </h5>
+                          <div className="flex flex-wrap gap-2">
+                            {personalKeywordStats.map(item => (
+                              <button
+                                key={item.keyword}
+                                type="button"
+                                onClick={() => appendKeywordToPersonalMeaning(card.name, item.keyword)}
+                                className="min-h-11 px-3 py-2 rounded-full bg-forest-pink/5 text-forest-pink border border-forest-pink/10 text-xs font-bold flex items-center gap-1.5 hover:bg-forest-pink/10 transition-colors"
+                              >
+                                <Plus size={12} />
+                                <span>{item.keyword}</span>
+                                <span className="text-[9px] opacity-70">×{item.count}</span>
+                              </button>
+                            ))}
+                          </div>
+                          {personalKeywordStats[0]?.examples[0] && (
+                            <p className="text-[11px] text-forest-muted leading-relaxed bg-forest-bg/50 rounded-xl px-3 py-2">
+                              “{personalKeywordStats[0].examples[0]}”
+                            </p>
+                          )}
+                        </div>
+                      )}
 
                       {/* Personal Meaning Editor */}
                       <div className="space-y-3">

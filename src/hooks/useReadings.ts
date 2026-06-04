@@ -1,15 +1,90 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { TarotReading, SpreadDefinition, TarotCardMetadata } from '../types';
+import { CardKeywordMemory, ReadingKeywordCandidate, TarotReading, SpreadDefinition, TarotCardMetadata } from '../types';
 import { INITIAL_READINGS, OFFICIAL_SPREADS } from '../constants';
-import { extractKeywords, recognizeCards } from '../services/geminiService';
+import { extractKeywords, recognizeCards, suggestReadingKeywords } from '../services/geminiService';
 import {
+  getUserCardKeywordMemory,
   getUserCardMetadata,
   getUserReadings,
   getUserSpreads,
   replaceUserReadings,
+  saveUserCardKeywordMemory,
   saveUserCardMetadata,
   saveUserSpreads,
 } from '../lib/firebaseData';
+
+const normalizeMemoryKeyword = (keyword: string) => keyword.trim().replace(/^#+/, '').replace(/\s+/g, '');
+
+const getReadingInsightForCard = (reading: TarotReading, cardName: string) => {
+  const cardIndex = reading.cards?.findIndex(card => card.name === cardName) ?? -1;
+  return [
+    cardIndex >= 0 ? reading.cardInterpretations?.[cardIndex] : '',
+    reading.interpretation?.singleCard,
+    reading.interpretation?.combination,
+    reading.userFeedback
+  ].filter(Boolean).join(' ').trim();
+};
+
+const mergeKeywordMemory = (
+  memory: CardKeywordMemory[],
+  reading: TarotReading,
+  candidates: ReadingKeywordCandidate[],
+): CardKeywordMemory[] => {
+  const now = new Date().toISOString();
+  const memoryByCard = new Map<string, CardKeywordMemory>(
+    memory.map(item => [
+      item.cardName,
+      {
+        ...item,
+        keywords: item.keywords.map(keyword => ({
+          ...keyword,
+          readingIds: [...keyword.readingIds],
+          examples: [...keyword.examples],
+        })),
+      },
+    ]),
+  );
+
+  candidates.forEach(candidate => {
+    const keyword = normalizeMemoryKeyword(candidate.keyword);
+    if (!candidate.cardName || !keyword) return;
+
+    const cardMemory = memoryByCard.get(candidate.cardName) || {
+      cardName: candidate.cardName,
+      keywords: [],
+      updatedAt: now,
+    };
+
+    const existingEntry = cardMemory.keywords.find(item => item.keyword === keyword);
+    const sourceExample = (candidate.sourceText || getReadingInsightForCard(reading, candidate.cardName)).trim().slice(0, 180);
+
+    if (existingEntry) {
+      if (!existingEntry.readingIds.includes(reading.id)) {
+        existingEntry.count += 1;
+        existingEntry.readingIds.push(reading.id);
+      }
+      if (sourceExample && !existingEntry.examples.includes(sourceExample)) {
+        existingEntry.examples = [sourceExample, ...existingEntry.examples].slice(0, 3);
+      }
+      existingEntry.updatedAt = now;
+    } else {
+      cardMemory.keywords.push({
+        keyword,
+        count: 1,
+        readingIds: [reading.id],
+        examples: sourceExample ? [sourceExample] : [],
+        createdAt: now,
+        updatedAt: now,
+      });
+    }
+
+    cardMemory.updatedAt = now;
+    cardMemory.keywords.sort((a, b) => b.count - a.count || b.updatedAt.localeCompare(a.updatedAt));
+    memoryByCard.set(candidate.cardName, cardMemory);
+  });
+
+  return Array.from(memoryByCard.values()).sort((a, b) => a.cardName.localeCompare(b.cardName));
+};
 
 export const useReadings = (session: { uid?: string; email?: string | null } | null) => {
   const activeDataKey = session?.uid || 'guest';
@@ -17,6 +92,7 @@ export const useReadings = (session: { uid?: string; email?: string | null } | n
   const [readings, setReadings] = useState<TarotReading[]>(INITIAL_READINGS.map(r => ({ ...r, isExample: true })));
   const [spreads, setSpreads] = useState<SpreadDefinition[]>(OFFICIAL_SPREADS);
   const [cardMetadata, setCardMetadata] = useState<TarotCardMetadata[]>([]);
+  const [cardKeywordMemory, setCardKeywordMemory] = useState<CardKeywordMemory[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchTags, setSearchTags] = useState<string[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -45,21 +121,24 @@ export const useReadings = (session: { uid?: string; email?: string | null } | n
       const savedSpreads = parseSavedArray<SpreadDefinition>('tarot_spreads') || [];
       const localSpreads = [...OFFICIAL_SPREADS, ...savedSpreads.filter(s => !OFFICIAL_SPREADS.some(os => os.name === s.name))];
       const localMetadata = parseSavedArray<TarotCardMetadata>('tarot_card_metadata') || [];
+      const localKeywordMemory = parseSavedArray<CardKeywordMemory>('tarot_card_keyword_memory') || [];
       
       if (!session?.uid) {
         setReadings([...exampleReadings, ...localReadings]);
         setSpreads(localSpreads);
         setCardMetadata(localMetadata);
+        setCardKeywordMemory(localKeywordMemory);
         setLoadedDataKey(activeDataKey);
         return;
       }
 
       try {
 
-        const [cloudReadings, cloudSpreads, cloudMetadata] = await Promise.all([
+        const [cloudReadings, cloudSpreads, cloudMetadata, cloudKeywordMemory] = await Promise.all([
           getUserReadings(session.uid),
           getUserSpreads(session.uid),
           getUserCardMetadata(session.uid),
+          getUserCardKeywordMemory(session.uid),
         ]);
 
         if (cancelled) return;
@@ -68,6 +147,7 @@ export const useReadings = (session: { uid?: string; email?: string | null } | n
         const mergedSpreads = [...OFFICIAL_SPREADS, ...(cloudSpreads && cloudSpreads.length > 0 ? cloudSpreads : savedSpreads).filter(s => !OFFICIAL_SPREADS.some(os => os.name === s.name))];
         setSpreads(mergedSpreads);
         setCardMetadata(cloudMetadata && cloudMetadata.length > 0 ? cloudMetadata : localMetadata);
+        setCardKeywordMemory(cloudKeywordMemory && cloudKeywordMemory.length > 0 ? cloudKeywordMemory : localKeywordMemory);
       } catch (error) {
         console.error('Failed to load data:', error);
       } finally {
@@ -120,6 +200,18 @@ export const useReadings = (session: { uid?: string; email?: string | null } | n
 
     localStorage.setItem('tarot_card_metadata', JSON.stringify(cardMetadata));
   }, [activeDataKey, cardMetadata, loadedDataKey, session?.uid]);
+
+  useEffect(() => {
+    if (loadedDataKey !== activeDataKey) return;
+
+    if (session?.uid) {
+      saveUserCardKeywordMemory(session.uid, cardKeywordMemory).catch(error => {
+        console.error('Failed to save card keyword memory:', error);
+      });
+    }
+
+    localStorage.setItem('tarot_card_keyword_memory', JSON.stringify(cardKeywordMemory));
+  }, [activeDataKey, cardKeywordMemory, loadedDataKey, session?.uid]);
 
   // 过滤阅读记录
   const filteredReadings = useMemo(() => {
@@ -204,6 +296,29 @@ export const useReadings = (session: { uid?: string; email?: string | null } | n
     }
   }, [readings, editingReading, session]);
 
+  const handleExtractKeywordCandidates = useCallback(async (id: string): Promise<ReadingKeywordCandidate[]> => {
+    const reading = readings.find(r => r.id === id);
+    if (!reading) return [];
+
+    return suggestReadingKeywords(reading);
+  }, [readings]);
+
+  const handleConfirmKeywordCandidates = useCallback((id: string, candidates: ReadingKeywordCandidate[]) => {
+    const reading = readings.find(r => r.id === id);
+    if (!reading || candidates.length === 0) return;
+
+    const confirmedKeywords = Array.from(new Set(candidates.map(candidate => normalizeMemoryKeyword(candidate.keyword)).filter(Boolean)));
+
+    setReadings(prev => prev.map(r => r.id === id ? {
+      ...r,
+      keywords: Array.from(new Set([...(r.keywords || []), ...confirmedKeywords])),
+      isAiProcessed: true,
+      processedByAi: true,
+    } : r));
+
+    setCardKeywordMemory(prev => mergeKeywordMemory(prev, reading, candidates));
+  }, [readings]);
+
   // AI处理
   const handleProcessAi = useCallback(async (id: string) => {
     const reading = readings.find(r => r.id === id);
@@ -211,12 +326,14 @@ export const useReadings = (session: { uid?: string; email?: string | null } | n
 
     try {
       const fullText = `${reading.interpretation.singleCard} ${reading.interpretation.combination}`;
+      const keywordCandidates = await suggestReadingKeywords(reading);
+      const aiKeywords = keywordCandidates.map(candidate => normalizeMemoryKeyword(candidate.keyword)).filter(Boolean);
       
       const [recognizedCardsResult, keywords] = await Promise.all([
         (reading.cards?.length > 0 
           ? Promise.resolve(reading.cards) 
           : recognizeCards(reading.question || '')),
-        extractKeywords(fullText)
+        Promise.resolve(aiKeywords.length > 0 ? aiKeywords : extractKeywords(fullText))
       ]);
 
       let recognizedCards: { name: string; isReversed: boolean }[] = [];
@@ -240,8 +357,13 @@ export const useReadings = (session: { uid?: string; email?: string | null } | n
         slotLabels: (recognizedCards.length > 0 && (!r.slotLabels || r.slotLabels.length === 0))
           ? recognizedCards.map((_: any, i: number) => `位置 ${i + 1}`)
           : r.slotLabels,
-        isAiProcessed: true
+        isAiProcessed: true,
+        processedByAi: true
       } : r));
+
+      if (keywordCandidates.length > 0) {
+        setCardKeywordMemory(prev => mergeKeywordMemory(prev, reading, keywordCandidates));
+      }
     } catch (error) {
       console.error("AI processing error:", error);
     }
@@ -276,6 +398,7 @@ export const useReadings = (session: { uid?: string; email?: string | null } | n
     setSpreads,
     cardMetadata,
     setCardMetadata,
+    cardKeywordMemory,
     searchQuery,
     setSearchQuery,
     searchTags,
@@ -285,6 +408,8 @@ export const useReadings = (session: { uid?: string; email?: string | null } | n
     setEditingReading,
     filteredReadings,
     handleAddReading,
+    handleExtractKeywordCandidates,
+    handleConfirmKeywordCandidates,
     handleProcessAi,
     togglePublic,
     handleDeleteReading,

@@ -1,7 +1,7 @@
 import React from 'react';
 import { motion } from 'motion/react';
 import { Search, X, BookOpen } from 'lucide-react';
-import { TarotReading, TarotCardMetadata } from '../../types';
+import { ReadingKeywordCandidate, TarotReading, TarotCardMetadata } from '../../types';
 import { ReadingCard } from '../ReadingCard';
 
 interface PrivateTabProps {
@@ -16,6 +16,8 @@ interface PrivateTabProps {
   onEdit: (reading: TarotReading) => void;
   onAuthorClick: (author: string) => void;
   onProcessAi: (id: string) => void;
+  onExtractKeywordCandidates: (id: string) => Promise<ReadingKeywordCandidate[]>;
+  onConfirmKeywordCandidates: (id: string, candidates: ReadingKeywordCandidate[]) => void;
   cardMetadata: TarotCardMetadata[];
 }
 
@@ -31,6 +33,8 @@ export const PrivateTab: React.FC<PrivateTabProps> = ({
   onEdit,
   onAuthorClick,
   onProcessAi,
+  onExtractKeywordCandidates,
+  onConfirmKeywordCandidates,
   cardMetadata
 }) => {
   const filteredReadings = readings.filter(r => {
@@ -142,6 +146,8 @@ export const PrivateTab: React.FC<PrivateTabProps> = ({
               cardMetadata={cardMetadata}
               onAuthorClick={onAuthorClick}
               onProcessAi={onProcessAi}
+              onExtractKeywordCandidates={onExtractKeywordCandidates}
+              onConfirmKeywordCandidates={onConfirmKeywordCandidates}
             />
           ))}
         </div>

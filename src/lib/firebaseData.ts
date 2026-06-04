@@ -1,7 +1,7 @@
 import { User } from 'firebase/auth';
 import { deleteDoc, doc, getDoc, getDocs, setDoc, updateDoc, collection } from 'firebase/firestore';
 import { getDownloadURL, ref, uploadBytes } from 'firebase/storage';
-import { SpreadDefinition, TarotCardMetadata, TarotReading, UserProfile } from '../types';
+import { CardKeywordMemory, SpreadDefinition, TarotCardMetadata, TarotReading, UserProfile } from '../types';
 import { firebaseDb, firebaseStorage } from './firebase';
 
 export interface NumerologySetting {
@@ -296,3 +296,6 @@ export const saveUserSpreads = (uid: string, spreads: SpreadDefinition[]) => sav
 
 export const getUserCardMetadata = (uid: string) => getUserSetting<TarotCardMetadata>(uid, 'cardMetadata');
 export const saveUserCardMetadata = (uid: string, metadata: TarotCardMetadata[]) => saveUserSetting(uid, 'cardMetadata', metadata);
+
+export const getUserCardKeywordMemory = (uid: string) => getUserSetting<CardKeywordMemory>(uid, 'cardKeywordMemory');
+export const saveUserCardKeywordMemory = (uid: string, memory: CardKeywordMemory[]) => saveUserSetting(uid, 'cardKeywordMemory', memory);

@@ -110,6 +110,7 @@ function AppContent() {
     setSpreads,
     cardMetadata,
     setCardMetadata,
+    cardKeywordMemory,
     searchQuery,
     setSearchQuery,
     searchTags,
@@ -119,6 +120,8 @@ function AppContent() {
     setEditingReading,
     filteredReadings,
     handleAddReading,
+    handleExtractKeywordCandidates,
+    handleConfirmKeywordCandidates,
     handleProcessAi,
     togglePublic,
     handleDeleteReading,
@@ -1223,6 +1226,8 @@ function AppContent() {
             onEdit={handleEditReadingNavigate}
             onAuthorClick={handleAuthorClick}
             onProcessAi={handleProcessAi}
+            onExtractKeywordCandidates={handleExtractKeywordCandidates}
+            onConfirmKeywordCandidates={handleConfirmKeywordCandidates}
             cardMetadata={cardMetadata}
           />
         )}
@@ -1291,6 +1296,7 @@ function AppContent() {
               metadata={cardMetadata}
               onUpdate={setCardMetadata}
               readings={readings}
+              cardKeywordMemory={cardKeywordMemory}
               isLoggedIn={!!session}
               userId={session?.uid}
               onAddReading={handleAddReadingWithSnackbar}
