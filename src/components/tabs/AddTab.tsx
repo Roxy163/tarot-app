@@ -1,6 +1,6 @@
 import React from 'react';
 import { motion } from 'motion/react';
-import { TarotReading, SpreadDefinition, TarotCardMetadata } from '../../types';
+import { CardKeywordMemory, TarotReading, SpreadDefinition, TarotCardMetadata } from '../../types';
 import { AddReadingForm } from '../AddReadingForm';
 
 interface AddTabProps {
@@ -11,6 +11,7 @@ interface AddTabProps {
   spreads: SpreadDefinition[];
   onUpdateSpreads: (spreads: SpreadDefinition[]) => void;
   cardMetadata: TarotCardMetadata[];
+  cardKeywordMemory: CardKeywordMemory[];
   onUpdateCardMetadata: (metadata: TarotCardMetadata[]) => void;
   initialData?: TarotReading | null;
   onCancel: () => void;
@@ -24,6 +25,7 @@ export const AddTab: React.FC<AddTabProps> = ({
   spreads,
   onUpdateSpreads,
   cardMetadata,
+  cardKeywordMemory,
   onUpdateCardMetadata,
   initialData,
   onCancel
@@ -44,6 +46,7 @@ export const AddTab: React.FC<AddTabProps> = ({
         spreads={spreads} 
         onUpdateSpreads={onUpdateSpreads} 
         cardMetadata={cardMetadata}
+        cardKeywordMemory={cardKeywordMemory}
         onUpdateCardMetadata={onUpdateCardMetadata}
         initialData={initialData}
         onCancel={onCancel}

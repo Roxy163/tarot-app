@@ -1,7 +1,7 @@
 import React, { useState, useEffect, FormEvent } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Sparkles, Layers, User, MessageSquare, RotateCcw, BookOpen, X, Settings, Save } from 'lucide-react';
-import { SpreadDefinition, TarotCardMetadata, ReadingSlotData, TarotReading, ReadingFormData } from '../types';
+import { Sparkles, Layers, User, MessageSquare, RotateCcw, BookOpen, X, Settings, Save, Hash, Orbit, Home, Wind } from 'lucide-react';
+import { CardKeywordMemory, SpreadDefinition, TarotCardMetadata, ReadingSlotData, TarotReading, ReadingFormData } from '../types';
 import { LAYOUT_TEMPLATES, TAROT_CARDS, getCardImageUrl, OFFICIAL_SPREADS } from '../constants';
 import { CardPicker } from './CardPicker';
 import { SpreadDesigner } from './SpreadDesigner';
@@ -21,10 +21,13 @@ interface AddReadingFormProps {
   spreads: SpreadDefinition[];
   onUpdateSpreads: (spreads: SpreadDefinition[]) => void;
   cardMetadata: TarotCardMetadata[];
+  cardKeywordMemory?: CardKeywordMemory[];
   onUpdateCardMetadata: (metadata: TarotCardMetadata[]) => void;
   initialData?: Partial<TarotReading>;
   onCancel?: () => void;
 }
+
+type InfluenceFieldKey = 'numerologyInfluence' | 'astrologyInfluence' | 'houseInfluence' | 'elementInfluence';
 
 export const AddReadingForm: React.FC<AddReadingFormProps> = ({ 
   onSubmit, 
@@ -34,6 +37,7 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
   spreads, 
   onUpdateSpreads, 
   cardMetadata,
+  cardKeywordMemory = [],
   onUpdateCardMetadata,
   initialData, 
   onCancel 
@@ -45,6 +49,10 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
     cardInput: '',
     singleCard: initialData?.interpretation?.singleCard || '',
     combination: initialData?.interpretation?.combination || '',
+    numerologyInfluence: initialData?.interpretation?.numerologyInfluence || '',
+    astrologyInfluence: initialData?.interpretation?.astrologyInfluence || '',
+    houseInfluence: initialData?.interpretation?.houseInfluence || '',
+    elementInfluence: initialData?.interpretation?.elementInfluence || '',
     isAnonymous: initialData?.isAnonymous || false,
     isPublic: initialData?.isPublic || false,
     isForClient: initialData?.isForClient || false,
@@ -81,8 +89,13 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
   const [showSlotNumbers, setShowSlotNumbers] = useState(true);
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [showFeedback, setShowFeedback] = useState(false);
-  const [showCompReading, setShowCompReading] = useState(false);
   const [showComboReading, setShowComboReading] = useState(false);
+  const [expandInfluenceByDefault, setExpandInfluenceByDefault] = useState(() => (
+    localStorage.getItem('tarot_influence_sections_open') === 'true'
+  ));
+  const [activeInfluenceKey, setActiveInfluenceKey] = useState<InfluenceFieldKey | null>(() => (
+    localStorage.getItem('tarot_influence_sections_open') === 'true' ? 'numerologyInfluence' : null
+  ));
   const [activeSlotIndex, setActiveSlotIndex] = useState<number>(0);
   const [isEditingSession, setIsEditingSession] = useState(false);
   const [gridCols, setGridCols] = useState(5);
@@ -90,12 +103,50 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
   const [showUpdatePrompt, setShowUpdatePrompt] = useState<{ name: string, oldSlots: string[] } | null>(null);
   const [showRestoreConfirm, setShowRestoreConfirm] = useState<{ name?: string } | null>(null);
   const [showEmailModal, setShowEmailModal] = useState(false);
+  const [submitNotice, setSubmitNotice] = useState('');
 
   const [longPressTimer, setLongPressTimer] = useState<NodeJS.Timeout | null>(null);
   const [isLongPressActive, setIsLongPressActive] = useState(false);
 
   const isDailyMode = formData.category === '日运';
   const isMultiCard = cardSlots.length > 1;
+  const influenceFields = [
+    {
+      key: 'numerologyInfluence',
+      icon: Hash,
+      title: '🔢 灵数影响',
+      subtitle: '数字、重复数字、阶段感和成长课题。',
+      placeholder: '这组牌里的数字在提醒什么节奏、阶段或课题...',
+    },
+    {
+      key: 'astrologyInfluence',
+      icon: Orbit,
+      title: '🪐 行星星座影响',
+      subtitle: '行星和星座带来的驱动力、情绪气质与关系模式。',
+      placeholder: '行星或星座让这次解读呈现出什么气质和动力...',
+    },
+    {
+      key: 'houseInfluence',
+      icon: Home,
+      title: '🏛️ 宫位影响',
+      subtitle: '宫位提示主题落在哪个现实场景或经验领域。',
+      placeholder: '这次主题更像落在哪个生活领域、关系位置或现实场景...',
+    },
+    {
+      key: 'elementInfluence',
+      icon: Wind,
+      title: '🌿 元素影响',
+      subtitle: '火、水、风、土在行动、感受、思考和现实层面的比例。',
+      placeholder: '火水风土哪一种更强，分别带来什么推动或失衡...',
+    },
+  ] as const;
+
+  const handleToggleInfluenceDefault = (checked: boolean) => {
+    localStorage.setItem('tarot_influence_sections_open', String(checked));
+    setExpandInfluenceByDefault(checked);
+    setActiveInfluenceKey(checked ? 'numerologyInfluence' : null);
+  };
+  const activeInfluenceField = influenceFields.find(field => field.key === activeInfluenceKey);
 
   useEffect(() => {
     if (isDailyMode && !initialData) {
@@ -246,7 +297,10 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
   const saveSpread = () => {
     const isOfficial = OFFICIAL_SPREADS.some(os => os.name === formData.spread);
     const suggestedName = isOfficial ? `${formData.spread} (自定义)` : formData.spread;
-    const name = newSpreadName.trim() || suggestedName;
+    let name = newSpreadName.trim() || suggestedName;
+    if (OFFICIAL_SPREADS.some(os => os.name === name)) {
+      name = `${name} (自定义)`;
+    }
     if (!name) return;
     
     // Safety check: if user hasn't changed the name from an official one, and is saving, 
@@ -491,20 +545,51 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
 
   const handleSubmit = (e: FormEvent) => {
     e.preventDefault();
-    const { singleCard, combination, readingDate, ...rest } = formData;
+    const {
+      singleCard,
+      combination,
+      numerologyInfluence,
+      astrologyInfluence,
+      houseInfluence,
+      elementInfluence,
+      readingDate,
+      ...rest
+    } = formData;
     
-    // In daily mode or single card spread, combination is not required
-    const finalCombination = (isDailyMode || formData.spread === '单牌阵') ? (cardInterpretations[0] || '') : combination;
+    // In daily mode or single card spread, keep the note as a single-card reading.
+    const filledSlots = cardSlots
+      .map((slot, index) => ({ slot, index }))
+      .filter(item => item.slot.name);
+
+    if (filledSlots.length === 0) {
+      setSubmitNotice('请至少选择一张牌，再录入手记。');
+      return;
+    }
+
+    setSubmitNotice('');
+
+    const submittedCards = filledSlots.map(item => item.slot);
+    const submittedInterpretations = filledSlots.map(item => cardInterpretations[item.index] || '');
+    const isSingleCardReading = isDailyMode || formData.spread === '单牌阵' || submittedCards.length <= 1;
+    const finalSingleCard = isSingleCardReading ? (submittedInterpretations[0] || singleCard) : singleCard;
+    const finalCombination = isSingleCardReading ? '' : combination;
 
     onSubmit({ 
       ...rest, 
       readingDate: new Date(readingDate).toISOString(),
-      interpretation: { singleCard, combination: finalCombination },
-      cards: cardSlots.filter(s => s.name),
-      slotLabels: cardSlots.map(s => s.label || ''),
-      slotPositions: cardSlots.map(s => s.position || ''),
-      rotatedSlots: cardSlots.map((s, i) => s.isRotated ? i : -1).filter(i => i !== -1),
-      cardInterpretations: cardInterpretations
+      interpretation: {
+        singleCard: finalSingleCard,
+        combination: finalCombination,
+        numerologyInfluence,
+        astrologyInfluence,
+        houseInfluence,
+        elementInfluence,
+      },
+      cards: submittedCards,
+      slotLabels: submittedCards.map(s => s.label || ''),
+      slotPositions: submittedCards.map(s => s.position || ''),
+      rotatedSlots: submittedCards.map((s, i) => s.isRotated ? i : -1).filter(i => i !== -1),
+      cardInterpretations: submittedInterpretations
     });
   };
 
@@ -774,20 +859,21 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
         activeSlotIndex={activeSlotIndex}
         cardSlots={cardSlots}
         cardMetadata={cardMetadata}
+        cardKeywordMemory={cardKeywordMemory}
         cardInterpretations={cardInterpretations}
+        question={formData.question}
+        spread={formData.spread}
+        category={formData.category}
+        combinationContext={formData.combination}
         isLoggedIn={isLoggedIn}
         userId={userId}
         isMultiCard={isMultiCard}
         isDailyMode={isDailyMode}
-        showCompReading={showCompReading}
-        compReadingValue={formData.singleCard}
         onToggleReverse={toggleReverse}
         onSetCardInterpretations={setCardInterpretations}
         onSetActiveSlotIndex={setActiveSlotIndex}
         onSetShowPicker={setShowPicker}
         onUpdateCardSlotsWithHistory={updateCardSlotsWithHistory}
-        onToggleShowCompReading={() => setShowCompReading(!showCompReading)}
-        onSetCompReadingValue={val => setFormData({...formData, singleCard: val})}
       />
 
       {isMultiCard && (
@@ -807,6 +893,70 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
           />
         </FoldableSection>
       )}
+
+      <div className="space-y-3">
+        <div className="flex items-center justify-between gap-3 px-1">
+          <p className="text-xs font-bold text-forest-accent">补充解读视角（可选）</p>
+          <label className="flex items-center gap-2 text-[10px] font-bold text-forest-muted cursor-pointer">
+            <input
+              type="checkbox"
+              className="accent-forest-accent w-3.5 h-3.5"
+              checked={expandInfluenceByDefault}
+              onChange={e => handleToggleInfluenceDefault(e.target.checked)}
+            />
+            <span>默认展开</span>
+          </label>
+        </div>
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+          {influenceFields.map(field => {
+            const isActive = activeInfluenceKey === field.key;
+            const hasValue = !!formData[field.key]?.trim();
+
+            return (
+              <button
+                key={field.key}
+                type="button"
+                onClick={() => setActiveInfluenceKey(isActive ? null : field.key)}
+                className={`min-h-11 px-3 py-2 rounded-xl border text-xs font-bold flex items-center justify-center gap-1.5 transition-all ${
+                  isActive
+                    ? 'bg-forest-accent text-white border-forest-accent shadow-sm'
+                    : 'bg-forest-accent/5 text-forest-accent border-forest-accent/5 hover:bg-forest-accent/10'
+                }`}
+              >
+                <span>{field.title}</span>
+                {hasValue && <span className={`w-1.5 h-1.5 rounded-full ${isActive ? 'bg-white' : 'bg-forest-accent'}`} />}
+              </button>
+            );
+          })}
+        </div>
+
+        <AnimatePresence mode="wait">
+          {activeInfluenceField && (
+            <motion.div
+              key={activeInfluenceField.key}
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -8 }}
+              className="rounded-2xl bg-forest-accent/5 border border-forest-accent/5 p-4 space-y-3"
+            >
+              <div className="flex items-start gap-2">
+                {React.createElement(activeInfluenceField.icon, { size: 16, className: 'text-forest-accent mt-0.5' })}
+                <div>
+                  <p className="text-sm font-bold text-forest-accent">{activeInfluenceField.title}</p>
+                  <p className="text-[10px] text-forest-muted mt-1">{activeInfluenceField.subtitle}</p>
+                </div>
+              </div>
+              <textarea
+                rows={4}
+                className="w-full px-4 py-3 bg-white border border-forest-accent/5 rounded-xl focus:ring-2 focus:ring-forest-accent/20 text-sm"
+                placeholder={activeInfluenceField.placeholder}
+                value={formData[activeInfluenceField.key]}
+                onChange={e => setFormData({ ...formData, [activeInfluenceField.key]: e.target.value })}
+              />
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
 
       <div className="space-y-4">
         {formData.isForClient && (
@@ -863,6 +1013,12 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
           </div>
         </FoldableSection>
       </div>
+
+      {submitNotice && (
+        <div className="rounded-2xl border border-red-100 bg-red-50 px-4 py-3 text-sm font-medium text-red-600">
+          {submitNotice}
+        </div>
+      )}
 
       <button 
         type="submit" 

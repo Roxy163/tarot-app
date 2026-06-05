@@ -60,6 +60,25 @@ export interface CardKeywordMemory {
   updatedAt: string;
 }
 
+export type AiInspirationMode = 'angle' | 'questions' | 'shadow';
+
+export interface AiInspirationRequest {
+  cardName: string;
+  isReversed: boolean;
+  slotLabel: string;
+  question: string;
+  spread: string;
+  category?: string;
+  currentInsight?: string;
+  combinationContext?: string;
+  personalKeywords?: string[];
+  cardKeywords?: string[];
+  cardCorrespondences?: string[];
+  cardMeaning?: string;
+  reversedMeaning?: string;
+  mode: AiInspirationMode;
+}
+
 export interface CardAnnotation {
   cardId: string;
   userId: string;
@@ -111,6 +130,10 @@ export interface TarotReading {
     singleCard: string;
     combination: string;
     summary: string;
+    numerologyInfluence?: string;
+    astrologyInfluence?: string;
+    houseInfluence?: string;
+    elementInfluence?: string;
   };
   keywords: string[];
   isPublic: boolean;
@@ -166,6 +189,10 @@ export interface ReadingFormData {
   interpretation: {
     singleCard: string;
     combination: string;
+    numerologyInfluence?: string;
+    astrologyInfluence?: string;
+    houseInfluence?: string;
+    elementInfluence?: string;
   };
   isAnonymous: boolean;
   isPublic: boolean;

@@ -1,4 +1,4 @@
-import React, { useCallback, useState, useEffect } from 'react';
+import React, { useCallback, useMemo, useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Plus, History, Globe, BookOpen, Sparkles, X, User, Menu, ChevronRight, Settings, Info, LogOut, Database, ShieldCheck, ArrowRight, LogIn, Book, Upload, Moon, CheckCircle, AlertCircle, AlertTriangle, Mail } from 'lucide-react';
 import { TarotReading, SpreadDefinition, TarotCardMetadata, UserProfile } from './types';
@@ -16,6 +16,7 @@ import { PublicTab } from './components/tabs/PublicTab';
 import { ProfileTab } from './components/tabs/ProfileTab';
 import { MainLayout } from './components/layouts/MainLayout';
 import { CardMetadataManager } from './components/CardMetadataManager';
+import { ReadingDetailModal } from './components/ReadingDetailModal';
 import { useReadings } from './hooks/useReadings';
 import { useOnboarding } from './context/OnboardingContext';
 import { FirstEntryGuide } from './components/onboarding/FirstEntryGuide';
@@ -29,9 +30,9 @@ type SnackbarState = {
   showLoginAction?: boolean;
 };
 
-type AppTab = 'home' | 'add' | 'private' | 'public' | 'metadata' | 'profile' | 'canvas';
+type AppTab = 'home' | 'add' | 'private' | 'public' | 'metadata' | 'profile';
 
-const APP_TABS: AppTab[] = ['home', 'add', 'private', 'public', 'metadata', 'profile', 'canvas'];
+const APP_TABS: AppTab[] = ['home', 'add', 'private', 'public', 'metadata', 'profile'];
 
 const isAppTab = (value: string | null): value is AppTab => (
   !!value && APP_TABS.includes(value as AppTab)
@@ -48,6 +49,7 @@ function AppContent() {
   );
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [selectedAuthor, setSelectedAuthor] = useState<string | null>(null);
+  const [selectedReadingDetail, setSelectedReadingDetail] = useState<TarotReading | null>(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isSecurityModalOpen, setIsSecurityModalOpen] = useState(false);
   const [showAuthPage, setShowAuthPage] = useState(false);
@@ -127,11 +129,28 @@ function AppContent() {
     handleDeleteReading,
     handleEditReading,
     toggleTag,
+    syncNotice,
+    clearSyncNotice,
   } = useReadings(session);
+
+  const [publicReadingsCache, setPublicReadingsCache] = useState<TarotReading[]>([]);
+
+  useEffect(() => {
+    if (!syncNotice) return;
+
+    setSnackbar({ isOpen: true, message: syncNotice });
+    const timer = window.setTimeout(() => {
+      setSnackbar(prev => ({ ...prev, isOpen: false }));
+      clearSyncNotice();
+    }, 4200);
+
+    return () => window.clearTimeout(timer);
+  }, [clearSyncNotice, syncNotice]);
 
   const resetPrivateSessionState = useCallback((forceHome = false) => {
     setProfile(null);
     setSelectedAuthor(null);
+    setSelectedReadingDetail(null);
     setEditingReading(null);
     setShowLogoutConfirm(false);
     setIsSecurityModalOpen(false);
@@ -448,43 +467,43 @@ function AppContent() {
           ));
 
           if (importableReadings.length > 0) {
-            setReadings(prev => {
-              const existingIds = new Set(prev.map(reading => reading.id));
-              const newReadings = importableReadings.filter((reading: TarotReading) => !existingIds.has(reading.id));
-              importedCount += newReadings.length;
-              return [...newReadings, ...prev];
-            });
-            
+            const currentReadings = readings.filter((r: TarotReading) => !r.isExample);
+            const existingIds = new Set(currentReadings.map(reading => reading.id));
+            const newReadings = importableReadings.filter((reading: TarotReading) => !existingIds.has(reading.id));
+            const nextReadings = [...newReadings, ...currentReadings];
+
+            importedCount += newReadings.length;
+            setReadings(prev => [...newReadings, ...prev]);
+
             if (uid) {
-              const currentReadings = readings.filter((r: TarotReading) => !r.isExample);
-              await replaceUserReadings(uid, [...importableReadings, ...currentReadings]);
+              await replaceUserReadings(uid, nextReadings);
             }
           }
         }
         
         if (importedData.spreads && Array.isArray(importedData.spreads)) {
-          setSpreads(prev => {
-            const existingNames = new Set(prev.map((s: SpreadDefinition) => s.name));
-            const newSpreads = importedData.spreads.filter((s: SpreadDefinition) => !existingNames.has(s.name));
-            importedCount += newSpreads.length;
-            return [...prev, ...newSpreads];
-          });
+          const existingNames = new Set(spreads.map((s: SpreadDefinition) => s.name));
+          const newSpreads = importedData.spreads.filter((s: SpreadDefinition) => !existingNames.has(s.name));
+          const nextSpreads = [...spreads, ...newSpreads];
+
+          importedCount += newSpreads.length;
+          setSpreads(nextSpreads);
           
           if (uid) {
-            await saveUserSpreads(uid, spreads);
+            await saveUserSpreads(uid, nextSpreads);
           }
         }
         
         if (importedData.cardMetadata && Array.isArray(importedData.cardMetadata)) {
-          setCardMetadata(prev => {
-            const existingNames = new Set(prev.map((m: TarotCardMetadata) => m.name));
-            const newMetadata = importedData.cardMetadata.filter((m: TarotCardMetadata) => !existingNames.has(m.name));
-            importedCount += newMetadata.length;
-            return [...prev, ...newMetadata];
-          });
+          const existingNames = new Set(cardMetadata.map((m: TarotCardMetadata) => m.name));
+          const newMetadata = importedData.cardMetadata.filter((m: TarotCardMetadata) => !existingNames.has(m.name));
+          const nextMetadata = [...cardMetadata, ...newMetadata];
+
+          importedCount += newMetadata.length;
+          setCardMetadata(nextMetadata);
           
           if (uid) {
-            await saveUserCardMetadata(uid, cardMetadata);
+            await saveUserCardMetadata(uid, nextMetadata);
           }
         }
         
@@ -519,14 +538,20 @@ function AppContent() {
 
   // Handle add reading with snackbar
   const handleAddReadingWithSnackbar = async (newReading: any) => {
+    const wasEditing = !!editingReading;
     await handleAddReading(newReading, profile, (msg: string) => {
       setSnackbar({ isOpen: true, message: msg });
       setTimeout(() => setSnackbar(prev => ({ ...prev, isOpen: false })), 3000);
     });
+    if (wasEditing) {
+      setEditingReading(null);
+      setActiveTab('private');
+    }
   };
 
   // Handle edit reading navigation
   const handleEditReadingNavigate = (reading: TarotReading) => {
+    setSelectedReadingDetail(null);
     handleEditReading(reading);
     setActiveTab('add');
   };
@@ -542,6 +567,22 @@ function AppContent() {
     setSelectedAuthor(author);
     setActiveTab('profile');
   };
+
+  const ownAuthorName = profile?.display_name || profile?.nickname || session?.email?.split('@')[0] || '研习阁主';
+  const isViewingOwnProfile = !selectedAuthor || selectedAuthor === ownAuthorName;
+  const profileReadings = useMemo(() => {
+    if (isViewingOwnProfile) return readings;
+
+    const byId = new Map<string, TarotReading>();
+    [...publicReadingsCache, ...readings].forEach(reading => {
+      if (!reading.isPublic && reading.userId === 'public') return;
+      byId.set(reading.id, reading);
+    });
+
+    return Array.from(byId.values()).sort(
+      (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
+    );
+  }, [isViewingOwnProfile, publicReadingsCache, readings]);
 
   // Sidebar Content
   const sidebarContent = (
@@ -1224,6 +1265,7 @@ function AppContent() {
             onTogglePublic={togglePublic}
             onDelete={handleDeleteReading}
             onEdit={handleEditReadingNavigate}
+            onViewDetails={setSelectedReadingDetail}
             onAuthorClick={handleAuthorClick}
             onProcessAi={handleProcessAi}
             onExtractKeywordCandidates={handleExtractKeywordCandidates}
@@ -1239,6 +1281,7 @@ function AppContent() {
             onTagClick={handlePublicTagClick}
             onAuthorClick={handleAuthorClick}
             onProcessAi={handleProcessAi}
+            onPublicReadingsLoaded={setPublicReadingsCache}
           />
         )}
 
@@ -1251,17 +1294,22 @@ function AppContent() {
             spreads={spreads}
             onUpdateSpreads={setSpreads}
             cardMetadata={cardMetadata}
+            cardKeywordMemory={cardKeywordMemory}
             onUpdateCardMetadata={setCardMetadata}
             initialData={editingReading}
-            onCancel={() => { setEditingReading(null); setActiveTab('home'); }}
+            onCancel={() => {
+              const wasEditing = !!editingReading;
+              setEditingReading(null);
+              setActiveTab(wasEditing ? 'private' : 'home');
+            }}
           />
         )}
 
         {activeTab === 'profile' && (
           <ProfileTab
-            authorName={selectedAuthor || '研习阁主'}
-            profile={profile}
-            readings={readings}
+            authorName={selectedAuthor || ownAuthorName}
+            profile={isViewingOwnProfile ? profile : null}
+            readings={profileReadings}
             cardMetadata={cardMetadata}
             onLogout={() => setShowLogoutConfirm(true)}
             onUpdateProfile={async (updated) => {
@@ -1308,6 +1356,12 @@ function AppContent() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      <ReadingDetailModal
+        reading={selectedReadingDetail}
+        onClose={() => setSelectedReadingDetail(null)}
+        onEdit={handleEditReadingNavigate}
+      />
     </MainLayout>
   );
 }

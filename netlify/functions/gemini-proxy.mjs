@@ -32,7 +32,9 @@ setInterval(() => {
 const ALLOWED_ORIGINS = [
   'https://tarot-pavilion.netlify.app',
   'http://localhost:3000',
-  'http://localhost:5173'
+  'http://127.0.0.1:3000',
+  'http://localhost:5173',
+  'http://127.0.0.1:5173'
 ];
 
 export const handler = async (event) => {
@@ -79,7 +81,7 @@ export const handler = async (event) => {
 
   const token = authHeader.substring(7);
   if (!token || token.length < 20) {
-    return { statusCode: 401, body: JSON.stringify({ error: 'Unauthorized' }) };
+    return { statusCode: 401, body: JSON.stringify({ error: '请先登录后再使用 AI 灵感。' }) };
   }
 
   try {

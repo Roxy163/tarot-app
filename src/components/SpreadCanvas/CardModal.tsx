@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { X, RotateCcw, FlipVertical } from 'lucide-react';
 import { useSpreadCanvasStore, getCardMeaning, getCardData } from '../../store/spreadCanvasStore';
+import { ConfirmDialog } from '../ConfirmDialog';
 
 export const CardModal: React.FC = () => {
   const {
@@ -14,6 +15,7 @@ export const CardModal: React.FC = () => {
   } = useSpreadCanvasStore();
 
   const [activeTab, setActiveTab] = useState<'upright' | 'reversed'>('upright');
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   if (!selectedCardForModal) return null;
 
@@ -40,10 +42,7 @@ export const CardModal: React.FC = () => {
   };
 
   const handleDelete = () => {
-    if (confirm('确定要删除这张牌吗？') && selectedCardForModal.id) {
-      removeCard(selectedCardForModal.id);
-      closeCardModal();
-    }
+    setShowDeleteConfirm(true);
   };
 
   const handleLabelChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -223,6 +222,21 @@ export const CardModal: React.FC = () => {
                 </button>
               </div>
             </div>
+
+            <ConfirmDialog
+              isOpen={showDeleteConfirm}
+              title="删除卡牌"
+              message="确定要删除这张牌吗？"
+              confirmText="删除"
+              destructive
+              onConfirm={() => {
+                if (selectedCardForModal.id) {
+                  removeCard(selectedCardForModal.id);
+                  closeCardModal();
+                }
+              }}
+              onClose={() => setShowDeleteConfirm(false)}
+            />
           </motion.div>
         </motion.div>
       )}

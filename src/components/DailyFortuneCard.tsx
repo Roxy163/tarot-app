@@ -13,7 +13,7 @@ interface FortuneChoice {
 interface DailyFortuneCardProps {
   fortune: DailyFortune | null;
   onGenerate: () => void;
-  onGenerateWithNumber: (cardNumber: number) => void;
+  onGenerateWithNumber: (cardNumber: number, cardIndex?: number) => void;
   onReshuffle: () => void;
   onAddReflection: (id: string, reflection: string) => void;
 }
@@ -35,7 +35,6 @@ export const DailyFortuneCard: React.FC<DailyFortuneCardProps> = ({
   const [fortuneChoice, setFortuneChoice] = useState<FortuneChoice | null>(null);
 
   const cardData = fortune ? TAROT_CARDS.find(c => c.name === fortune.cardName) : null;
-  const choiceCardData = fortuneChoice ? TAROT_CARDS[fortuneChoice.cardIndex] : null;
 
   const handleShuffle = async () => {
     setShufflePhase('shuffling');
@@ -81,7 +80,7 @@ export const DailyFortuneCard: React.FC<DailyFortuneCardProps> = ({
     if (fortuneChoice) {
       setFortuneChoice({ ...fortuneChoice, isRevealed: true });
       setShufflePhase('revealed');
-      onGenerateWithNumber(fortuneChoice.cardNumber);
+      onGenerateWithNumber(fortuneChoice.cardNumber, fortuneChoice.cardIndex);
     }
   };
 

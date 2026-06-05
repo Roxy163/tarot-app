@@ -17,12 +17,14 @@ const normalizeMemoryKeyword = (keyword: string) => keyword.trim().replace(/^#+/
 
 const getReadingInsightForCard = (reading: TarotReading, cardName: string) => {
   const cardIndex = reading.cards?.findIndex(card => card.name === cardName) ?? -1;
-  return [
-    cardIndex >= 0 ? reading.cardInterpretations?.[cardIndex] : '',
-    reading.interpretation?.singleCard,
-    reading.interpretation?.combination,
-    reading.userFeedback
-  ].filter(Boolean).join(' ').trim();
+  const cardInsight = cardIndex >= 0 ? reading.cardInterpretations?.[cardIndex]?.trim() : '';
+  if (cardInsight) return cardInsight;
+
+  if ((reading.cards?.length || 0) <= 1) {
+    return (reading.interpretation?.singleCard || reading.interpretation?.combination || '').trim();
+  }
+
+  return '';
 };
 
 const mergeKeywordMemory = (
@@ -98,6 +100,8 @@ export const useReadings = (session: { uid?: string; email?: string | null } | n
   const [isProcessing, setIsProcessing] = useState(false);
   const [editingReading, setEditingReading] = useState<TarotReading | null>(null);
   const [loadedDataKey, setLoadedDataKey] = useState<string | null>(null);
+  const [isCloudSyncPaused, setIsCloudSyncPaused] = useState(false);
+  const [syncNotice, setSyncNotice] = useState<string | null>(null);
 
   const parseSavedArray = <T,>(key: string): T[] | null => {
     const saved = localStorage.getItem(key);
@@ -117,6 +121,8 @@ export const useReadings = (session: { uid?: string; email?: string | null } | n
 
     const loadData = async () => {
       setLoadedDataKey(null);
+      setIsCloudSyncPaused(false);
+      setSyncNotice(null);
       const localReadings = parseSavedArray<TarotReading>(session?.uid ? 'tarot_readings' : 'tarot_guest_data') || [];
       const savedSpreads = parseSavedArray<SpreadDefinition>('tarot_spreads') || [];
       const localSpreads = [...OFFICIAL_SPREADS, ...savedSpreads.filter(s => !OFFICIAL_SPREADS.some(os => os.name === s.name))];
@@ -150,6 +156,14 @@ export const useReadings = (session: { uid?: string; email?: string | null } | n
         setCardKeywordMemory(cloudKeywordMemory && cloudKeywordMemory.length > 0 ? cloudKeywordMemory : localKeywordMemory);
       } catch (error) {
         console.error('Failed to load data:', error);
+        if (cancelled) return;
+
+        setReadings([...exampleReadings, ...localReadings]);
+        setSpreads(localSpreads);
+        setCardMetadata(localMetadata);
+        setCardKeywordMemory(localKeywordMemory);
+        setIsCloudSyncPaused(true);
+        setSyncNotice('云端同步暂时不可用，已切换为本地暂存，避免覆盖云端典籍。');
       } finally {
         if (!cancelled) setLoadedDataKey(activeDataKey);
       }
@@ -168,50 +182,72 @@ export const useReadings = (session: { uid?: string; email?: string | null } | n
     const userReadings = readings.filter(r => !r.isExample);
 
     if (session?.uid) {
+      localStorage.setItem('tarot_readings', JSON.stringify(userReadings));
+      if (isCloudSyncPaused) return;
+
       replaceUserReadings(session.uid, userReadings).catch(error => {
         console.error('Failed to save readings:', error);
+        setIsCloudSyncPaused(true);
+        setSyncNotice('云端保存失败，后续修改已先写入本地，避免误覆盖云端。');
       });
-      localStorage.setItem('tarot_readings', JSON.stringify(readings.filter(r => !r.isExample)));
     } else {
       localStorage.setItem('tarot_guest_data', JSON.stringify(userReadings));
     }
-  }, [activeDataKey, loadedDataKey, readings, session?.uid]);
+  }, [activeDataKey, isCloudSyncPaused, loadedDataKey, readings, session?.uid]);
 
   useEffect(() => {
     if (loadedDataKey !== activeDataKey) return;
 
     if (session?.uid) {
+      localStorage.setItem('tarot_spreads', JSON.stringify(spreads));
+      if (isCloudSyncPaused) return;
+
       saveUserSpreads(session.uid, spreads).catch(error => {
         console.error('Failed to save spreads:', error);
+        setIsCloudSyncPaused(true);
+        setSyncNotice('牌阵云端保存失败，已先保存在本地。');
       });
+      return;
     }
 
     localStorage.setItem('tarot_spreads', JSON.stringify(spreads));
-  }, [activeDataKey, loadedDataKey, session?.uid, spreads]);
+  }, [activeDataKey, isCloudSyncPaused, loadedDataKey, session?.uid, spreads]);
 
   useEffect(() => {
     if (loadedDataKey !== activeDataKey) return;
 
     if (session?.uid) {
+      localStorage.setItem('tarot_card_metadata', JSON.stringify(cardMetadata));
+      if (isCloudSyncPaused) return;
+
       saveUserCardMetadata(session.uid, cardMetadata).catch(error => {
         console.error('Failed to save card metadata:', error);
+        setIsCloudSyncPaused(true);
+        setSyncNotice('牌义注疏云端保存失败，已先保存在本地。');
       });
+      return;
     }
 
     localStorage.setItem('tarot_card_metadata', JSON.stringify(cardMetadata));
-  }, [activeDataKey, cardMetadata, loadedDataKey, session?.uid]);
+  }, [activeDataKey, cardMetadata, isCloudSyncPaused, loadedDataKey, session?.uid]);
 
   useEffect(() => {
     if (loadedDataKey !== activeDataKey) return;
 
     if (session?.uid) {
+      localStorage.setItem('tarot_card_keyword_memory', JSON.stringify(cardKeywordMemory));
+      if (isCloudSyncPaused) return;
+
       saveUserCardKeywordMemory(session.uid, cardKeywordMemory).catch(error => {
         console.error('Failed to save card keyword memory:', error);
+        setIsCloudSyncPaused(true);
+        setSyncNotice('个人牌义记忆云端保存失败，已先保存在本地。');
       });
+      return;
     }
 
     localStorage.setItem('tarot_card_keyword_memory', JSON.stringify(cardKeywordMemory));
-  }, [activeDataKey, cardKeywordMemory, loadedDataKey, session?.uid]);
+  }, [activeDataKey, cardKeywordMemory, isCloudSyncPaused, loadedDataKey, session?.uid]);
 
   // 过滤阅读记录
   const filteredReadings = useMemo(() => {
@@ -221,6 +257,7 @@ export const useReadings = (session: { uid?: string; email?: string | null } | n
       const q = searchQuery.toLowerCase();
       result = readings.filter(r => {
         const matchesQuery = !q || 
+          r.id.toLowerCase().includes(q) ||
           r.question.toLowerCase().includes(q) ||
           r.keywords.some(k => k.toLowerCase().includes(q)) ||
           r.authorName.toLowerCase().includes(q);
@@ -325,7 +362,10 @@ export const useReadings = (session: { uid?: string; email?: string | null } | n
     if (!reading || reading.isAiProcessed) return;
 
     try {
-      const fullText = `${reading.interpretation.singleCard} ${reading.interpretation.combination}`;
+      const fullText = [
+        ...(reading.cardInterpretations || []),
+        (reading.cards?.length || 0) <= 1 ? reading.interpretation?.singleCard : '',
+      ].filter(Boolean).join(' ');
       const keywordCandidates = await suggestReadingKeywords(reading);
       const aiKeywords = keywordCandidates.map(candidate => normalizeMemoryKeyword(candidate.keyword)).filter(Boolean);
       
@@ -391,6 +431,10 @@ export const useReadings = (session: { uid?: string; email?: string | null } | n
     );
   }, []);
 
+  const clearSyncNotice = useCallback(() => {
+    setSyncNotice(null);
+  }, []);
+
   return {
     readings,
     setReadings,
@@ -415,5 +459,8 @@ export const useReadings = (session: { uid?: string; email?: string | null } | n
     handleDeleteReading,
     handleEditReading,
     toggleTag,
+    isCloudSyncPaused,
+    syncNotice,
+    clearSyncNotice,
   };
 };

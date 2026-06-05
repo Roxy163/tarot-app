@@ -11,6 +11,7 @@ interface PublicTabProps {
   onTagClick: (tag: string) => void;
   onAuthorClick: (author: string) => void;
   onProcessAi: (id: string) => void;
+  onPublicReadingsLoaded?: (readings: TarotReading[]) => void;
 }
 
 export const PublicTab: React.FC<PublicTabProps> = ({
@@ -18,7 +19,8 @@ export const PublicTab: React.FC<PublicTabProps> = ({
   cardMetadata,
   onTagClick,
   onAuthorClick,
-  onProcessAi
+  onProcessAi,
+  onPublicReadingsLoaded
 }) => {
   const [cloudPublicReadings, setCloudPublicReadings] = useState<TarotReading[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -60,6 +62,10 @@ export const PublicTab: React.FC<PublicTabProps> = ({
       (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
     );
   }, [cloudPublicReadings, readings]);
+
+  useEffect(() => {
+    onPublicReadingsLoaded?.(publicReadings);
+  }, [onPublicReadingsLoaded, publicReadings]);
 
   return (
     <motion.div 

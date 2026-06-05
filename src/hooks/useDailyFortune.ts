@@ -106,7 +106,7 @@ export const useDailyFortune = () => {
     return createFortuneFromCard(card, isReversed);
   }, []);
 
-  const generateDailyFortuneWithNumber = useCallback((cardNumber: number) => {
+  const generateDailyFortuneWithNumber = useCallback((cardNumber: number, selectedCardIndex?: number) => {
     const today = new Date().toISOString().split('T')[0];
     
     const existing = getToday();
@@ -120,7 +120,9 @@ export const useDailyFortune = () => {
     }
 
     let cardIndex = index;
-    if (shuffledDeck.length > 0) {
+    if (typeof selectedCardIndex === 'number') {
+      cardIndex = selectedCardIndex;
+    } else if (shuffledDeck.length > 0) {
       cardIndex = shuffledDeck[index] || index;
     }
 
@@ -131,10 +133,12 @@ export const useDailyFortune = () => {
   }, [shuffledDeck]);
 
   const reshuffleDailyFortune = useCallback(() => {
-    const today = new Date().toISOString().split('T')[0];
-    setFortunes(prev => prev.filter(f => f.date !== today));
-    return generateDailyFortune();
-  }, [generateDailyFortune]);
+    const randomIndex = Math.floor(Math.random() * TAROT_CARDS.length);
+    const card = TAROT_CARDS[randomIndex];
+    const isReversed = Math.random() > 0.7;
+
+    return createFortuneFromCard(card, isReversed);
+  }, []);
 
   const addReflection = useCallback((fortuneId: string, reflection: string) => {
     setFortunes(prev => prev.map(f => 

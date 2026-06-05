@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useSpreadCanvasStore, TAROT_CARDS } from '../../store/spreadCanvasStore';
 import { Grid3X3, Upload, Download, RotateCcw, Plus } from 'lucide-react';
+import { ConfirmDialog } from '../ConfirmDialog';
 
 export const ToolPanel: React.FC = () => {
   const {
@@ -16,6 +17,7 @@ export const ToolPanel: React.FC = () => {
 
   const [showCardPicker, setShowCardPicker] = useState(false);
   const [importFile, setImportFile] = useState<File | null>(null);
+  const [showClearConfirm, setShowClearConfirm] = useState(false);
 
   const handleExport = () => {
     const json = exportSpread();
@@ -146,11 +148,7 @@ export const ToolPanel: React.FC = () => {
         </div>
 
         <button
-          onClick={() => {
-            if (confirm('确定要清空所有牌吗？')) {
-              clearSpread();
-            }
-          }}
+          onClick={() => setShowClearConfirm(true)}
           className="w-full px-3 py-2 bg-red-500/20 hover:bg-red-500/30 text-red-400 font-bold rounded-lg transition-colors"
         >
           清空牌阵
@@ -162,6 +160,16 @@ export const ToolPanel: React.FC = () => {
           拖拽画布 | Ctrl+滚轮缩放 | Delete删除
         </p>
       </div>
+
+      <ConfirmDialog
+        isOpen={showClearConfirm}
+        title="清空牌阵"
+        message="确定要清空所有牌吗？"
+        confirmText="清空"
+        destructive
+        onConfirm={clearSpread}
+        onClose={() => setShowClearConfirm(false)}
+      />
     </div>
   );
 };

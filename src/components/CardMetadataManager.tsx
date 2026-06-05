@@ -7,6 +7,7 @@ import { useCardNumerology } from '../hooks/useCardNumerology';
 import { getCardAnnotations, saveCardAnnotation } from '../lib/firebaseData';
 import { cardAnnotationService } from '../services/cardAnnotationService';
 import { CardAnnotationEditor } from './CardAnnotationEditor';
+import { ConfirmDialog } from './ConfirmDialog';
 
 interface CardMetadataManagerProps {
   metadata: TarotCardMetadata[];
@@ -31,6 +32,7 @@ function CardNumerologyCard({ cardName, isLoggedIn, userId }: CardNumerologyCard
   const [tempVal, setTempVal] = useState<number | string>(numerology !== null ? numerology : '');
   const [tempMeaning, setTempMeaning] = useState<string>(meaning || '');
   const [tempKeywords, setTempKeywords] = useState<string>(keywords || '');
+  const [showRestoreConfirm, setShowRestoreConfirm] = useState(false);
 
   useEffect(() => {
     if (numerology !== null) setTempVal(numerology);
@@ -118,18 +120,26 @@ function CardNumerologyCard({ cardName, isLoggedIn, userId }: CardNumerologyCard
             取消
           </button>
           <button
-            onClick={async () => {
-              if (confirm('确定要恢复默认灵数并清空注解吗？')) {
-                await restoreDefault();
-                setIsEditing(false);
-              }
-            }}
+            onClick={() => setShowRestoreConfirm(true)}
             className="px-3 py-2 text-red-400 hover:text-red-500 transition-colors"
             title="恢复默认"
           >
             <RotateCcw size={16} />
           </button>
         </div>
+
+        <ConfirmDialog
+          isOpen={showRestoreConfirm}
+          title="恢复默认灵数"
+          message="确定要恢复默认灵数并清空这张牌的自定义注解吗？"
+          confirmText="恢复"
+          destructive
+          onConfirm={async () => {
+            await restoreDefault();
+            setIsEditing(false);
+          }}
+          onClose={() => setShowRestoreConfirm(false)}
+        />
       </div>
     );
   }
@@ -195,6 +205,7 @@ export function CardMetadataManager({ metadata, onUpdate, readings, cardKeywordM
   const [showAnnotationEditor, setShowAnnotationEditor] = useState(false);
   const [annotationEditorCardId, setAnnotationEditorCardId] = useState<string | undefined>(undefined);
   const [modifiedCount, setModifiedCount] = useState(0);
+  const [showResetConfirm, setShowResetConfirm] = useState(false);
   
   useEffect(() => {
     setModifiedCount(cardAnnotationService.getModifiedCardIds().length);
@@ -376,13 +387,21 @@ export function CardMetadataManager({ metadata, onUpdate, readings, cardKeywordM
   };
 
   const resetAll = () => {
-    if (confirm('确定要重置所有修改吗？这将丢失您当前的本地编辑。')) {
-      setLocalMetadata(metadata);
-    }
+    setShowResetConfirm(true);
   };
 
   return (
     <div className="space-y-6 pb-24">
+      <ConfirmDialog
+        isOpen={showResetConfirm}
+        title="重置本地编辑"
+        message="确定要重置所有修改吗？这将丢失您当前尚未保存的本地编辑。"
+        confirmText="重置"
+        destructive
+        onConfirm={() => setLocalMetadata(metadata)}
+        onClose={() => setShowResetConfirm(false)}
+      />
+
       {todayFortune && (
         <motion.div 
           initial={{ opacity: 0, y: -10 }}

@@ -276,7 +276,7 @@ export const StudyPavilionModules: React.FC<StudyPavilionModulesProps> = ({
           <button
             type="button"
             onClick={() => {
-              setSearchQuery(summary.latestReading?.id || '');
+              setSearchQuery(summary.latestReading?.question || '');
               setActiveTab('private');
             }}
             className="w-full text-left rounded-xl bg-forest-bg/50 border border-forest-border/70 p-3 hover:border-forest-accent/30 transition-colors"

@@ -213,20 +213,40 @@ export const getPublicReadings = async (): Promise<TarotReading[]> => {
   const snapshot = await getDocs(readingsRef);
 
   return snapshot.docs
-    .map(item => ({ id: item.id, ...item.data() }) as TarotReading)
+    .map(item => ({ id: item.id, userId: 'public', ...item.data() }) as TarotReading)
     .filter(reading => reading.isPublic)
     .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 };
+
+const toPublicReadingData = (reading: TarotReading) => withoutUndefined({
+  id: reading.id,
+  date: reading.date,
+  question: reading.question,
+  spread: reading.spread,
+  cards: reading.cards,
+  cardInterpretations: reading.cardInterpretations || [],
+  interpretation: reading.interpretation,
+  keywords: reading.keywords || [],
+  isPublic: true,
+  isAnonymous: !!reading.isAnonymous,
+  authorName: reading.isAnonymous ? '匿名研习者' : (reading.authorName || '研习阁主'),
+  layoutType: reading.layoutType,
+  slotLabels: reading.slotLabels || [],
+  slotPositions: reading.slotPositions || [],
+  rotatedSlots: reading.rotatedSlots || [],
+  readingDate: reading.readingDate,
+  category: reading.category,
+  isAiProcessed: reading.isAiProcessed,
+  processedByAi: reading.processedByAi,
+  showSlotNumbers: reading.showSlotNumbers,
+  updatedAt: new Date().toISOString(),
+});
 
 export const savePublicReading = async (reading: TarotReading): Promise<void> => {
   if (!firebaseDb) throw new Error('Firebase Firestore 未配置');
 
   const publicRef = doc(firebaseDb, 'publicReadings', reading.id);
-  await setDoc(publicRef, withoutUndefined({
-    ...reading,
-    isPublic: true,
-    updatedAt: new Date().toISOString(),
-  }));
+  await setDoc(publicRef, toPublicReadingData(reading));
 };
 
 export const deletePublicReading = async (readingId: string): Promise<void> => {
@@ -249,23 +269,32 @@ export const replaceUserReadings = async (uid: string, readings: TarotReading[])
   const ownedReadings = readings.map(reading => ({ ...reading, userId: uid }));
   const incomingIds = new Set(ownedReadings.map(reading => reading.id));
 
-  await Promise.all([
-    ...ownedReadings.map(reading => setDoc(
+  await Promise.all(
+    ownedReadings.map(reading => setDoc(
       doc(firebaseDb, 'users', uid, 'readings', reading.id),
       withoutUndefined(reading),
     )),
-    ...ownedReadings.map(reading => {
-      if (reading.isPublic) return savePublicReading(reading);
+  );
 
-      const wasPublic = previousReadingsById.get(reading.id)?.isPublic === true;
-      return wasPublic ? deletePublicReading(reading.id) : Promise.resolve();
-    }),
-    ...snapshot.docs
-      .filter(item => !incomingIds.has(item.id))
-      .map(item => deleteDoc(doc(firebaseDb, 'users', uid, 'readings', item.id))),
+  await Promise.all([
+    ...ownedReadings
+      .filter(reading => {
+        const wasPublic = previousReadingsById.get(reading.id)?.isPublic === true;
+        return !reading.isPublic && wasPublic;
+      })
+      .map(reading => deletePublicReading(reading.id)),
     ...snapshot.docs
       .filter(item => !incomingIds.has(item.id) && item.data().isPublic === true)
       .map(item => deletePublicReading(item.id)),
+  ]);
+
+  await Promise.all([
+    ...ownedReadings
+      .filter(reading => reading.isPublic)
+      .map(reading => savePublicReading(reading)),
+    ...snapshot.docs
+      .filter(item => !incomingIds.has(item.id))
+      .map(item => deleteDoc(doc(firebaseDb, 'users', uid, 'readings', item.id))),
   ]);
 };
 

@@ -1,8 +1,9 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { ZoomIn, ZoomOut, RefreshCw, Copy, Share2, ChevronDown, ChevronUp, BookOpen, ExternalLink, Trash2, Lock, Sparkles, Check, Loader2 } from 'lucide-react';
+import { ZoomIn, ZoomOut, RefreshCw, Share2, ChevronDown, ChevronUp, PencilLine, Trash2, Lock, Sparkles, Check, Loader2, CheckCircle2, Eye } from 'lucide-react';
 import { ReadingKeywordCandidate, TarotReading, TarotCardMetadata } from '../types';
 import { TAROT_CARDS, getCardImageUrl, LAYOUT_TEMPLATES } from '../constants';
+import { ConfirmDialog } from './ConfirmDialog';
 
 interface ReadingCardProps {
   reading: TarotReading;
@@ -18,6 +19,7 @@ interface ReadingCardProps {
   onTogglePublic?: () => void;
   isPublicView?: boolean;
   onDelete?: () => void;
+  onViewDetails?: () => void;
 }
 
 export const ReadingCard: React.FC<ReadingCardProps> = ({
@@ -33,7 +35,8 @@ export const ReadingCard: React.FC<ReadingCardProps> = ({
   isMini = false,
   onTogglePublic,
   isPublicView = false,
-  onDelete
+  onDelete,
+  onViewDetails
 }) => {
   const [selectedCardIdx, setSelectedCardIdx] = useState<number | null>(null);
   const [isExpanded, setIsExpanded] = useState(false);
@@ -45,6 +48,7 @@ export const ReadingCard: React.FC<ReadingCardProps> = ({
   const [showKeywordReview, setShowKeywordReview] = useState(false);
   const [isExtractingKeywords, setIsExtractingKeywords] = useState(false);
   const [keywordNotice, setKeywordNotice] = useState('');
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const lastPosition = useRef({ x: 0, y: 0 });
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -92,29 +96,30 @@ export const ReadingCard: React.FC<ReadingCardProps> = ({
     setScale(prev => Math.min(Math.max(prev + delta, 0.5), 2));
   }, []);
 
-  const copyToClipboard = async (text: string) => {
-    try {
-      await navigator.clipboard.writeText(text);
-    } catch (err) {
-      console.error('Failed to copy:', err);
-    }
-  };
-
-  const handleSystemShare = async () => {
-    if (navigator.share) {
-      try {
-        await navigator.share({
-          title: '塔罗研习阁',
-          text: `【塔罗研习阁】分享占卜案例：\n问题：${reading.question}\n牌阵：${reading.spread}\n\n来自于塔罗研习阁`,
-          url: window.location.href
-        });
-      } catch (err) {
-        copyToClipboard(window.location.href);
-      }
-    }
-  };
-
   const canReviewKeywords = !isPublicView && !reading.isExample && !!onExtractKeywordCandidates && !!onConfirmKeywordCandidates;
+  const hasFeedback = !!reading.userFeedback?.trim();
+  const displayAuthorName = reading.isAnonymous ? '匿名研习者' : reading.authorName;
+  const cardInterpretationRows = (reading.cards || [])
+    .map((card, index) => ({
+      card,
+      label: reading.slotLabels?.[index] || `第 ${index + 1} 张`,
+      text: reading.cardInterpretations?.[index]?.trim() || '',
+    }))
+    .filter(item => item.text);
+  const hasCardInterpretationRows = cardInterpretationRows.length > 0;
+  const legacySingleCardText = reading.interpretation?.singleCard?.trim();
+  const overviewText = (
+    reading.interpretation?.combination?.trim() ||
+    reading.interpretation?.summary?.trim() ||
+    legacySingleCardText ||
+    ''
+  );
+  const influenceNotes = [
+    { label: '灵数影响', value: reading.interpretation?.numerologyInfluence },
+    { label: '行星星座影响', value: reading.interpretation?.astrologyInfluence },
+    { label: '宫位影响', value: reading.interpretation?.houseInfluence },
+    { label: '元素影响', value: reading.interpretation?.elementInfluence },
+  ].filter(item => item.value?.trim());
 
   const groupedKeywordCandidates = keywordCandidates.reduce<Record<string, ReadingKeywordCandidate[]>>((groups, candidate) => {
     if (!groups[candidate.cardName]) groups[candidate.cardName] = [];
@@ -349,7 +354,7 @@ export const ReadingCard: React.FC<ReadingCardProps> = ({
       <div className="p-4 border-b border-forest-accent/5">
         <div className="flex items-start justify-between gap-4">
           <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2 mb-2">
+            <div className="flex flex-wrap items-center gap-2 mb-2">
               <span className="text-xs text-forest-muted">{reading.date}</span>
               {reading.isPublic && (
                 <span className="px-1.5 py-0.5 bg-forest-accent/10 text-forest-accent text-[10px] rounded-full font-bold">
@@ -364,6 +369,12 @@ export const ReadingCard: React.FC<ReadingCardProps> = ({
               {reading.isAiProcessed && (
                 <span className="px-1.5 py-0.5 bg-blue-100 text-blue-600 text-[10px] rounded-full font-bold">
                   AI解读
+                </span>
+              )}
+              {hasFeedback && (
+                <span className="px-1.5 py-0.5 bg-forest-accent/10 text-forest-accent text-[10px] rounded-full font-bold inline-flex items-center gap-1 shrink-0">
+                  <CheckCircle2 size={10} strokeWidth={2.5} />
+                  已复盘
                 </span>
               )}
             </div>
@@ -395,14 +406,12 @@ export const ReadingCard: React.FC<ReadingCardProps> = ({
                   className="p-2 hover:bg-forest-accent/5 rounded-lg transition-colors"
                   title="编辑"
                 >
-                  <BookOpen size={16} className="text-forest-accent" />
+                  <PencilLine size={16} className="text-forest-accent" />
                 </button>
               )}
               {onDelete && !reading.isExample && (
                 <button
-                  onClick={() => {
-                    if (window.confirm('确定删除这条手记吗？')) onDelete();
-                  }}
+                  onClick={() => setShowDeleteConfirm(true)}
                   className="p-2 hover:bg-red-50 rounded-lg transition-colors"
                   title="删除"
                 >
@@ -413,15 +422,19 @@ export const ReadingCard: React.FC<ReadingCardProps> = ({
           )}
         </div>
 
-        {reading.authorName && reading.authorName !== '研习阁主' && (
+        {displayAuthorName && displayAuthorName !== '研习阁主' && (
           <button
-            onClick={() => onAuthorClick?.(reading.authorName)}
+            type="button"
+            onClick={() => {
+              if (!reading.isAnonymous) onAuthorClick?.(displayAuthorName);
+            }}
+            disabled={reading.isAnonymous}
             className="mt-3 flex items-center gap-2 text-xs text-forest-accent hover:text-forest-accent/80 transition-colors"
           >
             <span className="w-6 h-6 rounded-full bg-gradient-to-br from-forest-accent to-forest-pink flex items-center justify-center text-white text-[10px] font-bold">
-              {reading.authorName.charAt(0)}
+              {displayAuthorName.charAt(0)}
             </span>
-            <span className="font-medium">{reading.authorName}</span>
+            <span className="font-medium">{displayAuthorName}</span>
           </button>
         )}
       </div>
@@ -435,12 +448,25 @@ export const ReadingCard: React.FC<ReadingCardProps> = ({
         </div>
       )}
 
+      {overviewText && (
+        <div className="px-4 py-3 border-t border-forest-accent/5 bg-forest-accent/5">
+          <p className="text-[10px] font-bold text-forest-accent mb-1">综合解读</p>
+          <p className="text-xs text-forest-ink/80 leading-relaxed line-clamp-3">{overviewText}</p>
+        </div>
+      )}
+
       <button
-        onClick={() => setIsExpanded(!isExpanded)}
+        onClick={() => {
+          if (onViewDetails) {
+            onViewDetails();
+            return;
+          }
+          setIsExpanded(!isExpanded);
+        }}
         className="w-full px-4 py-3 flex items-center justify-center gap-2 text-xs text-forest-muted hover:text-forest-accent hover:bg-forest-accent/5 transition-all"
       >
-        {isExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-        <span>{isExpanded ? '收起解读' : '查看解读'}</span>
+        {onViewDetails ? <Eye size={14} /> : (isExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />)}
+        <span>{onViewDetails ? '查看详情' : (isExpanded ? '收起解读' : '查看解读')}</span>
       </button>
 
       <AnimatePresence>
@@ -452,10 +478,29 @@ export const ReadingCard: React.FC<ReadingCardProps> = ({
             className="border-t border-forest-accent/5"
           >
             <div className="p-4 space-y-4">
-              {reading.interpretation?.singleCard && (
+              {hasCardInterpretationRows && (
+                <div className="space-y-3">
+                  <h4 className="text-xs font-bold text-forest-accent uppercase tracking-wider">逐牌解读</h4>
+                  <div className="space-y-2">
+                    {cardInterpretationRows.map((item, index) => (
+                      <div key={`${item.card.name}-${index}`} className="rounded-xl bg-forest-accent/5 border border-forest-accent/5 p-3 space-y-1.5">
+                        <div className="flex flex-wrap items-center gap-2 text-xs font-bold text-forest-accent">
+                          <span>{item.label}</span>
+                          <span>·</span>
+                          <span>{item.card.name}{item.card.isReversed ? '（逆位）' : '（正位）'}</span>
+                        </div>
+                        <p className="text-sm text-forest-ink leading-relaxed">{item.text}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {legacySingleCardText && !hasCardInterpretationRows && (
                 <div className="space-y-2">
-                  <h4 className="text-xs font-bold text-forest-accent uppercase tracking-wider">单牌解读</h4>
-                  <p className="text-sm text-forest-ink leading-relaxed">{reading.interpretation.singleCard}</p>
+                  <h4 className="text-xs font-bold text-forest-accent uppercase tracking-wider">
+                    {(reading.cards?.length || 0) <= 1 ? '单牌解读' : '整体解读'}
+                  </h4>
+                  <p className="text-sm text-forest-ink leading-relaxed">{legacySingleCardText}</p>
                 </div>
               )}
               {reading.interpretation?.combination && (
@@ -468,6 +513,16 @@ export const ReadingCard: React.FC<ReadingCardProps> = ({
                 <div className="space-y-2">
                   <h4 className="text-xs font-bold text-forest-accent uppercase tracking-wider">总结建议</h4>
                   <p className="text-sm text-forest-ink leading-relaxed">{reading.interpretation.summary}</p>
+                </div>
+              )}
+              {influenceNotes.length > 0 && (
+                <div className="space-y-3">
+                  {influenceNotes.map(item => (
+                    <div key={item.label} className="space-y-1.5 rounded-xl bg-forest-accent/5 border border-forest-accent/5 p-3">
+                      <h4 className="text-xs font-bold text-forest-accent uppercase tracking-wider">{item.label}</h4>
+                      <p className="text-sm text-forest-ink leading-relaxed">{item.value}</p>
+                    </div>
+                  ))}
                 </div>
               )}
               {reading.keywords && reading.keywords.length > 0 && (
@@ -572,34 +627,15 @@ export const ReadingCard: React.FC<ReadingCardProps> = ({
         )}
       </AnimatePresence>
 
-      <div className="px-4 pb-4">
-        <div className="grid grid-cols-2 gap-2">
-          <button
-            onClick={() => copyToClipboard(`【塔罗研习阁】分享占卜案例：\n问题：${reading.question}\n牌阵：${reading.spread}\n\n来自于塔罗研习阁\n链接：${window.location.href}`)}
-            className="flex flex-col items-center gap-2 p-3 bg-forest-accent/5 rounded-xl hover:bg-forest-accent/10 transition-all border border-forest-border"
-          >
-            <Copy size={18} className="text-forest-accent" />
-            <span className="text-xs font-medium text-forest-accent">复制文案</span>
-          </button>
-          {navigator.share ? (
-            <button
-              onClick={handleSystemShare}
-              className="flex flex-col items-center gap-2 p-3 bg-forest-accent/5 rounded-xl hover:bg-forest-accent/10 transition-all border border-forest-border"
-            >
-              <Share2 size={18} className="text-forest-accent" />
-              <span className="text-xs font-medium text-forest-accent">分享</span>
-            </button>
-          ) : (
-            <button
-              onClick={() => copyToClipboard(window.location.href)}
-              className="flex flex-col items-center gap-2 p-3 bg-forest-accent/5 rounded-xl hover:bg-forest-accent/10 transition-all border border-forest-border"
-            >
-              <ExternalLink size={18} className="text-forest-accent" />
-              <span className="text-xs font-medium text-forest-accent">复制链接</span>
-            </button>
-          )}
-        </div>
-      </div>
+      <ConfirmDialog
+        isOpen={showDeleteConfirm}
+        title="删除手记"
+        message="确定删除这条手记吗？此操作会同时移出阁中典籍。"
+        confirmText="删除"
+        destructive
+        onConfirm={() => onDelete?.()}
+        onClose={() => setShowDeleteConfirm(false)}
+      />
     </motion.div>
   );
 };

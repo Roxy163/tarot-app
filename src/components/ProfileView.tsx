@@ -39,7 +39,9 @@ export function ProfileView({
   const [cropImage, setCropImage] = useState<string | null>(null);
   const [isCropModalOpen, setIsCropModalOpen] = useState(false);
   const [isGuideOpen, setIsGuideOpen] = useState(false);
+  const [notice, setNotice] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const canEditProfile = !!profile;
   
   const [editName, setEditName] = useState(profile?.display_name || profile?.nickname || authorName);
   const [editBio, setEditBio] = useState(profile?.bio || profile?.signature || '研习覃思，洞见未来');
@@ -68,12 +70,8 @@ export function ProfileView({
 
   const handleCopyId = () => {
     navigator.clipboard.writeText(tarotId);
-    // 使用应用内统一的反馈逻辑，这里暂用内置提示
-    const toast = document.createElement('div');
-    toast.className = 'fixed bottom-24 left-1/2 -translate-x-1/2 bg-forest-ink text-white px-6 py-3 rounded-full text-sm font-bold shadow-2xl z-50 animate-in fade-in slide-in-from-bottom-4';
-    toast.innerText = '阁主编号已复制到指尖';
-    document.body.appendChild(toast);
-    setTimeout(() => toast.remove(), 2000);
+    setNotice('阁主编号已复制到指尖');
+    window.setTimeout(() => setNotice(''), 2000);
   };
 
   const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -81,7 +79,7 @@ export function ProfileView({
     if (!file) return;
 
     if (file.size > 5 * 1024 * 1024) {
-      alert('图片文件请保持在 5MB 以内');
+      setNotice('图片文件请保持在 5MB 以内');
       return;
     }
 
@@ -104,7 +102,7 @@ export function ProfileView({
       await onUpdateProfile({ avatar_url: publicUrlWithCacheBust });
     } catch (error: any) {
       console.error('Upload error:', error);
-      alert(error.message || '上传头像失败，请稍后再试');
+      setNotice(error.message || '上传头像失败，请稍后再试');
     } finally {
       setIsUploading(false);
     }
@@ -125,8 +123,8 @@ export function ProfileView({
         {/* 头像区域 */}
         <div className="relative">
           <div 
-            onClick={() => !isUploading && fileInputRef.current?.click()}
-            className="w-40 h-40 rounded-full bg-forest-bg border-8 border-white shadow-[0_20px_50px_rgba(44,54,44,0.15)] overflow-hidden cursor-pointer hover:scale-105 transition-all duration-500 relative group"
+            onClick={() => canEditProfile && !isUploading && fileInputRef.current?.click()}
+            className={`w-40 h-40 rounded-full bg-forest-bg border-8 border-white shadow-[0_20px_50px_rgba(44,54,44,0.15)] overflow-hidden transition-all duration-500 relative group ${canEditProfile ? 'cursor-pointer hover:scale-105' : ''}`}
           >
             {profile?.avatar_url ? (
               <img src={profile.avatar_url} alt="Avatar" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
@@ -136,9 +134,11 @@ export function ProfileView({
               </div>
             )}
             
-            <div className="absolute inset-0 bg-forest-ink/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-300">
-              <Camera className="text-white" size={32} />
-            </div>
+            {canEditProfile && (
+              <div className="absolute inset-0 bg-forest-ink/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+                <Camera className="text-white" size={32} />
+              </div>
+            )}
 
             {isUploading && (
               <div className="absolute inset-0 bg-white/80 backdrop-blur-sm flex items-center justify-center">
@@ -146,13 +146,15 @@ export function ProfileView({
               </div>
             )}
           </div>
-          <input 
-            type="file" 
-            ref={fileInputRef} 
-            onChange={handleFileSelect} 
-            accept="image/*" 
-            className="hidden" 
-          />
+          {canEditProfile && (
+            <input 
+              type="file" 
+              ref={fileInputRef} 
+              onChange={handleFileSelect} 
+              accept="image/*" 
+              className="hidden" 
+            />
+          )}
           
           <div className="absolute -bottom-2 left-1/2 -translate-x-1/2 bg-forest-accent text-white px-5 py-1.5 rounded-full text-xs font-bold shadow-xl border-2 border-white whitespace-nowrap">
             {rank}
@@ -161,7 +163,7 @@ export function ProfileView({
 
         {/* 昵称与签名 */}
         <div className="space-y-4 w-full max-w-2xl px-6">
-          {isEditingName ? (
+          {isEditingName && canEditProfile ? (
             <div className="flex items-center gap-2 justify-center">
               <input 
                 autoFocus
@@ -182,17 +184,19 @@ export function ProfileView({
               <h2 className="text-4xl md:text-5xl font-serif text-forest-ink font-bold tracking-tight">
                 {profile?.display_name || profile?.nickname || authorName}
               </h2>
-              <button 
-                onClick={() => setIsEditingName(true)}
-                className="p-2 text-forest-muted opacity-0 group-hover:opacity-100 hover:text-forest-accent hover:bg-forest-accent/5 rounded-xl transition-all"
-              >
-                <Edit3 size={20} />
-              </button>
+              {canEditProfile && (
+                <button 
+                  onClick={() => setIsEditingName(true)}
+                  className="p-2 text-forest-muted opacity-0 group-hover:opacity-100 hover:text-forest-accent hover:bg-forest-accent/5 rounded-xl transition-all"
+                >
+                  <Edit3 size={20} />
+                </button>
+              )}
             </div>
           )}
 
           <div className="relative group max-w-lg mx-auto">
-            {isEditingBio ? (
+            {isEditingBio && canEditProfile ? (
               <textarea 
                 className="w-full text-lg text-center text-forest-muted font-kai italic bg-white border-2 border-forest-accent/10 rounded-2xl px-6 py-4 outline-none focus:ring-8 focus:ring-forest-accent/5 resize-none h-24 shadow-inner"
                 value={editBio}
@@ -210,19 +214,22 @@ export function ProfileView({
                 <p className="text-xl text-forest-muted font-kai italic opacity-80 leading-relaxed px-10">
                   “ {profile?.bio || profile?.signature || '研习覃思，洞见未来'} ”
                 </p>
-                <button 
-                  onClick={() => setIsEditingBio(true)}
-                  className="p-2 text-forest-muted opacity-0 group-hover:opacity-100 hover:text-forest-accent hover:bg-forest-accent/5 rounded-xl transition-all absolute right-0 top-0"
-                >
-                  <Edit3 size={18} />
-                </button>
+                {canEditProfile && (
+                  <button 
+                    onClick={() => setIsEditingBio(true)}
+                    className="p-2 text-forest-muted opacity-0 group-hover:opacity-100 hover:text-forest-accent hover:bg-forest-accent/5 rounded-xl transition-all absolute right-0 top-0"
+                  >
+                    <Edit3 size={18} />
+                  </button>
+                )}
               </div>
             )}
           </div>
         </div>
 
         {/* 阁主编号展示 */}
-        <div className="flex flex-col items-center gap-4 pt-2">
+          {canEditProfile && (
+            <div className="flex flex-col items-center gap-4 pt-2">
           <div className="flex items-center gap-3 px-6 py-3 bg-white rounded-3xl border border-forest-border shadow-sm group hover:shadow-md transition-shadow">
             <span className="text-[10px] text-forest-muted font-bold tracking-[0.2em] uppercase opacity-60">阁主编号</span>
             <code className="text-base font-mono font-bold text-forest-accent tracking-wider">
@@ -247,6 +254,8 @@ export function ProfileView({
               <span>手记累积：{authorReadings.length} 条</span>
             </div>
           </div>
+            </div>
+          )}
 
           <div className="flex gap-3">
             {/* 功能介绍入口 */}
@@ -259,7 +268,7 @@ export function ProfileView({
             </button>
             
             {/* 登出按钮 */}
-            {onLogout && (
+            {onLogout && canEditProfile && (
               <button 
                 onClick={onLogout}
                 className="flex items-center gap-2 px-4 py-3 bg-forest-accent/10 text-forest-accent rounded-full text-sm font-bold hover:bg-forest-accent/20 transition-all"
@@ -272,7 +281,12 @@ export function ProfileView({
         </div>
 
         <FeatureGuide isOpen={isGuideOpen} onClose={() => setIsGuideOpen(false)} />
-      </div>
+
+      {notice && (
+        <div className="fixed bottom-24 left-1/2 z-[520] -translate-x-1/2 bg-forest-ink text-white px-6 py-3 rounded-full text-sm font-bold shadow-2xl">
+          {notice}
+        </div>
+      )}
 
       {/* 数据概览 */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-6 px-4 max-w-5xl mx-auto">

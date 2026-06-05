@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Plus, X, RotateCcw, Trash2 } from 'lucide-react';
 import { ReadingSlotData } from '../types';
+import { ConfirmDialog } from './ConfirmDialog';
 
 interface FreeLayoutEditorProps {
   cardSlots: ReadingSlotData[];
@@ -24,6 +25,7 @@ export const FreeLayoutEditor: React.FC<FreeLayoutEditorProps> = ({
 }) => {
   const [showGrid, setShowGrid] = useState(true);
   const [snapEnabled, setSnapEnabled] = useState(true);
+  const [showClearConfirm, setShowClearConfirm] = useState(false);
   const canvasRef = useRef<HTMLDivElement>(null);
   const [canvasSize, setCanvasSize] = useState({ width: 600, height: 500 });
 
@@ -112,14 +114,24 @@ export const FreeLayoutEditor: React.FC<FreeLayoutEditorProps> = ({
   }, [cardSlots, onUpdateSlots]);
 
   const handleClearAll = useCallback(() => {
-    if (cardSlots.length > 0 && confirm('确定要清空所有牌位吗？')) {
-      onUpdateSlots([]);
-      onSetDesignActiveSlot(-1);
-    }
-  }, [cardSlots, onSetDesignActiveSlot, onUpdateSlots]);
+    if (cardSlots.length > 0) setShowClearConfirm(true);
+  }, [cardSlots.length]);
 
   return (
     <div className="space-y-3">
+      <ConfirmDialog
+        isOpen={showClearConfirm}
+        title="清空牌位"
+        message="确定要清空自由画布上的所有牌位吗？"
+        confirmText="清空"
+        destructive
+        onConfirm={() => {
+          onUpdateSlots([]);
+          onSetDesignActiveSlot(-1);
+        }}
+        onClose={() => setShowClearConfirm(false)}
+      />
+
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <span className="text-xs font-bold text-forest-accent">自由画布模式</span>
