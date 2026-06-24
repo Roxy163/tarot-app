@@ -141,8 +141,8 @@ export const LAYOUT_TEMPLATES: Record<string, { name: string, class: string, ite
   'cross': { 
     name: '十字牌阵', 
     class: 'grid grid-cols-3 gap-6 max-w-[360px] mx-auto justify-items-center', 
-    itemClasses: ['col-start-2 row-start-2', 'col-start-1 row-start-2', 'col-start-3 row-start-2', 'col-start-2 row-start-1', 'col-start-2 row-start-3'],
-    defaultSlots: ['中心', '左侧', '右侧', '上方', '下方']
+    itemClasses: ['col-start-2 row-start-1', 'col-start-2 row-start-3', 'col-start-1 row-start-2', 'col-start-3 row-start-2', 'col-start-2 row-start-2'],
+    defaultSlots: ['自身情况', '外在情况', '短期趋势', '阻碍挑战', '结果']
   },
   'choice': { 
     name: '选择牌阵', 
@@ -232,14 +232,14 @@ export const OFFICIAL_SPREADS = [
   { 
     name: '十字牌阵', 
     layout: 'cross', 
-    slots: ['中心', '左侧', '右侧', '上方', '下方'],
-    slotPositions: ['col-start-2 row-start-2', 'col-start-1 row-start-2', 'col-start-3 row-start-2', 'col-start-2 row-start-1', 'col-start-2 row-start-3']
+    slots: ['自身情况', '外在情况', '短期趋势', '阻碍挑战', '结果'],
+    slotPositions: ['col-start-2 row-start-1', 'col-start-2 row-start-3', 'col-start-1 row-start-2', 'col-start-3 row-start-2', 'col-start-2 row-start-2']
   },
   { 
     name: '四季牌阵', 
     layout: 'seasons', 
     slots: ['大牌（核心课题）', '权杖牌组（火）', '星币牌组（土）', '宝剑牌组（风）', '圣杯牌组（水）'],
-    slotPositions: ['col-start-3 row-start-2', 'col-start-3 row-start-1', 'col-start-4 row-start-2', 'col-start-3 row-start-3', 'col-start-2 row-start-2']
+    slotPositions: ['col-start-2 row-start-2', 'col-start-2 row-start-1', 'col-start-3 row-start-2', 'col-start-2 row-start-3', 'col-start-1 row-start-2']
   },
   { 
     name: '凯尔特十字牌阵', 
