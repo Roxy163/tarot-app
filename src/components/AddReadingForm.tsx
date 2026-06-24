@@ -13,6 +13,25 @@ import { ReadingSpreadDisplay } from './ReadingSpreadDisplay';
 import { BasicInfoSection } from './BasicInfoSection';
 import { EmailShareModal } from './EmailShareModal';
 import { useLongPressClear } from '../hooks/useLongPressClear';
+import { mapSlotsToSpread, normalizeInterpretationsForSlots } from '../lib/readingSlotSync';
+import {
+  addReadingSlot,
+  appendSlotHistory,
+  removeReadingSlot,
+  selectCardForSlot,
+  swapReadingSlots,
+  toggleSlotReversal,
+  updateReadingSlotLabel,
+} from '../lib/readingSlotOperations';
+import {
+  createBlankSlotsForSpread,
+  createSpreadDefinitionFromSlots,
+  getSafeCustomSpreadName,
+  restoreAllOfficialSpreads,
+  restoreOfficialSpread,
+  upsertSpreadDefinition,
+} from '../lib/spreadPersistence';
+import { centerGridSlots, shiftGridSlots } from '../lib/spreadGridLayout';
 
 interface AddReadingFormProps {
   onSubmit: (data: Partial<ReadingFormData>) => void;
@@ -192,22 +211,14 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
     setGridCols(spreadDef.gridCols || 5);
     setGridRows(spreadDef.gridRows || 5);
     
-    const newSlots = spreadDef.slots.map((label, i) => ({
-      name: cardSlots[i]?.name || '',
-      isReversed: cardSlots[i]?.isReversed || false,
-      position: spreadDef.slotPositions?.[i] || '',
-      label: label,
-      isRotated: spreadDef.rotatedSlots?.includes(i) || false
-    }));
+    const newSlots = mapSlotsToSpread(cardSlots, spreadDef);
     
     if (JSON.stringify(newSlots) !== JSON.stringify(cardSlots)) {
       setCardSlots(newSlots);
       setActiveSlotIndex(0);
       // Initialize interpretations if needed
       if (cardInterpretations.length !== newSlots.length) {
-        const newInterps = [...cardInterpretations];
-        while (newInterps.length < newSlots.length) newInterps.push('');
-        setCardInterpretations(newInterps.slice(0, newSlots.length));
+        setCardInterpretations(normalizeInterpretationsForSlots(cardInterpretations, newSlots.length));
       }
     }
   }, [formData.spread, spreads]);
@@ -230,7 +241,7 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
   };
 
   const updateCardSlotsWithHistory = (newSlots: typeof cardSlots) => {
-    setHistory(prev => [...prev, cardSlots].slice(-20)); // Keep last 20 steps
+    setHistory(prev => appendSlotHistory(prev, cardSlots));
     setCardSlots(newSlots);
   };
 
@@ -243,9 +254,8 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
   };
 
   const handleCardSelect = (card: typeof TAROT_CARDS[0], isReversed: boolean) => {
-    const newSlots = [...cardSlots];
-    if (newSlots[activeSlotIndex]) {
-      newSlots[activeSlotIndex] = { ...newSlots[activeSlotIndex], name: card.name, isReversed };
+    const newSlots = selectCardForSlot(cardSlots, activeSlotIndex, card.name, isReversed);
+    if (newSlots !== cardSlots) {
       updateCardSlotsWithHistory(newSlots);
     }
     setShowPicker(false);
@@ -253,22 +263,20 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
 
   const toggleReverse = (index: number, e: React.MouseEvent) => {
     e.stopPropagation();
-    const newSlots = [...cardSlots];
-    if (newSlots[index]) {
-      newSlots[index] = { ...newSlots[index], isReversed: !newSlots[index].isReversed };
+    const newSlots = toggleSlotReversal(cardSlots, index);
+    if (newSlots !== cardSlots) {
       updateCardSlotsWithHistory(newSlots);
     }
   };
 
   const addSlot = () => {
-    const newSlots = [...cardSlots, { name: '', isReversed: false, label: `第${cardSlots.length + 1}张` }];
-    updateCardSlotsWithHistory(newSlots);
+    updateCardSlotsWithHistory(addReadingSlot(cardSlots));
   };
   
   const removeSlot = (index: number, e: React.MouseEvent) => {
     e.stopPropagation();
-    if (cardSlots.length > 1) {
-      const newSlots = cardSlots.filter((_, i) => i !== index);
+    const newSlots = removeReadingSlot(cardSlots, index);
+    if (newSlots !== cardSlots) {
       updateCardSlotsWithHistory(newSlots);
     }
   };
@@ -278,12 +286,7 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
   };
 
   const saveSpread = () => {
-    const isOfficial = OFFICIAL_SPREADS.some(os => os.name === formData.spread);
-    const suggestedName = isOfficial ? `${formData.spread} (自定义)` : formData.spread;
-    let name = newSpreadName.trim() || suggestedName;
-    if (OFFICIAL_SPREADS.some(os => os.name === name)) {
-      name = `${name} (自定义)`;
-    }
+    const name = getSafeCustomSpreadName(formData.spread, newSpreadName, OFFICIAL_SPREADS);
     if (!name) return;
     
     // Safety check: if user hasn't changed the name from an official one, and is saving, 
@@ -292,30 +295,14 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
     // To prevent the "Official Spreads Changed" confusion, we'll avoid overwriting 
     // official names if we started from a "Create New" session or if the name matches an official one exactly but definitions differ.
     
-    const newSpread: SpreadDefinition = {
+    const newSpread = createSpreadDefinitionFromSlots({
       name,
       layout: formData.layoutType,
-      slots: cardSlots.map((s, i) => s.label || `第${i+1}张`),
-      slotPositions: cardSlots.map(s => s.position || ''),
-      rotatedSlots: cardSlots.map((s, i) => s.isRotated ? i : -1).filter(i => i !== -1),
-      gridCols: gridCols,
-      gridRows: gridRows,
-      freePositions: cardSlots.map(s => ({
-        x: s.x,
-        y: s.y,
-        rotation: s.rotation,
-        scale: s.scale
-      }))
-    };
-
-    const existingIndex = spreads.findIndex(s => s.name === name);
-    let updatedSpreads;
-    if (existingIndex !== -1) {
-      updatedSpreads = [...spreads];
-      updatedSpreads[existingIndex] = newSpread;
-    } else {
-      updatedSpreads = [...spreads, newSpread];
-    }
+      slots: cardSlots,
+      gridCols,
+      gridRows,
+    });
+    const updatedSpreads = upsertSpreadDefinition(spreads, newSpread);
     
     onUpdateSpreads(updatedSpreads);
     setFormData(prev => ({ ...prev, spread: name }));
@@ -327,35 +314,22 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
   const restoreDefaults = (name?: string) => {
     let updatedSpreads;
     if (name && typeof name === 'string') {
-      const official = OFFICIAL_SPREADS.find(os => os.name === name);
+      const { spreads: restoredSpreads, official } = restoreOfficialSpread(spreads, OFFICIAL_SPREADS, name);
       if (!official) return;
-      updatedSpreads = spreads.map(s => s.name === name ? official : s);
+      updatedSpreads = restoredSpreads;
       
       if (formData.spread === name) {
         setFormData(prev => ({ ...prev, layoutType: official.layout }));
-        setCardSlots(official.slots.map((label, i) => ({ 
-          name: '', 
-          isReversed: false, 
-          position: official.slotPositions?.[i] || '', 
-          label,
-          isRotated: official.rotatedSlots?.includes(i) || false
-        })));
+        setCardSlots(createBlankSlotsForSpread(official));
       }
     } else {
+      updatedSpreads = restoreAllOfficialSpreads(spreads, OFFICIAL_SPREADS);
       const officialNames = OFFICIAL_SPREADS.map(os => os.name);
-      const customSpreads = spreads.filter(s => !officialNames.includes(s.name));
-      updatedSpreads = [...OFFICIAL_SPREADS, ...customSpreads];
       
       if (officialNames.includes(formData.spread)) {
         const restored = OFFICIAL_SPREADS.find(os => os.name === formData.spread) || OFFICIAL_SPREADS[0];
         setFormData(prev => ({ ...prev, spread: restored.name, layoutType: restored.layout }));
-        setCardSlots(restored.slots.map((label, i) => ({ 
-          name: '', 
-          isReversed: false, 
-          position: restored.slotPositions?.[i] || '', 
-          label,
-          isRotated: restored.rotatedSlots?.includes(i) || false
-        })));
+        setCardSlots(createBlankSlotsForSpread(restored));
       }
     }
     
@@ -413,19 +387,15 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
   };
 
   const swapSlotIndex = (oldIndex: number, newIndex: number) => {
-    if (newIndex < 0 || newIndex >= cardSlots.length) return;
-    const newSlots = [...cardSlots];
-    const temp = newSlots[oldIndex];
-    newSlots[oldIndex] = newSlots[newIndex];
-    newSlots[newIndex] = temp;
+    const newSlots = swapReadingSlots(cardSlots, oldIndex, newIndex);
+    if (newSlots === cardSlots) return;
     updateCardSlotsWithHistory(newSlots);
     setDesignActiveSlot(newIndex);
   };
 
   const updateSlotLabel = (index: number, label: string) => {
-    const newSlots = [...cardSlots];
-    if (newSlots[index]) {
-      newSlots[index].label = label;
+    const newSlots = updateReadingSlotLabel(cardSlots, index, label);
+    if (newSlots !== cardSlots) {
       setCardSlots(newSlots); // Label updates might be too frequent for history, or we can debounce it. For now, just set.
     }
   };
@@ -450,55 +420,17 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
   };
 
   const shiftSlots = (dx: number, dy: number) => {
-    const newSlots = cardSlots.map(slot => {
-      if (!slot.position) return slot;
-      const match = slot.position.match(/col-start-(\d+) row-start-(\d+)/);
-      if (!match) return slot;
-      
-      const newCol = Math.max(1, Math.min(gridCols, parseInt(match[1]) + dx));
-      const newRow = Math.max(1, Math.min(gridRows, parseInt(match[2]) + dy));
-      
-      return {
-        ...slot,
-        position: `col-start-${newCol} row-start-${newRow}`
-      };
-    });
+    const newSlots = shiftGridSlots(cardSlots, dx, dy, gridCols, gridRows);
     updateCardSlotsWithHistory(newSlots);
     setIsEditingSession(true);
   };
 
   const centerSpread = () => {
-    if (cardSlots.length === 0) return;
-    
-    let minCol = Infinity, maxCol = -Infinity, minRow = Infinity, maxRow = -Infinity;
-    
-    cardSlots.forEach(slot => {
-      if (!slot.position) return;
-      const match = slot.position.match(/col-start-(\d+) row-start-(\d+)/);
-      if (match) {
-        const c = parseInt(match[1]);
-        const r = parseInt(match[2]);
-        minCol = Math.min(minCol, c);
-        maxCol = Math.max(maxCol, c);
-        minRow = Math.min(minRow, r);
-        maxRow = Math.max(maxRow, r);
-      }
-    });
-    
-    if (minCol === Infinity) return;
-    
-    const contentWidth = maxCol - minCol + 1;
-    const contentHeight = maxRow - minRow + 1;
-    
-    const targetMinCol = Math.floor((gridCols - contentWidth) / 2) + 1;
-    const targetMinRow = Math.floor((gridRows - contentHeight) / 2) + 1;
-    
-    const dx = targetMinCol - minCol;
-    const dy = targetMinRow - minRow;
-    
-    if (dx === 0 && dy === 0) return;
-    
-    shiftSlots(dx, dy);
+    const newSlots = centerGridSlots(cardSlots, gridCols, gridRows);
+    if (newSlots === cardSlots) return;
+
+    updateCardSlotsWithHistory(newSlots);
+    setIsEditingSession(true);
   };
 
   const handleCreateNewSpread = () => {

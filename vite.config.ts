@@ -16,6 +16,11 @@ export default defineConfig(() => {
       // Do not modify—file watching is disabled to prevent flickering during agent edits.
       hmr: process.env.DISABLE_HMR !== 'true',
     },
+    test: {
+      environment: 'jsdom',
+      globals: true,
+      setupFiles: './src/test/setup.ts',
+    },
     build: {
       chunkSizeWarningLimit: 650,
       rollupOptions: {
