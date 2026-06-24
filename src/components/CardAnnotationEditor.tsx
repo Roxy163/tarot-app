@@ -1,6 +1,6 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { X, Search, ChevronDown, ChevronRight, Save, RotateCcw, Star, Moon, Sun, Sparkles } from 'lucide-react';
+import { X, Search, ChevronDown, ChevronRight, Save, RotateCcw, Star, Moon, Sun, Sparkles, ArrowLeft } from 'lucide-react';
 import { TarotCardMetadata } from '../types';
 import { TAROT_CARDS, getCardImageUrl } from '../constants';
 import { OFFICIAL_CARD_ANNOTATIONS } from '../constants/cardAnnotations';
@@ -13,6 +13,22 @@ interface CardAnnotationEditorProps {
 }
 
 type FilterType = 'all' | 'major' | 'wands' | 'cups' | 'swords' | 'pentacles' | 'modified';
+
+const getAnnotationForm = (cardId: string) => {
+  const merged = cardAnnotationService.getMergedAnnotation(cardId);
+
+  return {
+    numerology: merged.numerology || '',
+    planet: merged.planet || '',
+    zodiac: merged.zodiac || '',
+    house: merged.house || '',
+    element: merged.element || '',
+    uprightMeaning: merged.uprightMeaning,
+    reversedMeaning: merged.reversedMeaning,
+    keywords: merged.keywords.join('、'),
+    personalNotes: merged.personalNotes,
+  };
+};
 
 export const CardAnnotationEditor: React.FC<CardAnnotationEditorProps> = ({
   isOpen,
@@ -46,6 +62,18 @@ export const CardAnnotationEditor: React.FC<CardAnnotationEditorProps> = ({
   const [showUnsavedWarning, setShowUnsavedWarning] = useState(false);
   const [showSaveSuccess, setShowSaveSuccess] = useState(false);
   const [saveSuccessMessage, setSaveSuccessMessage] = useState('');
+
+  useEffect(() => {
+    if (!isOpen) return;
+
+    if (!initialCardId) {
+      setSelectedCardId(null);
+      return;
+    }
+
+    setSelectedCardId(initialCardId);
+    setEditForm(getAnnotationForm(initialCardId));
+  }, [initialCardId, isOpen]);
 
   const modifiedCardIds = useMemo(() => {
     return new Set(cardAnnotationService.getModifiedCardIds());
@@ -83,36 +111,13 @@ export const CardAnnotationEditor: React.FC<CardAnnotationEditorProps> = ({
     }
 
     setSelectedCardId(cardId);
-    const merged = cardAnnotationService.getMergedAnnotation(cardId);
-    
-    setEditForm({
-      numerology: merged.numerology || '',
-      planet: merged.planet || '',
-      zodiac: merged.zodiac || '',
-      house: merged.house || '',
-      element: merged.element || '',
-      uprightMeaning: merged.uprightMeaning,
-      reversedMeaning: merged.reversedMeaning,
-      keywords: merged.keywords.join('、'),
-      personalNotes: merged.personalNotes,
-    });
+    setEditForm(getAnnotationForm(cardId));
   };
 
   const hasUnsavedChanges = () => {
     if (!selectedCardId) return false;
     
-    const merged = cardAnnotationService.getMergedAnnotation(selectedCardId);
-    const originalForm = {
-      numerology: merged.numerology || '',
-      planet: merged.planet || '',
-      zodiac: merged.zodiac || '',
-      house: merged.house || '',
-      element: merged.element || '',
-      uprightMeaning: merged.uprightMeaning,
-      reversedMeaning: merged.reversedMeaning,
-      keywords: merged.keywords.join('、'),
-      personalNotes: merged.personalNotes,
-    };
+    const originalForm = getAnnotationForm(selectedCardId);
 
     return JSON.stringify(editForm) !== JSON.stringify(originalForm);
   };
@@ -157,19 +162,7 @@ export const CardAnnotationEditor: React.FC<CardAnnotationEditorProps> = ({
     const cardName = card?.name || selectedCardId;
     
     cardAnnotationService.resetAnnotationToOfficial(selectedCardId);
-    const merged = cardAnnotationService.getMergedAnnotation(selectedCardId);
-    
-    setEditForm({
-      numerology: merged.numerology || '',
-      planet: merged.planet || '',
-      zodiac: merged.zodiac || '',
-      element: merged.element || '',
-      house: merged.house || '',
-      uprightMeaning: merged.uprightMeaning,
-      reversedMeaning: merged.reversedMeaning,
-      keywords: merged.keywords.join('、'),
-      personalNotes: merged.personalNotes,
-    });
+    setEditForm(getAnnotationForm(selectedCardId));
     
     setSaveSuccessMessage(`《${cardName}》已恢复官方注解`);
     setShowSaveSuccess(true);
@@ -206,14 +199,15 @@ export const CardAnnotationEditor: React.FC<CardAnnotationEditorProps> = ({
         initial={{ scale: 0.95, opacity: 0 }}
         animate={{ scale: 1, opacity: 1 }}
         exit={{ scale: 0.95, opacity: 0 }}
-        className="absolute inset-4 md:inset-8 max-h-[calc(100vh-2rem)] md:max-h-[calc(100vh-4rem)] bg-forest-bg rounded-2xl shadow-2xl flex flex-col overflow-hidden"
+        className="absolute inset-3 sm:inset-4 md:inset-8 max-h-[calc(100vh-1.5rem)] sm:max-h-[calc(100vh-2rem)] md:max-h-[calc(100vh-4rem)] bg-forest-bg rounded-2xl shadow-2xl flex flex-col overflow-hidden"
       >
         {/* Header */}
         <div className="flex items-center justify-between p-4 border-b border-forest-accent/20">
-          <h2 className="text-xl font-serif font-bold text-forest-ink">牌义注疏</h2>
+          <h2 className="text-xl font-serif font-bold text-forest-ink">编辑牌义</h2>
           <button
             onClick={onClose}
-            className="p-2 hover:bg-forest-accent/10 rounded-lg transition-colors"
+            className="min-h-11 min-w-11 p-2 hover:bg-forest-accent/10 rounded-lg transition-colors flex items-center justify-center"
+            aria-label="关闭编辑牌义"
           >
             <X size={20} />
           </button>
@@ -222,7 +216,7 @@ export const CardAnnotationEditor: React.FC<CardAnnotationEditorProps> = ({
         {/* Content */}
         <div className="flex-1 flex overflow-hidden">
           {/* Left Panel - Card List */}
-          <div className="w-80 border-r border-forest-accent/20 flex flex-col">
+          <div className={`${selectedCardId ? 'hidden md:flex' : 'flex'} w-full md:w-80 md:border-r border-forest-accent/20 flex-col`}>
             {/* Search and Filter */}
             <div className="p-4 space-y-3 border-b border-forest-accent/20">
               <div className="relative">
@@ -232,7 +226,7 @@ export const CardAnnotationEditor: React.FC<CardAnnotationEditorProps> = ({
                   placeholder="搜索牌名..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full pl-10 pr-4 py-2 bg-white rounded-lg border border-forest-accent/20 focus:border-forest-accent focus:ring-2 focus:ring-forest-accent/20 outline-none"
+                  className="w-full min-h-11 pl-10 pr-4 py-2 bg-white rounded-lg border border-forest-accent/20 focus:border-forest-accent focus:ring-2 focus:ring-forest-accent/20 outline-none"
                 />
               </div>
               
@@ -245,7 +239,7 @@ export const CardAnnotationEditor: React.FC<CardAnnotationEditorProps> = ({
                   <button
                     key={key}
                     onClick={() => setFilter(key as FilterType)}
-                    className={`px-3 py-1 rounded-full text-xs font-bold transition-all ${
+                    className={`min-h-11 px-3 py-1 rounded-full text-xs font-bold transition-all ${
                       filter === key
                         ? 'bg-forest-accent text-white'
                         : 'bg-forest-accent/10 text-forest-accent hover:bg-forest-accent/20'
@@ -266,7 +260,7 @@ export const CardAnnotationEditor: React.FC<CardAnnotationEditorProps> = ({
                   <button
                     key={key}
                     onClick={() => setFilter(key as FilterType)}
-                    className={`px-3 py-1 rounded-full text-xs font-bold transition-all ${
+                    className={`min-h-11 px-3 py-1 rounded-full text-xs font-bold transition-all ${
                       filter === key
                         ? `bg-${color}-500 text-white`
                         : `bg-${color}-100 text-${color}-600 hover:bg-${color}-200`
@@ -295,7 +289,7 @@ export const CardAnnotationEditor: React.FC<CardAnnotationEditorProps> = ({
                     <button
                       key={card.id}
                       onClick={() => handleCardSelect(card.id)}
-                      className={`w-full p-3 rounded-lg text-left transition-all flex items-center gap-3 ${
+                      className={`w-full min-h-16 p-3 rounded-lg text-left transition-all flex items-center gap-3 ${
                         isSelected
                           ? 'bg-forest-accent text-white shadow-lg'
                           : 'hover:bg-forest-accent/10'
@@ -325,11 +319,19 @@ export const CardAnnotationEditor: React.FC<CardAnnotationEditorProps> = ({
           </div>
 
           {/* Right Panel - Editor */}
-          <div className="flex-1 flex flex-col overflow-hidden">
+          <div className={`${selectedCardId ? 'flex' : 'hidden md:flex'} flex-1 flex-col overflow-hidden`}>
             {selectedCardId ? (
               <>
                 {/* Card Header */}
                 <div className="p-4 border-b border-forest-accent/20 bg-gradient-to-r from-forest-accent/5 to-forest-pink/5 shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => setSelectedCardId(null)}
+                    className="md:hidden min-h-11 mb-3 -ml-2 px-3 rounded-xl text-sm font-bold text-forest-accent hover:bg-forest-accent/10 transition-colors flex items-center gap-2"
+                  >
+                    <ArrowLeft size={16} />
+                    返回牌库
+                  </button>
                   <div className="flex items-center gap-4">
                     {(() => {
                       const card = TAROT_CARDS.find(c => c.id === selectedCardId);
@@ -344,10 +346,10 @@ export const CardAnnotationEditor: React.FC<CardAnnotationEditorProps> = ({
                               referrerPolicy="no-referrer"
                             />
                           </div>
-                          <div>
+                          <div className="min-w-0">
                             <h3 className="text-xl font-serif font-bold text-forest-ink">{card?.name}</h3>
                             <p className="text-sm text-forest-muted">{card?.english}</p>
-                            <div className="flex items-center gap-2 mt-1">
+                            <div className="flex flex-wrap items-center gap-2 mt-1">
                               <span className="px-2 py-0.5 bg-forest-accent/10 text-forest-accent rounded text-xs font-bold">
                                 {annotation?.arcana === 'major' ? '大阿尔卡纳' : '小阿尔卡纳'}
                               </span>
@@ -374,14 +376,14 @@ export const CardAnnotationEditor: React.FC<CardAnnotationEditorProps> = ({
                 {/* Editor Form */}
                 <div className="flex-1 overflow-y-auto p-4 space-y-4">
                   {/* Basic Info Grid */}
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
                       <label className="block text-sm font-bold text-forest-accent mb-1">数字命理学</label>
                       <input
                         type="text"
                         value={editForm.numerology}
                         onChange={(e) => setEditForm({ ...editForm, numerology: e.target.value })}
-                        className="w-full px-3 py-2 bg-white rounded-lg border border-forest-accent/20 focus:border-forest-accent focus:ring-2 focus:ring-forest-accent/20 outline-none"
+                        className="w-full min-h-11 px-3 py-2 bg-white rounded-lg border border-forest-accent/20 focus:border-forest-accent focus:ring-2 focus:ring-forest-accent/20 outline-none"
                         placeholder="如: 0 - 无限可能"
                       />
                     </div>
@@ -391,7 +393,7 @@ export const CardAnnotationEditor: React.FC<CardAnnotationEditorProps> = ({
                         type="text"
                         value={editForm.planet}
                         onChange={(e) => setEditForm({ ...editForm, planet: e.target.value })}
-                        className="w-full px-3 py-2 bg-white rounded-lg border border-forest-accent/20 focus:border-forest-accent focus:ring-2 focus:ring-forest-accent/20 outline-none"
+                        className="w-full min-h-11 px-3 py-2 bg-white rounded-lg border border-forest-accent/20 focus:border-forest-accent focus:ring-2 focus:ring-forest-accent/20 outline-none"
                         placeholder="如: 水星、金星"
                       />
                     </div>
@@ -401,7 +403,7 @@ export const CardAnnotationEditor: React.FC<CardAnnotationEditorProps> = ({
                         type="text"
                         value={editForm.zodiac}
                         onChange={(e) => setEditForm({ ...editForm, zodiac: e.target.value })}
-                        className="w-full px-3 py-2 bg-white rounded-lg border border-forest-accent/20 focus:border-forest-accent focus:ring-2 focus:ring-forest-accent/20 outline-none"
+                        className="w-full min-h-11 px-3 py-2 bg-white rounded-lg border border-forest-accent/20 focus:border-forest-accent focus:ring-2 focus:ring-forest-accent/20 outline-none"
                         placeholder="如: 白羊座、狮子座"
                       />
                     </div>
@@ -411,7 +413,7 @@ export const CardAnnotationEditor: React.FC<CardAnnotationEditorProps> = ({
                         type="text"
                         value={editForm.house}
                         onChange={(e) => setEditForm({ ...editForm, house: e.target.value })}
-                        className="w-full px-3 py-2 bg-white rounded-lg border border-forest-accent/20 focus:border-forest-accent focus:ring-2 focus:ring-forest-accent/20 outline-none"
+                        className="w-full min-h-11 px-3 py-2 bg-white rounded-lg border border-forest-accent/20 focus:border-forest-accent focus:ring-2 focus:ring-forest-accent/20 outline-none"
                         placeholder="如: 第一宫、第十宫"
                       />
                     </div>
@@ -421,7 +423,7 @@ export const CardAnnotationEditor: React.FC<CardAnnotationEditorProps> = ({
                         type="text"
                         value={editForm.element}
                         onChange={(e) => setEditForm({ ...editForm, element: e.target.value })}
-                        className="w-full px-3 py-2 bg-white rounded-lg border border-forest-accent/20 focus:border-forest-accent focus:ring-2 focus:ring-forest-accent/20 outline-none"
+                        className="w-full min-h-11 px-3 py-2 bg-white rounded-lg border border-forest-accent/20 focus:border-forest-accent focus:ring-2 focus:ring-forest-accent/20 outline-none"
                         placeholder="如: 火、水、风、土"
                       />
                     </div>
@@ -431,7 +433,7 @@ export const CardAnnotationEditor: React.FC<CardAnnotationEditorProps> = ({
                         type="text"
                         value={editForm.keywords}
                         onChange={(e) => setEditForm({ ...editForm, keywords: e.target.value })}
-                        className="w-full px-3 py-2 bg-white rounded-lg border border-forest-accent/20 focus:border-forest-accent focus:ring-2 focus:ring-forest-accent/20 outline-none"
+                        className="w-full min-h-11 px-3 py-2 bg-white rounded-lg border border-forest-accent/20 focus:border-forest-accent focus:ring-2 focus:ring-forest-accent/20 outline-none"
                         placeholder="用顿号分隔，如: 创造、热情"
                       />
                     </div>
@@ -492,23 +494,23 @@ export const CardAnnotationEditor: React.FC<CardAnnotationEditorProps> = ({
                     )}
                   </AnimatePresence>
                   
-                  <div className="flex items-center justify-between">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                     <button
                       onClick={handleReset}
-                      className="flex items-center gap-2 px-4 py-2 bg-white text-forest-muted rounded-lg border border-forest-accent/20 hover:bg-forest-accent/5 transition-colors"
+                      className="min-h-11 flex items-center justify-center gap-2 px-4 py-2 bg-white text-forest-muted rounded-lg border border-forest-accent/20 hover:bg-forest-accent/5 transition-colors"
                     >
                       <RotateCcw size={16} />
                       <span className="font-bold text-sm">恢复官方</span>
                     </button>
                     
-                    <div className="flex items-center gap-3">
+                    <div className="flex flex-col sm:flex-row sm:items-center gap-3">
                       {showUnsavedWarning && (
                         <span className="text-sm text-amber-600">有未保存的更改</span>
                       )}
                       <button
                         onClick={handleSave}
                         disabled={isSaving}
-                        className={`flex items-center gap-2 px-6 py-2 rounded-lg font-bold text-sm transition-all ${
+                        className={`min-h-11 flex items-center justify-center gap-2 px-6 py-2 rounded-lg font-bold text-sm transition-all ${
                           isSaving
                             ? 'bg-forest-accent/50 text-white cursor-wait'
                             : 'bg-forest-accent text-white hover:bg-forest-accent/90'
@@ -526,7 +528,7 @@ export const CardAnnotationEditor: React.FC<CardAnnotationEditorProps> = ({
                 <div className="text-center">
                   <Moon size={48} className="mx-auto mb-4 opacity-30" />
                   <p>请从左侧列表选择一张牌</p>
-                  <p className="text-sm mt-1">开始编辑你的牌义注疏</p>
+                  <p className="text-sm mt-1">开始编辑你的牌义笔记</p>
                 </div>
               </div>
             )}

@@ -1,27 +1,44 @@
-import React, { useCallback, useMemo, useState, useEffect } from 'react';
+import React, { Suspense, lazy, useCallback, useMemo, useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Plus, History, Globe, BookOpen, Sparkles, X, User, Menu, ChevronRight, Settings, Info, LogOut, Database, ShieldCheck, ArrowRight, LogIn, Book, Upload, Moon, CheckCircle, AlertCircle, AlertTriangle, Mail } from 'lucide-react';
+import { Plus, Globe, Sparkles, X, User, ChevronRight, Info, LogOut, Database, ShieldCheck, ArrowRight, LogIn, Book, Upload, Moon, CheckCircle, AlertTriangle, Mail } from 'lucide-react';
 import { TarotReading, SpreadDefinition, TarotCardMetadata, UserProfile } from './types';
-import { PAVILION_PROVERBS } from './constants';
+import { PAVILION_PROVERBS, TAROT_CARDS } from './constants';
 import { Modal } from './components/Modal';
-import { Auth } from './components/Auth';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { checkIfMagicLink, verifyMagicLink, deleteUserAccount } from './lib/firebase';
 import { getOrCreateUserProfile, updateUserProfile, replaceUserReadings, saveUserSpreads, saveUserCardMetadata, deleteUserAccount as deleteUserAccountData } from './lib/firebaseData';
 import { isValidPassword } from './lib/utils';
 import { HomeTab } from './components/tabs/HomeTab';
-import { AddTab } from './components/tabs/AddTab';
-import { PrivateTab } from './components/tabs/PrivateTab';
-import { PublicTab } from './components/tabs/PublicTab';
-import { ProfileTab } from './components/tabs/ProfileTab';
 import { MainLayout } from './components/layouts/MainLayout';
-import { CardMetadataManager } from './components/CardMetadataManager';
-import { ReadingDetailModal } from './components/ReadingDetailModal';
 import { useReadings } from './hooks/useReadings';
 import { useOnboarding } from './context/OnboardingContext';
 import { FirstEntryGuide } from './components/onboarding/FirstEntryGuide';
 import { SmartTipBanner } from './components/onboarding/SmartTipBanner';
 import { useSmartTips } from './hooks/useSmartTips';
+import { useDarkMode } from './hooks/useDarkMode';
+import { usePersistentTab } from './hooks/usePersistentTab';
+
+const loadCardMetadataManager = () => import('./components/CardMetadataManager');
+const loadReadingDetailModal = () => import('./components/ReadingDetailModal');
+const loadAuth = () => import('./components/Auth');
+const loadAddTab = () => import('./components/tabs/AddTab');
+const loadPrivateTab = () => import('./components/tabs/PrivateTab');
+const loadPublicTab = () => import('./components/tabs/PublicTab');
+const loadProfileTab = () => import('./components/tabs/ProfileTab');
+
+const CardMetadataManager = lazy(() => loadCardMetadataManager().then(module => ({ default: module.CardMetadataManager })));
+const ReadingDetailModal = lazy(() => loadReadingDetailModal().then(module => ({ default: module.ReadingDetailModal })));
+const Auth = lazy(() => loadAuth().then(module => ({ default: module.Auth })));
+const AddTab = lazy(() => loadAddTab().then(module => ({ default: module.AddTab })));
+const PrivateTab = lazy(() => loadPrivateTab().then(module => ({ default: module.PrivateTab })));
+const PublicTab = lazy(() => loadPublicTab().then(module => ({ default: module.PublicTab })));
+const ProfileTab = lazy(() => loadProfileTab().then(module => ({ default: module.ProfileTab })));
+
+const SuspenseFallback = () => (
+  <div className="min-h-[220px] flex items-center justify-center text-forest-muted text-xs font-bold">
+    正在展开阁中卷册...
+  </div>
+);
 
 // --- Auth Wrapper ---
 type SnackbarState = {
@@ -41,12 +58,7 @@ function AppContent() {
   const { session, isEmailVerified, signOut, updatePassword, sendVerificationEmail, refreshUser } = useAuth();
   const { state: onboardingState, checkAndUnlockAchievements } = useOnboarding();
   
-  const [activeTab, setActiveTab] = useState<AppTab>(
-    () => {
-      const saved = localStorage.getItem('tarot_active_tab');
-      return isAppTab(saved) ? saved : 'home';
-    }
-  );
+  const [activeTab, setActiveTab] = usePersistentTab<AppTab>('tarot_active_tab', 'home', isAppTab);
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [selectedAuthor, setSelectedAuthor] = useState<string | null>(null);
   const [selectedReadingDetail, setSelectedReadingDetail] = useState<TarotReading | null>(null);
@@ -80,29 +92,11 @@ function AppContent() {
   
   // Narrative Elements
   const [showPromotionCeremony, setShowPromotionCeremony] = useState<{ isOpen: boolean; rank: string }>({ isOpen: false, rank: '' });
-  const [showFirstEntryScroll, setShowFirstEntryScroll] = useState(false);
   const [dailyProverb, setDailyProverb] = useState('');
   const [formQuestion, setFormQuestion] = useState('');
   const [hasCards, setHasCards] = useState(false);
 
-  // Dark Mode
-  const [isDarkMode, setIsDarkMode] = useState(() => {
-    const saved = localStorage.getItem('tarot_dark_mode');
-    return saved ? saved === 'true' : false;
-  });
-
-  useEffect(() => {
-    if (isDarkMode) {
-      document.documentElement.classList.add('dark');
-    } else {
-      document.documentElement.classList.remove('dark');
-    }
-    localStorage.setItem('tarot_dark_mode', String(isDarkMode));
-  }, [isDarkMode]);
-
-  const toggleDarkMode = () => {
-    setIsDarkMode(prev => !prev);
-  };
+  const { isDarkMode, toggleDarkMode } = useDarkMode();
 
   // Use custom hook for readings state
   const {
@@ -120,7 +114,6 @@ function AppContent() {
     isProcessing,
     editingReading,
     setEditingReading,
-    filteredReadings,
     handleAddReading,
     handleExtractKeywordCandidates,
     handleConfirmKeywordCandidates,
@@ -147,6 +140,32 @@ function AppContent() {
     return () => window.clearTimeout(timer);
   }, [clearSyncNotice, syncNotice]);
 
+  useEffect(() => {
+    const preloadTabs = () => {
+      void Promise.allSettled([
+        loadAddTab(),
+        loadPrivateTab(),
+        loadPublicTab(),
+        loadProfileTab(),
+        loadCardMetadataManager(),
+        loadReadingDetailModal(),
+      ]);
+    };
+
+    const idleWindow = window as Window & {
+      requestIdleCallback?: (callback: IdleRequestCallback, options?: IdleRequestOptions) => number;
+      cancelIdleCallback?: (handle: number) => void;
+    };
+
+    if (idleWindow.requestIdleCallback && idleWindow.cancelIdleCallback) {
+      const idleId = idleWindow.requestIdleCallback(preloadTabs, { timeout: 2500 });
+      return () => idleWindow.cancelIdleCallback?.(idleId);
+    }
+
+    const timer = window.setTimeout(preloadTabs, 1200);
+    return () => window.clearTimeout(timer);
+  }, []);
+
   const resetPrivateSessionState = useCallback((forceHome = false) => {
     setProfile(null);
     setSelectedAuthor(null);
@@ -157,9 +176,10 @@ function AppContent() {
     setActiveTab(current => (forceHome || current === 'profile' ? 'home' : current));
   }, [setEditingReading]);
 
-  const readingCount = readings.filter(r => !r.isExample).length;
-  const hasPublicReading = readings.some(r => r.isPublic);
-  const aiUsageCount = readings.filter(r => r.interpretation?.combination?.includes('AI') || r.processedByAi).length;
+  const realReadings = useMemo(() => readings.filter(r => !r.isExample), [readings]);
+  const readingCount = realReadings.length;
+  const hasPublicReading = realReadings.some(r => r.isPublic);
+  const aiUsageCount = realReadings.filter(r => r.interpretation?.combination?.includes('AI') || r.processedByAi).length;
   
   useEffect(() => {
     checkAndUnlockAchievements(readingCount, hasPublicReading, aiUsageCount, 0);
@@ -178,6 +198,16 @@ function AppContent() {
     }
   };
 
+  const closeSidebar = useCallback(() => {
+    setIsSidebarOpen(false);
+    dismissTip();
+  }, [dismissTip]);
+
+  const openSidebar = useCallback(() => {
+    dismissTip();
+    setIsSidebarOpen(true);
+  }, [dismissTip]);
+
   const resetSignedOutView = useCallback(() => {
     resetPrivateSessionState(true);
     setSearchQuery('');
@@ -186,6 +216,23 @@ function AppContent() {
     setShowAuthPage(false);
     setLoginPrompt(prev => ({ ...prev, isOpen: false }));
   }, [resetPrivateSessionState, setSearchQuery, setSearchTags]);
+
+  useEffect(() => {
+    if (!isTipVisible) return;
+
+    const handlePointerDown = (event: PointerEvent) => {
+      const target = event.target;
+      if (!(target instanceof Element)) return;
+      if (target.closest('[data-smart-tip-banner]')) return;
+      dismissTip();
+    };
+
+    document.addEventListener('pointerdown', handlePointerDown, { capture: true });
+
+    return () => {
+      document.removeEventListener('pointerdown', handlePointerDown, { capture: true });
+    };
+  }, [dismissTip, isTipVisible]);
 
   useEffect(() => {
     if (!session) {
@@ -201,11 +248,6 @@ function AppContent() {
 
   // Daily Proverb & First Entry Scroll
   useEffect(() => {
-    const hasSeenScroll = localStorage.getItem('has_seen_first_entry_scroll');
-    if (!hasSeenScroll && session) {
-      setShowFirstEntryScroll(true);
-    }
-
     const today = new Date().toDateString();
     const savedDate = localStorage.getItem('proverb_date');
     const savedProverb = localStorage.getItem('proverb_content');
@@ -219,11 +261,6 @@ function AppContent() {
       localStorage.setItem('proverb_content', randomProverb);
     }
   }, [session]);
-
-  // Save active tab to localStorage
-  useEffect(() => {
-    localStorage.setItem('tarot_active_tab', activeTab);
-  }, [activeTab]);
 
   // Security check for restricted pages
   useEffect(() => {
@@ -272,7 +309,7 @@ function AppContent() {
     handleMagicLink();
   }, []);
 
-  // Handle Migration - Migrate local data to Firestore
+  // Handle Migration - Migrate local data to Firebase
   const handleMigration = async (confirm: boolean) => {
     if (!confirm) {
       setShowMigrationPrompt(false);
@@ -584,6 +621,69 @@ function AppContent() {
     );
   }, [isViewingOwnProfile, publicReadingsCache, readings]);
 
+  const sidebarInsights = useMemo(() => {
+    const toDayStart = (value?: string) => {
+      if (!value) return null;
+      const date = new Date(value);
+      if (Number.isNaN(date.getTime())) return null;
+      return new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
+    };
+
+    const todayStart = toDayStart(new Date().toISOString()) || 0;
+    const weekStart = todayStart - 6 * 24 * 60 * 60 * 1000;
+    const dayStarts = realReadings
+      .map(reading => toDayStart(reading.readingDate || reading.date))
+      .filter((day): day is number => day !== null);
+
+    const uniqueDays = Array.from(new Set(dayStarts)).sort((a, b) => b - a);
+    const daySet = new Set(uniqueDays);
+    const latestDay = uniqueDays[0] ?? todayStart;
+    let streak = 0;
+    if (latestDay >= todayStart - 24 * 60 * 60 * 1000) {
+      for (let cursor = latestDay; daySet.has(cursor); cursor -= 24 * 60 * 60 * 1000) {
+        streak += 1;
+      }
+    }
+
+    const cardCounts = new Map<string, number>();
+    realReadings.forEach(reading => {
+      reading.cards.forEach(card => {
+        if (!card.name) return;
+        cardCounts.set(card.name, (cardCounts.get(card.name) || 0) + 1);
+      });
+    });
+
+    const topCard = Array.from(cardCounts.entries()).sort((a, b) => b[1] - a[1])[0] || null;
+    const topKeyword = cardKeywordMemory
+      .flatMap(item => item.keywords.map(keyword => ({
+        cardName: item.cardName,
+        keyword: keyword.keyword,
+        count: keyword.count,
+      })))
+      .sort((a, b) => b.count - a.count)[0] || null;
+
+    const latestReading = [...realReadings].sort(
+      (a, b) => new Date(b.readingDate || b.date).getTime() - new Date(a.readingDate || a.date).getTime()
+    )[0] || null;
+
+    return {
+      todayCount: dayStarts.filter(day => day === todayStart).length,
+      weekCount: dayStarts.filter(day => day >= weekStart).length,
+      streak,
+      seenCardCount: cardCounts.size,
+      memoryCardCount: cardKeywordMemory.filter(item => item.keywords.length > 0).length,
+      topCard,
+      topKeyword,
+      latestReading,
+    };
+  }, [cardKeywordMemory, realReadings]);
+
+  const navigateFromSidebar = useCallback((tab: AppTab) => {
+    if (tab !== 'add') setEditingReading(null);
+    setActiveTab(tab);
+    closeSidebar();
+  }, [closeSidebar, setEditingReading, setActiveTab]);
+
   // Sidebar Content
   const sidebarContent = (
     <div className="p-6">
@@ -597,68 +697,118 @@ function AppContent() {
         </div>
       </div>
 
-      <div className="space-y-1">
-        <p className="text-[10px] text-forest-muted font-bold px-2 uppercase tracking-widest mb-2">研习导航</p>
-        <button 
-          onClick={() => { setActiveTab('home'); setIsSidebarOpen(false); }}
-          className={`w-full flex items-center justify-between p-3 rounded-xl transition-all group ${
-            activeTab === 'home' ? 'bg-forest-accent/5 text-forest-accent' : 'hover:bg-forest-accent/5 text-forest-text'
-          }`}
-        >
-          <div className="flex items-center gap-3">
-            <History size={18} />
-            <span className="text-sm font-medium">研习台</span>
+      <div className="space-y-5">
+        <section className="rounded-2xl bg-forest-bg/70 border border-forest-accent/10 p-4 space-y-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-[10px] text-forest-muted font-bold uppercase tracking-widest">今日研习</p>
+              <p className="text-sm text-forest-ink font-bold mt-1">
+                {sidebarInsights.todayCount > 0 ? `今日已记 ${sidebarInsights.todayCount} 则` : '今天还未抽牌'}
+              </p>
+            </div>
+            <div className="w-10 h-10 rounded-xl bg-forest-accent/10 text-forest-accent flex items-center justify-center">
+              <Moon size={18} />
+            </div>
           </div>
-          <ChevronRight size={14} className="text-forest-muted group-hover:translate-x-1 transition-transform" />
-        </button>
-        <button 
-          onClick={() => { setActiveTab('add'); setIsSidebarOpen(false); }}
-          className={`w-full flex items-center justify-between p-3 rounded-xl transition-all group ${
-            activeTab === 'add' ? 'bg-forest-accent/5 text-forest-accent' : 'hover:bg-forest-accent/5 text-forest-text'
-          }`}
-        >
-          <div className="flex items-center gap-3">
-            <Plus size={18} />
-            <span className="text-sm font-medium">抽牌手记</span>
+
+          <div className="grid grid-cols-3 gap-2">
+            <div className="rounded-xl bg-white/70 border border-forest-accent/5 p-3">
+              <p className="text-lg font-serif font-bold text-forest-accent">{sidebarInsights.streak}</p>
+              <p className="text-[9px] text-forest-muted font-bold">连续天</p>
+            </div>
+            <div className="rounded-xl bg-white/70 border border-forest-accent/5 p-3">
+              <p className="text-lg font-serif font-bold text-forest-accent">{sidebarInsights.weekCount}</p>
+              <p className="text-[9px] text-forest-muted font-bold">近 7 天</p>
+            </div>
+            <div className="rounded-xl bg-white/70 border border-forest-accent/5 p-3">
+              <p className="text-lg font-serif font-bold text-forest-accent">{readingCount}</p>
+              <p className="text-[9px] text-forest-muted font-bold">总手记</p>
+            </div>
           </div>
-          <ChevronRight size={14} className="text-forest-muted group-hover:translate-x-1 transition-transform" />
-        </button>
-        <button 
-          onClick={() => { setActiveTab('private'); setIsSidebarOpen(false); }}
-          className={`w-full flex items-center justify-between p-3 rounded-xl transition-all group ${
-            activeTab === 'private' ? 'bg-forest-accent/5 text-forest-accent' : 'hover:bg-forest-accent/5 text-forest-text'
-          }`}
-        >
-          <div className="flex items-center gap-3">
-            <BookOpen size={18} />
-            <span className="text-sm font-medium">阁中典籍</span>
+
+          <button
+            onClick={() => navigateFromSidebar(sidebarInsights.latestReading ? 'private' : 'add')}
+            className="w-full min-h-11 px-4 rounded-xl bg-forest-accent text-white text-sm font-bold hover:bg-forest-accent/90 transition-colors flex items-center justify-center gap-2"
+          >
+            {sidebarInsights.latestReading ? '查看最近手记' : '开始第一次抽牌'}
+            <ChevronRight size={16} />
+          </button>
+        </section>
+
+        <section className="rounded-2xl bg-white border border-forest-accent/10 p-4 space-y-4 shadow-sm">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-[10px] text-forest-muted font-bold uppercase tracking-widest">牌库洞察</p>
+              <p className="text-sm text-forest-ink font-bold mt-1">
+                已遇见 {sidebarInsights.seenCardCount}/{TAROT_CARDS.length} 张牌
+              </p>
+            </div>
+            <Book className="text-forest-accent" size={18} />
           </div>
-          <ChevronRight size={14} className="text-forest-muted group-hover:translate-x-1 transition-transform" />
-        </button>
-        <button 
-          onClick={() => { setActiveTab('metadata'); setIsSidebarOpen(false); }}
-          className={`w-full flex items-center justify-between p-3 rounded-xl transition-all group ${
-            activeTab === 'metadata' ? 'bg-forest-accent/5 text-forest-accent' : 'hover:bg-forest-accent/5 text-forest-text'
-          }`}
-        >
-          <div className="flex items-center gap-3">
-            <Book size={18} />
-            <span className="text-sm font-medium">牌义注疏</span>
+
+          <div className="space-y-3">
+            <div>
+              <div className="h-2 rounded-full bg-forest-bg overflow-hidden">
+                <div
+                  className="h-full rounded-full bg-forest-accent transition-all"
+                  style={{ width: `${Math.min(100, Math.round((sidebarInsights.seenCardCount / TAROT_CARDS.length) * 100))}%` }}
+                />
+              </div>
+              <p className="mt-2 text-[10px] text-forest-muted">
+                {sidebarInsights.topCard ? `最常出现：${sidebarInsights.topCard[0]} ×${sidebarInsights.topCard[1]}` : '抽牌后会在这里形成你的牌库轨迹'}
+              </p>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2">
+              <div className="rounded-xl bg-forest-bg/60 p-3">
+                <p className="text-base font-serif font-bold text-forest-accent">{sidebarInsights.memoryCardCount}</p>
+                <p className="text-[9px] text-forest-muted font-bold">有牌义记忆</p>
+              </div>
+              <div className="rounded-xl bg-forest-bg/60 p-3 min-w-0">
+                <p className="text-xs font-bold text-forest-accent truncate">
+                  {sidebarInsights.topKeyword ? sidebarInsights.topKeyword.keyword : '待积累'}
+                </p>
+                <p className="text-[9px] text-forest-muted font-bold truncate">
+                  {sidebarInsights.topKeyword ? `${sidebarInsights.topKeyword.cardName} 高频词` : '关键词'}
+                </p>
+              </div>
+            </div>
           </div>
-          <ChevronRight size={14} className="text-forest-muted group-hover:translate-x-1 transition-transform" />
-        </button>
-        <button 
-          onClick={() => { setActiveTab('public'); setIsSidebarOpen(false); }}
-          className={`w-full flex items-center justify-between p-3 rounded-xl transition-all group ${
-            activeTab === 'public' ? 'bg-forest-accent/5 text-forest-accent' : 'hover:bg-forest-accent/5 text-forest-text'
-          }`}
-        >
-          <div className="flex items-center gap-3">
-            <Globe size={18} />
-            <span className="text-sm font-medium">研习广场</span>
-          </div>
-          <ChevronRight size={14} className="text-forest-muted group-hover:translate-x-1 transition-transform" />
-        </button>
+        </section>
+
+        <section className="space-y-2">
+          <p className="text-[10px] text-forest-muted font-bold px-2 uppercase tracking-widest">快捷动作</p>
+          <button
+            onClick={() => navigateFromSidebar('add')}
+            className="w-full min-h-12 flex items-center justify-between p-3 rounded-xl bg-forest-accent/5 hover:bg-forest-accent/10 text-forest-text transition-all group"
+          >
+            <div className="flex items-center gap-3">
+              <Plus size={18} className="text-forest-accent" />
+              <span className="text-sm font-medium">写一则新手记</span>
+            </div>
+            <ChevronRight size={14} className="text-forest-muted group-hover:translate-x-1 transition-transform" />
+          </button>
+          <button
+            onClick={() => navigateFromSidebar('metadata')}
+            className="w-full min-h-12 flex items-center justify-between p-3 rounded-xl bg-forest-accent/5 hover:bg-forest-accent/10 text-forest-text transition-all group"
+          >
+            <div className="flex items-center gap-3">
+              <Book size={18} className="text-forest-accent" />
+              <span className="text-sm font-medium">补充牌义笔记</span>
+            </div>
+            <ChevronRight size={14} className="text-forest-muted group-hover:translate-x-1 transition-transform" />
+          </button>
+          <button
+            onClick={() => navigateFromSidebar('public')}
+            className="w-full min-h-12 flex items-center justify-between p-3 rounded-xl bg-forest-accent/5 hover:bg-forest-accent/10 text-forest-text transition-all group"
+          >
+            <div className="flex items-center gap-3">
+              <Globe size={18} className="text-forest-accent" />
+              <span className="text-sm font-medium">看看广场灵感</span>
+            </div>
+            <ChevronRight size={14} className="text-forest-muted group-hover:translate-x-1 transition-transform" />
+          </button>
+        </section>
       </div>
 
       <div className="pt-4">
@@ -671,11 +821,11 @@ function AppContent() {
                 title: '🔒 开启数据导出功能',
                 content: '登录后，您可以一键导出所有的占卜记录与研习心得。'
               });
-              setIsSidebarOpen(false);
+              closeSidebar();
               return;
             }
             handleExportData();
-            setIsSidebarOpen(false);
+            closeSidebar();
           }}
           className="w-full flex items-center justify-between p-3 rounded-xl hover:bg-forest-accent/5 text-forest-text transition-all group"
         >
@@ -686,7 +836,7 @@ function AppContent() {
           <ChevronRight size={14} className="text-forest-muted group-hover:translate-x-1 transition-transform" />
         </button>
         <button 
-          onClick={() => { handleImportData(); setIsSidebarOpen(false); }}
+          onClick={() => { handleImportData(); closeSidebar(); }}
           className="w-full flex items-center justify-between p-3 rounded-xl hover:bg-forest-accent/5 text-forest-text transition-all group"
         >
           <div className="flex items-center gap-3">
@@ -705,7 +855,7 @@ function AppContent() {
               onClick={() => {
                 setSelectedAuthor(profile?.display_name || profile?.nickname || session.email?.split('@')[0]);
                 setActiveTab('profile');
-                setIsSidebarOpen(false);
+                closeSidebar();
               }}
               className={`w-full flex items-center justify-between p-3 rounded-xl transition-all group ${
                 activeTab === 'profile' ? 'bg-forest-accent/5 text-forest-accent' : 'hover:bg-forest-accent/5 text-forest-text'
@@ -718,14 +868,14 @@ function AppContent() {
               <ChevronRight size={14} className="text-forest-muted group-hover:translate-x-1 transition-transform" />
             </button>
             <button 
-              onClick={() => { setShowLogoutConfirm(true); setIsSidebarOpen(false); }}
+              onClick={() => { setShowLogoutConfirm(true); closeSidebar(); }}
               className="w-full flex items-center gap-3 p-3 rounded-xl hover:bg-forest-accent/5 text-forest-accent transition-all"
             >
               <LogOut size={18} />
               <span className="text-sm font-medium">封印离阁</span>
             </button>
             <button 
-              onClick={() => { setIsSecurityModalOpen(true); setIsSidebarOpen(false); }}
+              onClick={() => { setIsSecurityModalOpen(true); closeSidebar(); }}
               className="w-full flex items-center gap-3 p-3 rounded-xl hover:bg-forest-accent/5 text-forest-text transition-all"
             >
               <ShieldCheck size={18} className="text-forest-accent" />
@@ -734,7 +884,7 @@ function AppContent() {
           </div>
         ) : (
           <button 
-            onClick={() => { setShowAuthPage(true); setIsSidebarOpen(false); }}
+            onClick={() => { setShowAuthPage(true); closeSidebar(); }}
             className="w-full flex items-center gap-3 p-3 rounded-xl hover:bg-forest-pink/10 text-forest-pink transition-all"
           >
             <LogIn size={18} />
@@ -745,16 +895,6 @@ function AppContent() {
 
       <div className="pt-4">
         <p className="text-[10px] text-forest-muted font-bold px-2 uppercase tracking-widest mb-2">系统设置</p>
-        <button 
-          onClick={() => { setActiveTab('metadata'); setIsSidebarOpen(false); }}
-          className="w-full flex items-center justify-between p-3 rounded-xl hover:bg-forest-accent/5 text-forest-text transition-all group"
-        >
-          <div className="flex items-center gap-3">
-            <Settings size={18} className="text-forest-accent" />
-            <span className="text-sm font-medium">牌面属性管理</span>
-          </div>
-          <ChevronRight size={14} className="text-forest-muted group-hover:translate-x-1 transition-transform" />
-        </button>
         <button className="w-full flex items-center gap-3 p-3 rounded-xl hover:bg-forest-accent/5 text-forest-text transition-all opacity-50 cursor-not-allowed">
           <Info size={18} className="text-forest-accent" />
           <span className="text-sm font-medium">关于研习阁</span>
@@ -777,27 +917,35 @@ function AppContent() {
         >
           <ChevronRight size={24} className="rotate-180" />
         </button>
-        <Auth onClose={() => setShowAuthPage(false)} onSignedOut={handleAuthSignedOut} />
+        <Suspense fallback={<SuspenseFallback />}>
+          <Auth onClose={() => setShowAuthPage(false)} onSignedOut={handleAuthSignedOut} />
+        </Suspense>
       </div>
     );
   }
 
   return (
-    <MainLayout
-      activeTab={activeTab}
-      setActiveTab={(tab: 'home' | 'add' | 'private' | 'public' | 'metadata' | 'profile') => {
-        if (tab !== 'add') setEditingReading(null);
-        setActiveTab(tab);
-      }}
-      isSidebarOpen={isSidebarOpen}
-      setIsSidebarOpen={setIsSidebarOpen}
-      session={session}
-      profile={profile}
-      selectedAuthor={selectedAuthor}
-      setSelectedAuthor={setSelectedAuthor}
-      onShowAuth={() => setShowAuthPage(true)}
-      sidebarContent={sidebarContent}
-    >
+    <>
+    <div aria-hidden={onboardingState.showFirstEntry} inert={onboardingState.showFirstEntry}>
+      <MainLayout
+        activeTab={activeTab}
+        setActiveTab={(tab: 'home' | 'add' | 'private' | 'public' | 'metadata' | 'profile') => {
+          if (tab !== 'add') setEditingReading(null);
+          dismissTip();
+          setActiveTab(tab);
+        }}
+        isSidebarOpen={isSidebarOpen}
+        setIsSidebarOpen={(open) => {
+          if (open) openSidebar();
+          else closeSidebar();
+        }}
+        session={session}
+        profile={profile}
+        selectedAuthor={selectedAuthor}
+        setSelectedAuthor={setSelectedAuthor}
+        onShowAuth={() => setShowAuthPage(true)}
+        sidebarContent={sidebarContent}
+      >
       {/* Modals */}
       <Modal 
         isOpen={loginPrompt.isOpen} 
@@ -1154,11 +1302,6 @@ function AppContent() {
         )}
       </AnimatePresence>
 
-      {/* First Entry Scroll */}
-      <AnimatePresence>
-        {onboardingState.showFirstEntry && <FirstEntryGuide />}
-      </AnimatePresence>
-
       {/* Smart Tips Banner */}
       {currentTip && (
         <SmartTipBanner
@@ -1209,7 +1352,7 @@ function AppContent() {
       </AnimatePresence>
 
       {/* Tab Content */}
-      <AnimatePresence mode="wait">
+      <AnimatePresence initial={false}>
         {activeTab === 'home' && (
           <HomeTab
             session={session}
@@ -1252,117 +1395,135 @@ function AppContent() {
         )}
 
         {activeTab === 'private' && (
-          <PrivateTab
-            readings={readings}
-            searchQuery={searchQuery}
-            setSearchQuery={setSearchQuery}
-            searchTags={searchTags}
-            onToggleTag={toggleTag}
-            onNavigate={(tab: 'home' | 'add' | 'private' | 'public' | 'metadata' | 'profile') => {
-              if (tab !== 'add') setEditingReading(null);
-              setActiveTab(tab);
-            }}
-            onTogglePublic={togglePublic}
-            onDelete={handleDeleteReading}
-            onEdit={handleEditReadingNavigate}
-            onViewDetails={setSelectedReadingDetail}
-            onAuthorClick={handleAuthorClick}
-            onProcessAi={handleProcessAi}
-            onExtractKeywordCandidates={handleExtractKeywordCandidates}
-            onConfirmKeywordCandidates={handleConfirmKeywordCandidates}
-            cardMetadata={cardMetadata}
-          />
+          <Suspense fallback={<SuspenseFallback />}>
+            <PrivateTab
+              readings={readings}
+              searchQuery={searchQuery}
+              setSearchQuery={setSearchQuery}
+              searchTags={searchTags}
+              onToggleTag={toggleTag}
+              onNavigate={(tab: 'home' | 'add' | 'private' | 'public' | 'metadata' | 'profile') => {
+                if (tab !== 'add') setEditingReading(null);
+                setActiveTab(tab);
+              }}
+              onTogglePublic={togglePublic}
+              onDelete={handleDeleteReading}
+              onEdit={handleEditReadingNavigate}
+              onViewDetails={setSelectedReadingDetail}
+              onAuthorClick={handleAuthorClick}
+              onProcessAi={handleProcessAi}
+              onExtractKeywordCandidates={handleExtractKeywordCandidates}
+              onConfirmKeywordCandidates={handleConfirmKeywordCandidates}
+              cardMetadata={cardMetadata}
+            />
+          </Suspense>
         )}
 
         {activeTab === 'public' && (
-          <PublicTab
-            readings={readings}
-            cardMetadata={cardMetadata}
-            onTagClick={handlePublicTagClick}
-            onAuthorClick={handleAuthorClick}
-            onProcessAi={handleProcessAi}
-            onPublicReadingsLoaded={setPublicReadingsCache}
-          />
+          <Suspense fallback={<SuspenseFallback />}>
+            <PublicTab
+              readings={readings}
+              cardMetadata={cardMetadata}
+              onTagClick={handlePublicTagClick}
+              onAuthorClick={handleAuthorClick}
+              onProcessAi={handleProcessAi}
+              initialPublicReadings={publicReadingsCache}
+              onPublicReadingsLoaded={setPublicReadingsCache}
+            />
+          </Suspense>
         )}
 
         {activeTab === 'add' && (
-          <AddTab
-            onSubmit={handleAddReadingWithSnackbar}
-            isLoading={isProcessing}
-            isLoggedIn={!!session}
-            userId={session?.uid}
-            spreads={spreads}
-            onUpdateSpreads={setSpreads}
-            cardMetadata={cardMetadata}
-            cardKeywordMemory={cardKeywordMemory}
-            onUpdateCardMetadata={setCardMetadata}
-            initialData={editingReading}
-            onCancel={() => {
-              const wasEditing = !!editingReading;
-              setEditingReading(null);
-              setActiveTab(wasEditing ? 'private' : 'home');
-            }}
-          />
+          <Suspense fallback={<SuspenseFallback />}>
+            <AddTab
+              onSubmit={handleAddReadingWithSnackbar}
+              isLoading={isProcessing}
+              isLoggedIn={!!session}
+              userId={session?.uid}
+              spreads={spreads}
+              onUpdateSpreads={setSpreads}
+              cardMetadata={cardMetadata}
+              cardKeywordMemory={cardKeywordMemory}
+              onUpdateCardMetadata={setCardMetadata}
+              initialData={editingReading}
+              onCancel={() => {
+                const wasEditing = !!editingReading;
+                setEditingReading(null);
+                setActiveTab(wasEditing ? 'private' : 'home');
+              }}
+            />
+          </Suspense>
         )}
 
         {activeTab === 'profile' && (
-          <ProfileTab
-            authorName={selectedAuthor || ownAuthorName}
-            profile={isViewingOwnProfile ? profile : null}
-            readings={profileReadings}
-            cardMetadata={cardMetadata}
-            onLogout={() => setShowLogoutConfirm(true)}
-            onUpdateProfile={async (updated) => {
-              try {
-                if (updated.password) {
-                  throw new Error('请在账号安全中修改密码。');
-                }
+          <Suspense fallback={<SuspenseFallback />}>
+            <ProfileTab
+              authorName={selectedAuthor || ownAuthorName}
+              profile={isViewingOwnProfile ? profile : null}
+              readings={profileReadings}
+              cardMetadata={cardMetadata}
+              onLogout={() => setShowLogoutConfirm(true)}
+              onUpdateProfile={async (updated) => {
+                try {
+                  if (updated.password) {
+                    throw new Error('请在账号安全中修改密码。');
+                  }
 
-                if (Object.keys(updated).length > 0 && session?.uid) {
-                  setProfile(await updateUserProfile(session.uid, updated));
-                }
+                  if (Object.keys(updated).length > 0 && session?.uid) {
+                    setProfile(await updateUserProfile(session.uid, updated));
+                  }
 
-                setSnackbar({ isOpen: true, message: '✨ 印鉴已更新，阁主气象一新。' });
-              } catch (error: any) {
-                setSnackbar({ isOpen: true, message: `❌ 更新失败: ${error.message}` });
-              }
-            }}
-            onTagClick={(tag) => {
-              setSearchTags([tag]);
-              setActiveTab('private');
-            }}
-            onViewAll={() => setActiveTab('private')}
-            onEditReading={handleEditReadingNavigate}
-            onDeleteReading={handleDeleteReading}
-            onTogglePublic={togglePublic}
-          />
+                  setSnackbar({ isOpen: true, message: '✨ 印鉴已更新，阁主气象一新。' });
+                } catch (error: any) {
+                  setSnackbar({ isOpen: true, message: `❌ 更新失败: ${error.message}` });
+                }
+              }}
+              onTagClick={(tag) => {
+                setSearchTags([tag]);
+                setActiveTab('private');
+              }}
+              onViewAll={() => setActiveTab('private')}
+              onEditReading={handleEditReadingNavigate}
+              onDeleteReading={handleDeleteReading}
+              onTogglePublic={togglePublic}
+            />
+          </Suspense>
         )}
 
         {activeTab === 'metadata' && (
           <motion.div key="metadata" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 20 }}>
-            <CardMetadataManager 
-              metadata={cardMetadata}
-              onUpdate={setCardMetadata}
-              readings={readings}
-              cardKeywordMemory={cardKeywordMemory}
-              isLoggedIn={!!session}
-              userId={session?.uid}
-              onAddReading={handleAddReadingWithSnackbar}
-              onShowSnackbar={(msg) => {
-                setSnackbar({ isOpen: true, message: msg });
-                setTimeout(() => setSnackbar(prev => ({ ...prev, isOpen: false })), 3000);
-              }}
-            />
+            <Suspense fallback={<SuspenseFallback />}>
+              <CardMetadataManager
+                metadata={cardMetadata}
+                onUpdate={setCardMetadata}
+                readings={readings}
+                cardKeywordMemory={cardKeywordMemory}
+                isLoggedIn={!!session}
+                userId={session?.uid}
+                onAddReading={handleAddReadingWithSnackbar}
+                onShowSnackbar={(msg) => {
+                  setSnackbar({ isOpen: true, message: msg });
+                  setTimeout(() => setSnackbar(prev => ({ ...prev, isOpen: false })), 3000);
+                }}
+              />
+            </Suspense>
           </motion.div>
         )}
       </AnimatePresence>
 
-      <ReadingDetailModal
-        reading={selectedReadingDetail}
-        onClose={() => setSelectedReadingDetail(null)}
-        onEdit={handleEditReadingNavigate}
-      />
-    </MainLayout>
+      <Suspense fallback={null}>
+        <ReadingDetailModal
+          reading={selectedReadingDetail}
+          onClose={() => setSelectedReadingDetail(null)}
+          onEdit={handleEditReadingNavigate}
+        />
+      </Suspense>
+      </MainLayout>
+    </div>
+    <AnimatePresence>
+      {onboardingState.showFirstEntry && <FirstEntryGuide />}
+    </AnimatePresence>
+    </>
   );
 }
 

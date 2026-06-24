@@ -1,45 +1,18 @@
-import React from 'react';
-import { motion, AnimatePresence } from 'motion/react';
-import { Sparkles, BookOpen, PenLine, ChevronRight, X } from 'lucide-react';
+import React, { useEffect, useRef } from 'react';
+import { motion } from 'motion/react';
+import { ChevronRight, X } from 'lucide-react';
 import { useOnboarding } from '../../context/OnboardingContext';
-
-const FIRST_ENTRY_STEPS = [
-  {
-    title: '入阁敕令',
-    subtitle: '开启您的塔罗研习之旅',
-    content: '今有问道者一人，于虚无中开辟一方灵台，赐号"塔罗研习阁"。汝为第一任阁主。愿汝勤加研习，自注牌义，成一家之言。',
-    icon: Sparkles,
-    action: '开始导览',
-    showSkip: true,
-  },
-  {
-    title: '研习台',
-    subtitle: '每日灵见的起点',
-    content: '研习台是您的每日入口，展示箴言、快捷抽牌和研习模块。在这里开启您的每日灵见之旅。',
-    icon: BookOpen,
-    action: '了解更多',
-    showSkip: true,
-  },
-  {
-    title: '抽牌手记',
-    subtitle: '记录每一次灵见',
-    content: '选择牌阵、抽取卡牌、撰写解读，完整记录您的占卜之旅。长按卡牌可快速清空。',
-    icon: PenLine,
-    action: '开始研习',
-    showSkip: true,
-  },
-];
+import { FIRST_ENTRY_STEPS } from './guideContent';
 
 export const FirstEntryGuide: React.FC = () => {
   const { state, nextStep, completeFirstEntry, skipFirstEntry } = useOnboarding();
   const currentStep = FIRST_ENTRY_STEPS[state.currentStep];
-
-  if (!currentStep) {
-    completeFirstEntry();
-    return null;
-  }
-
+  const dialogRef = useRef<HTMLDivElement>(null);
   const isLastStep = state.currentStep === FIRST_ENTRY_STEPS.length - 1;
+
+  useEffect(() => {
+    if (!currentStep) completeFirstEntry();
+  }, [completeFirstEntry, currentStep]);
 
   const handleAction = () => {
     if (isLastStep) {
@@ -49,92 +22,179 @@ export const FirstEntryGuide: React.FC = () => {
     }
   };
 
+  useEffect(() => {
+    if (!currentStep) return;
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+
+    const focusableSelector = 'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])';
+    const focusFirstControl = () => {
+      const firstControl = dialogRef.current?.querySelector<HTMLElement>(focusableSelector);
+      firstControl?.focus();
+    };
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        skipFirstEntry();
+        return;
+      }
+
+      if (event.key !== 'Tab' || !dialogRef.current) return;
+
+      const focusable = Array.from(dialogRef.current.querySelectorAll<HTMLElement>(focusableSelector))
+        .filter(element => !element.hasAttribute('disabled'));
+
+      if (focusable.length === 0) return;
+
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+
+    const focusTimer = window.setTimeout(focusFirstControl, 0);
+    document.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      window.clearTimeout(focusTimer);
+      document.body.style.overflow = previousOverflow;
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [currentStep, skipFirstEntry]);
+
+  if (!currentStep) return null;
+
   return (
     <motion.div
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="fixed inset-0 z-[300] flex items-center justify-center p-6 bg-forest-text/40 backdrop-blur-md"
+      className="fixed inset-0 z-[300] overflow-y-auto bg-forest-bg text-forest-text"
     >
       <motion.div
-        initial={{ scale: 0.9, y: 20 }}
-        animate={{ scale: 1, y: 0 }}
-        exit={{ scale: 0.9, y: 20 }}
-        className="max-w-lg w-full p-8 rounded-[2rem] shadow-2xl border-4 border-forest-accent/10 text-center space-y-8 relative overflow-hidden bg-white"
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="first-entry-guide-title"
+        aria-describedby="first-entry-guide-description"
+        initial={{ y: 16 }}
+        animate={{ y: 0 }}
+        exit={{ y: 16 }}
+        className="relative min-h-[100dvh] w-full overflow-hidden"
       >
-        <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-forest-accent/30 to-transparent" />
-        <div className="absolute bottom-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-forest-accent/30 to-transparent" />
+        <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-forest-accent/0 via-forest-accent/40 to-forest-pink/0" />
+        <div className="absolute inset-x-0 bottom-0 h-1 bg-gradient-to-r from-forest-pink/0 via-forest-pink/35 to-forest-accent/0" />
 
         {currentStep.showSkip && (
           <button
             onClick={skipFirstEntry}
             aria-label="跳过新手导览"
-            className="absolute top-4 right-4 p-2 text-forest-muted hover:text-forest-accent transition-colors"
+            className="absolute top-4 right-4 z-10 w-11 h-11 flex items-center justify-center text-forest-muted hover:text-forest-accent transition-colors rounded-full hover:bg-white/70"
           >
             <X size={20} />
           </button>
         )}
 
-        <div className="flex justify-center gap-2">
-          {FIRST_ENTRY_STEPS.map((_, index) => (
+        <div className="min-h-[100dvh] max-w-6xl mx-auto px-6 py-8 sm:px-10 flex flex-col">
+          <div className="flex items-center gap-2 pr-14">
+            {FIRST_ENTRY_STEPS.map((_, index) => (
+              <motion.div
+                key={index}
+                initial={{ width: 10 }}
+                animate={{ width: index === state.currentStep ? 44 : 10 }}
+                transition={{ duration: 0.3 }}
+                className={`h-1.5 rounded-full ${
+                  index === state.currentStep ? 'bg-forest-accent' : 'bg-forest-border'
+                }`}
+              />
+            ))}
+          </div>
+
+          <div className="flex-1 grid grid-cols-1 lg:grid-cols-[1.1fr_0.9fr] items-center gap-10 py-10">
+            <div className="space-y-7 text-left">
+              <motion.div
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.1 }}
+                className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/70 border border-forest-accent/10 text-[10px] font-bold tracking-[0.24em] uppercase text-forest-accent"
+              >
+                <currentStep.icon size={14} />
+                First Entry
+              </motion.div>
+
+              <div className="space-y-4">
+                <motion.h2
+                  id="first-entry-guide-title"
+                  initial={{ opacity: 0, y: 12 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.2 }}
+                  className="text-5xl sm:text-6xl lg:text-7xl font-serif font-bold text-forest-accent leading-tight"
+                >
+                  {currentStep.title}
+                </motion.h2>
+                <motion.p
+                  id="first-entry-guide-description"
+                  initial={{ opacity: 0, y: 12 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.3 }}
+                  className="text-lg sm:text-xl text-forest-ink font-serif font-bold"
+                >
+                  {currentStep.subtitle}
+                </motion.p>
+                <motion.p
+                  initial={{ opacity: 0, y: 12 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.4 }}
+                  className="max-w-2xl text-base sm:text-lg text-forest-text/80 leading-8 font-serif italic"
+                >
+                  {currentStep.content}
+                </motion.p>
+              </div>
+
+              <motion.p
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.5 }}
+                className="text-xs text-forest-muted leading-relaxed"
+              >
+                此导览仅首次入阁自动出现；之后可在个人页的功能介绍中回看。
+              </motion.p>
+            </div>
+
             <motion.div
-              key={index}
-              initial={{ width: 8 }}
-              animate={{ width: index === state.currentStep ? 24 : 8 }}
-              transition={{ duration: 0.3 }}
-              className={`h-1.5 rounded-full ${
-                index === state.currentStep ? 'bg-forest-accent' : 'bg-forest-border'
-              }`}
-            />
-          ))}
+              initial={{ opacity: 0, scale: 0.94 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ delay: 0.25, type: 'spring' }}
+              className="relative min-h-[280px] sm:min-h-[360px] flex items-center justify-center"
+            >
+              <div className="absolute inset-6 rounded-[3rem] border border-forest-accent/10 bg-white/45 shadow-2xl shadow-forest-accent/10" />
+              <div className="relative w-44 h-44 sm:w-56 sm:h-56 rounded-full bg-white border border-forest-accent/10 shadow-2xl flex items-center justify-center">
+                <div className="absolute inset-4 rounded-full border border-forest-pink/20" />
+                <currentStep.icon className="text-forest-accent" size={88} />
+              </div>
+            </motion.div>
+          </div>
+
+          <div className="pb-3">
+            <motion.button
+              initial={{ opacity: 0, y: 16 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.6 }}
+              onClick={handleAction}
+              className="w-full min-h-14 px-10 py-4 bg-forest-pink text-white rounded-2xl font-bold text-base sm:text-lg hover:bg-forest-pink/90 transition-all shadow-xl shadow-forest-pink/25 flex items-center justify-center gap-2"
+            >
+              <span>{currentStep.action}</span>
+              {!isLastStep && <ChevronRight size={20} />}
+            </motion.button>
+          </div>
         </div>
-
-        <motion.div
-          initial={{ scale: 0, opacity: 0 }}
-          animate={{ scale: 1, opacity: 1 }}
-          transition={{ delay: 0.2, type: 'spring' }}
-          className="w-20 h-20 mx-auto rounded-full bg-gradient-to-br from-forest-accent/20 to-forest-pink/20 flex items-center justify-center"
-        >
-          <currentStep.icon className="text-forest-accent" size={40} />
-        </motion.div>
-
-        <div className="space-y-4">
-          <motion.h2
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.3 }}
-            className="text-2xl sm:text-3xl font-serif text-forest-accent"
-          >
-            {currentStep.title}
-          </motion.h2>
-          <motion.p
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.4 }}
-            className="text-sm text-forest-muted font-medium"
-          >
-            {currentStep.subtitle}
-          </motion.p>
-          <motion.p
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.5 }}
-            className="text-base text-forest-text leading-relaxed font-serif italic"
-          >
-            {currentStep.content}
-          </motion.p>
-        </div>
-
-        <motion.button
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.6 }}
-          onClick={handleAction}
-          className="w-full px-10 py-4 bg-forest-pink text-white rounded-full font-bold text-lg hover:bg-forest-pink/90 transition-all shadow-xl shadow-forest-pink/30 flex items-center justify-center gap-2"
-        >
-          <span>{currentStep.action}</span>
-          {!isLastStep && <ChevronRight size={20} />}
-        </motion.button>
       </motion.div>
     </motion.div>
   );

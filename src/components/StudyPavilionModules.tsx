@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { TarotReading, TarotCardMetadata } from '../types';
 import { TAROT_CARDS, getCardImageUrl } from '../constants';
+import { cardAnnotationService } from '../services/cardAnnotationService';
 
 interface StudyPavilionModulesProps {
   readings: TarotReading[];
@@ -48,6 +49,53 @@ const getStudyStreak = (readings: TarotReading[]) => {
   }
 
   return streak;
+};
+
+const splitMeaning = (meaning?: string) => (
+  (meaning || '')
+    .split(/[。；;.!！？?]/)
+    .map(part => part.trim())
+    .filter(Boolean)
+);
+
+const formatMeaning = (meaning?: string, fallback?: string) => {
+  const fragments = splitMeaning(meaning || fallback).slice(0, 2);
+  return fragments.length > 0
+    ? `${fragments.join('。')}。`
+    : '这张牌需要结合画面、牌位和问题语境来理解；先观察它带来的情绪，再判断它要求行动、等待、取舍还是修正。';
+};
+
+const getElementPrompt = (element?: string | null) => {
+  switch (element) {
+    case '火':
+      return '把它放进问题里时，先问：这里的欲望、行动力或冲突正在把我推向哪里？';
+    case '水':
+      return '把它放进问题里时，先问：这里真正流动的是情绪、关系需求，还是未说出口的感受？';
+    case '风':
+      return '把它放进问题里时，先问：这里卡住的是想法、沟通、判断，还是我对真相的回避？';
+    case '土':
+      return '把它放进问题里时，先问：这里最现实的资源、身体感受、金钱或长期结果是什么？';
+    default:
+      return '把它放进问题里时，先问：它是在提醒我开始、调整、放下，还是整合一个阶段？';
+  }
+};
+
+const getReadingCardContext = (readings: TarotReading[], cardName: string) => {
+  const reading = [...readings]
+    .sort((a, b) => getReadingDate(b).getTime() - getReadingDate(a).getTime())
+    .find(item => item.cards?.some(card => card.name === cardName));
+
+  if (!reading) return null;
+
+  const cardIndex = reading.cards.findIndex(card => card.name === cardName);
+  const card = reading.cards[cardIndex];
+  const interpretation = reading.cardInterpretations?.[cardIndex] || '';
+
+  return {
+    reading,
+    card,
+    interpretation,
+  };
 };
 
 export const StudyPavilionModules: React.FC<StudyPavilionModulesProps> = ({
@@ -107,16 +155,27 @@ export const StudyPavilionModules: React.FC<StudyPavilionModulesProps> = ({
   const quizCard = quizDeck[quizIndex % quizDeck.length] || TAROT_CARDS[0];
   const quizCardMeta = cardMetadata.find(card => card.name === quizCard.name) || quizCard;
   const quizCardCount = summary.cardCounts[quizCard.name] || 0;
-  const quizReading = userReadings.find(reading => reading.cards?.some(card => card.name === quizCard.name));
+  const quizReadingContext = useMemo(
+    () => getReadingCardContext(userReadings, quizCard.name),
+    [userReadings, quizCard.name],
+  );
+  const quizAnnotation = useMemo(
+    () => cardAnnotationService.getMergedAnnotation(quizCard.id),
+    [quizCard.id],
+  );
   const astro = quizCardMeta.astrology;
   const quizHints = [
-    quizCardMeta.default_numerology !== null && quizCardMeta.default_numerology !== undefined
+    quizAnnotation.numerology || (quizCardMeta.default_numerology !== null && quizCardMeta.default_numerology !== undefined
       ? `数字 ${quizCardMeta.default_numerology}`
-      : null,
-    astro?.element ? `${astro.element}元素` : null,
-    astro?.zodiac || astro?.planet || null,
-    astro?.house || null,
+      : null),
+    quizAnnotation.element || (astro?.element ? `${astro.element}元素` : null),
+    quizAnnotation.zodiac || quizAnnotation.planet || astro?.zodiac || astro?.planet || null,
+    quizAnnotation.house || astro?.house || null,
   ].filter(Boolean);
+  const quizKeywords = (quizAnnotation.keywords.length > 0 ? quizAnnotation.keywords : quizCardMeta.keywords || []).slice(0, 5);
+  const uprightAnswer = formatMeaning(quizAnnotation.uprightMeaning, quizCardMeta.meaning);
+  const reversedAnswer = formatMeaning(quizAnnotation.reversedMeaning, quizCardMeta.reversedMeaning);
+  const practicePrompt = getElementPrompt(quizAnnotation.element || astro?.element);
 
   const handleNextQuiz = () => {
     setQuizIndex(current => current + 1 + Math.floor(Math.random() * Math.max(1, quizDeck.length - 1)));
@@ -166,8 +225,9 @@ export const StudyPavilionModules: React.FC<StudyPavilionModulesProps> = ({
           <button
             type="button"
             onClick={handleNextQuiz}
-            className="w-8 h-8 rounded-full border border-forest-accent/20 text-forest-accent flex items-center justify-center hover:bg-forest-accent/5 transition-colors"
+            className="w-11 h-11 rounded-full border border-forest-accent/20 text-forest-accent flex items-center justify-center hover:bg-forest-accent/5 transition-colors"
             title="换一张"
+            aria-label="换一张牌"
           >
             <RefreshCw size={14} />
           </button>
@@ -207,16 +267,61 @@ export const StudyPavilionModules: React.FC<StudyPavilionModulesProps> = ({
                   initial={{ opacity: 0, y: 6 }}
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, y: -6 }}
-                  className="space-y-2"
+                  className="space-y-3"
                 >
-                  <p className="text-xs font-bold text-forest-ink">体系线索</p>
-                  <p className="text-xs text-forest-text leading-relaxed">
-                    {quizHints.length > 0 ? quizHints.join(' · ') : '这张牌更适合从牌面情境与问题语境进入。'}
-                  </p>
-                  {quizReading && (
-                    <p className="text-[10px] text-forest-muted leading-relaxed">
-                      最近出现：{quizReading.question}
+                  <div className="space-y-2">
+                    <p className="text-xs font-bold text-forest-ink">答案线索</p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {quizKeywords.length > 0 ? quizKeywords.map(keyword => (
+                        <span key={keyword} className="px-2 py-0.5 rounded-full bg-white border border-forest-accent/10 text-[10px] font-bold text-forest-accent">
+                          {keyword}
+                        </span>
+                      )) : (
+                        <span className="text-[10px] text-forest-muted">暂无关键词，建议先从画面和问题语境切入。</span>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="grid gap-2">
+                    <div className="rounded-xl bg-white/75 border border-forest-accent/10 p-3">
+                      <p className="text-[10px] font-bold text-forest-accent mb-1">正位主轴</p>
+                      <p className="text-xs text-forest-text leading-relaxed">{uprightAnswer}</p>
+                    </div>
+                    <div className="rounded-xl bg-white/75 border border-forest-pink/10 p-3">
+                      <p className="text-[10px] font-bold text-forest-pink mb-1">逆位提醒</p>
+                      <p className="text-xs text-forest-text leading-relaxed">{reversedAnswer}</p>
+                    </div>
+                  </div>
+
+                  <div className="rounded-xl bg-forest-accent/5 border border-forest-accent/10 p-3">
+                    <p className="text-[10px] font-bold text-forest-accent mb-1">读牌练习</p>
+                    <p className="text-xs text-forest-text leading-relaxed">{practicePrompt}</p>
+                    <p className="mt-2 text-[10px] text-forest-muted leading-relaxed">
+                      {quizHints.length > 0 ? `体系线索：${quizHints.join(' · ')}` : '体系线索：这张牌更适合从牌面情境与问题语境进入。'}
                     </p>
+                  </div>
+
+                  {quizAnnotation.personalNotes && (
+                    <div className="rounded-xl bg-white/70 border border-forest-border/70 p-3">
+                      <p className="text-[10px] font-bold text-forest-ink mb-1">你的注解</p>
+                      <p className="text-xs text-forest-text leading-relaxed">{formatMeaning(quizAnnotation.personalNotes)}</p>
+                    </div>
+                  )}
+
+                  {quizReadingContext && (
+                    <div className="rounded-xl bg-white/70 border border-forest-border/70 p-3">
+                      <p className="text-[10px] font-bold text-forest-muted mb-1">
+                        最近出现：{quizReadingContext.card?.isReversed ? '逆位' : '正位'}
+                      </p>
+                      <p className="text-xs text-forest-text leading-relaxed">
+                        {quizReadingContext.reading.question}
+                      </p>
+                      {quizReadingContext.interpretation && (
+                        <p className="mt-2 text-[10px] text-forest-muted leading-relaxed">
+                          当时记录：{formatMeaning(quizReadingContext.interpretation)}
+                        </p>
+                      )}
+                    </div>
                   )}
                 </motion.div>
               ) : (
@@ -240,7 +345,7 @@ export const StudyPavilionModules: React.FC<StudyPavilionModulesProps> = ({
             <button
               type="button"
               onClick={() => setShowQuizAnswer(value => !value)}
-              className="py-2.5 rounded-xl bg-forest-accent text-white text-xs font-bold flex items-center justify-center gap-2 hover:bg-forest-accent/90 transition-colors"
+              className="min-h-11 py-2.5 rounded-xl bg-forest-accent text-white text-xs font-bold flex items-center justify-center gap-2 hover:bg-forest-accent/90 transition-colors"
             >
               <Eye size={14} />
               {showQuizAnswer ? '收起答案' : '查看答案'}
@@ -248,10 +353,10 @@ export const StudyPavilionModules: React.FC<StudyPavilionModulesProps> = ({
             <button
               type="button"
               onClick={() => setActiveTab('metadata')}
-              className="py-2.5 rounded-xl bg-white border border-forest-accent/20 text-forest-accent text-xs font-bold flex items-center justify-center gap-2 hover:bg-forest-accent/5 transition-colors"
+              className="min-h-11 py-2.5 rounded-xl bg-white border border-forest-accent/20 text-forest-accent text-xs font-bold flex items-center justify-center gap-2 hover:bg-forest-accent/5 transition-colors"
             >
               <Library size={14} />
-              去写牌义
+              写牌义
             </button>
           </div>
         </div>
@@ -266,7 +371,7 @@ export const StudyPavilionModules: React.FC<StudyPavilionModulesProps> = ({
           <button
             type="button"
             onClick={() => setActiveTab('private')}
-            className="text-[10px] font-bold text-forest-accent flex items-center gap-1"
+            className="min-h-11 px-3 -mr-3 text-[10px] font-bold text-forest-accent flex items-center gap-1 rounded-xl hover:bg-forest-accent/5 transition-colors"
           >
             全部 <ArrowRight size={12} />
           </button>
@@ -309,7 +414,7 @@ export const StudyPavilionModules: React.FC<StudyPavilionModulesProps> = ({
               setSearchQuery(summary.topCard?.[0] || '');
               setActiveTab('private');
             }}
-            className="px-3 py-2 rounded-xl bg-white text-forest-pink text-[10px] font-bold border border-forest-pink/10"
+            className="min-h-11 px-4 py-2 rounded-xl bg-white text-forest-pink text-[10px] font-bold border border-forest-pink/10"
           >
             回看
           </button>

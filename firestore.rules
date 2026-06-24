@@ -50,7 +50,7 @@ service cloud.firestore {
 }
 
 function isValidProfileUpdate(data) {
-  return !data.keys().hasAny(['id', 'createdAt'])
+  return !data.diff(resource.data).affectedKeys().hasAny(['id', 'createdAt'])
     && (!data.keys().hasAny(['user_public_id']) || data.user_public_id.matches('^TAROT-[A-Z0-9]{8}$'));
 }
 
@@ -58,10 +58,6 @@ function isValidReading(data) {
   return data.hasAll(['question', 'cards', 'date']) &&
          data.cards is list &&
          data.cards.size() > 0;
-}
-
-function isValidReadingUpdate(data) {
-  return !data.keys().hasAny(['id', 'date', 'userId']);
 }
 
 function canReadPublicAnnotation(data) {

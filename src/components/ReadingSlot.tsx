@@ -86,10 +86,11 @@ export const ReadingSlot: React.FC<ReadingSlotProps> = ({
         <button 
           type="button" 
           onClick={(e) => onToggleReverse(index, e)} 
-          className="absolute bottom-0 right-0 bg-forest-accent text-white text-[10px] w-6 h-6 rounded-tl-xl rounded-br-xl shadow-md flex items-center justify-center hover:scale-110 active:scale-95 transition-all z-20 group-hover:scale-125"
+          className="absolute -bottom-2 -right-2 bg-forest-accent text-white w-11 h-11 rounded-full shadow-md flex items-center justify-center hover:scale-105 active:scale-95 transition-all z-20"
           title="切换正逆位"
+          aria-label={`切换第 ${index + 1} 张牌正逆位`}
         >
-          <RotateCcw size={12} />
+          <RotateCcw size={16} />
         </button>
       )}
       {slot.name && (
@@ -100,18 +101,20 @@ export const ReadingSlot: React.FC<ReadingSlotProps> = ({
       <button 
         type="button" 
         onClick={(e) => onRemove(index, e)} 
-        className="absolute -top-2 -right-2 bg-white text-forest-muted hover:text-red-500 rounded-full p-1 shadow-sm border border-forest-accent/5 opacity-0 group-hover:opacity-100 transition-opacity z-10"
+        className="absolute -top-3 -right-3 bg-white text-forest-muted hover:text-red-500 rounded-full w-11 h-11 shadow-sm border border-forest-accent/10 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity z-10 flex items-center justify-center"
+        aria-label={`移除第 ${index + 1} 个牌位`}
       >
-        <X size={10} />
+        <X size={14} />
       </button>
       {onCycle && (
         <button 
           type="button" 
           onClick={(e) => onCycle(index, e)} 
-          className="absolute -top-2 -left-2 bg-white text-forest-accent hover:text-forest-accent/80 rounded-full p-1 shadow-sm border border-forest-accent/5 opacity-0 group-hover:opacity-100 transition-opacity z-10"
+          className="absolute -top-3 -left-3 bg-white text-forest-accent hover:text-forest-accent/80 rounded-full w-11 h-11 shadow-sm border border-forest-accent/10 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity z-10 flex items-center justify-center"
           title="切换层级"
+          aria-label={`切换第 ${index + 1} 个牌位层级`}
         >
-          <Layers size={10} />
+          <Layers size={14} />
         </button>
       )}
     </div>

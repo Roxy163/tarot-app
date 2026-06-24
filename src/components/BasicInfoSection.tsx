@@ -58,14 +58,14 @@ export const BasicInfoSection: React.FC<BasicInfoSectionProps> = ({
             <button 
               type="button" 
               onClick={onOpenEmailModal}
-              className="flex items-center gap-2 px-3 py-1.5 bg-white text-forest-muted hover:text-forest-accent border border-forest-accent/10 rounded-full text-xs font-bold transition-all shadow-sm group"
+              className="min-h-12 flex items-center gap-2 px-4 py-2 bg-white text-forest-muted hover:text-forest-accent border border-forest-accent/10 rounded-full text-xs font-bold transition-all shadow-sm group"
               title="发送至邮箱"
             >
               <Mail size={14} className="group-hover:scale-110 transition-transform" />
               <span>邮件分享</span>
             </button>
             {initialData && (
-              <button type="button" onClick={onCancel} className="text-xs font-medium text-forest-muted hover:text-forest-accent transition-colors">取消修改</button>
+              <button type="button" onClick={onCancel} className="min-h-12 px-3 text-xs font-medium text-forest-muted hover:text-forest-accent transition-colors rounded-xl">取消修改</button>
             )}
           </div>
         </div>
@@ -78,7 +78,7 @@ export const BasicInfoSection: React.FC<BasicInfoSectionProps> = ({
           <button 
             type="button"
             onClick={onToggleClientMode}
-            className="text-xs font-bold text-forest-accent hover:underline flex items-center gap-1"
+            className="min-h-12 px-3 text-xs font-bold text-forest-accent hover:bg-forest-accent/5 rounded-xl flex items-center gap-1 transition-colors"
           >
             切换至{isForClient ? '个人' : '客户'}模式 →
           </button>
@@ -132,7 +132,7 @@ export const BasicInfoSection: React.FC<BasicInfoSectionProps> = ({
             </div>
             <div className="flex-1 relative w-full">
               <select 
-                className="w-full pl-4 pr-10 py-2 bg-white border border-forest-accent/5 rounded-lg focus:ring-2 focus:ring-forest-accent/20 appearance-none transition-all text-sm font-medium text-forest-ink"
+                className="min-h-12 w-full pl-4 pr-10 py-2 bg-white border border-forest-accent/5 rounded-lg focus:ring-2 focus:ring-forest-accent/20 appearance-none transition-all text-sm font-medium text-forest-ink"
                 value={spread}
                 onChange={(e) => {
                   const spreadDef = spreads.find(s => s.name === e.target.value);
@@ -147,7 +147,7 @@ export const BasicInfoSection: React.FC<BasicInfoSectionProps> = ({
               <button 
                 type="button" 
                 onClick={onOpenSpreadManager}
-                className="flex items-center gap-2 px-4 py-2 bg-white border border-forest-accent/10 rounded-lg text-xs font-bold text-forest-muted hover:text-forest-accent hover:border-forest-accent transition-all shadow-sm shrink-0"
+                className="min-h-12 flex items-center gap-2 px-4 py-2 bg-white border border-forest-accent/10 rounded-lg text-xs font-bold text-forest-muted hover:text-forest-accent hover:border-forest-accent transition-all shadow-sm shrink-0"
                 title="管理已有牌阵或创作新牌阵"
               >
                 <Layers size={14} />
@@ -164,7 +164,7 @@ export const BasicInfoSection: React.FC<BasicInfoSectionProps> = ({
                     key={i}
                     type="button"
                     onClick={() => onSetActiveSlotIndex(i)}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap transition-all ${activeSlotIndex === i ? 'bg-forest-accent text-white shadow-sm' : 'text-forest-muted hover:bg-white hover:text-forest-accent'}`}
+                    className={`min-h-12 px-3 py-2 rounded-lg text-xs font-bold whitespace-nowrap transition-all ${activeSlotIndex === i ? 'bg-forest-accent text-white shadow-sm' : 'text-forest-muted hover:bg-white hover:text-forest-accent'}`}
                   >
                     {i + 1}. {slot.label || `位置 ${i + 1}`}
                   </button>
@@ -173,7 +173,7 @@ export const BasicInfoSection: React.FC<BasicInfoSectionProps> = ({
               <button 
                 type="button" 
                 onClick={onAddSlot} 
-                className="p-1.5 bg-white text-forest-accent rounded-lg border border-forest-accent/10 hover:bg-forest-accent hover:text-white transition-all shadow-sm shrink-0"
+                className="w-11 h-11 bg-white text-forest-accent rounded-lg border border-forest-accent/10 hover:bg-forest-accent hover:text-white transition-all shadow-sm shrink-0 flex items-center justify-center"
                 title="添加牌位"
               >
                 <Plus size={16} />

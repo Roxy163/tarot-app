@@ -13,6 +13,8 @@ import {
   saveUserSpreads,
 } from '../lib/firebaseData';
 
+const CLOUD_SAVE_DEBOUNCE_MS = 1200;
+
 const normalizeMemoryKeyword = (keyword: string) => keyword.trim().replace(/^#+/, '').replace(/\s+/g, '');
 
 const getReadingInsightForCard = (reading: TarotReading, cardName: string) => {
@@ -26,6 +28,11 @@ const getReadingInsightForCard = (reading: TarotReading, cardName: string) => {
 
   return '';
 };
+
+const stampReadingUpdate = (reading: TarotReading): TarotReading => ({
+  ...reading,
+  updatedAt: new Date().toISOString(),
+});
 
 const mergeKeywordMemory = (
   memory: CardKeywordMemory[],
@@ -115,7 +122,7 @@ export const useReadings = (session: { uid?: string; email?: string | null } | n
     }
   };
 
-  // 登录后从 Firestore 加载，访客模式使用本地数据。
+  // 登录后从 Firebase 加载，访客模式使用本地数据。
   useEffect(() => {
     let cancelled = false;
 
@@ -175,7 +182,7 @@ export const useReadings = (session: { uid?: string; email?: string | null } | n
     };
   }, [activeDataKey, exampleReadings, session?.uid]);
 
-  // 保存数据：登录用户写入 Firestore，访客写入本地。
+  // 保存数据：登录用户写入 Firebase，访客写入本地。
   useEffect(() => {
     if (loadedDataKey !== activeDataKey) return;
 
@@ -185,11 +192,15 @@ export const useReadings = (session: { uid?: string; email?: string | null } | n
       localStorage.setItem('tarot_readings', JSON.stringify(userReadings));
       if (isCloudSyncPaused) return;
 
-      replaceUserReadings(session.uid, userReadings).catch(error => {
-        console.error('Failed to save readings:', error);
-        setIsCloudSyncPaused(true);
-        setSyncNotice('云端保存失败，后续修改已先写入本地，避免误覆盖云端。');
-      });
+      const timer = window.setTimeout(() => {
+        replaceUserReadings(session.uid, userReadings).catch(error => {
+          console.error('Failed to save readings:', error);
+          setIsCloudSyncPaused(true);
+          setSyncNotice('云端保存失败，后续修改已先写入本地，避免误覆盖云端。');
+        });
+      }, CLOUD_SAVE_DEBOUNCE_MS);
+
+      return () => window.clearTimeout(timer);
     } else {
       localStorage.setItem('tarot_guest_data', JSON.stringify(userReadings));
     }
@@ -202,12 +213,15 @@ export const useReadings = (session: { uid?: string; email?: string | null } | n
       localStorage.setItem('tarot_spreads', JSON.stringify(spreads));
       if (isCloudSyncPaused) return;
 
-      saveUserSpreads(session.uid, spreads).catch(error => {
-        console.error('Failed to save spreads:', error);
-        setIsCloudSyncPaused(true);
-        setSyncNotice('牌阵云端保存失败，已先保存在本地。');
-      });
-      return;
+      const timer = window.setTimeout(() => {
+        saveUserSpreads(session.uid, spreads).catch(error => {
+          console.error('Failed to save spreads:', error);
+          setIsCloudSyncPaused(true);
+          setSyncNotice('牌阵云端保存失败，已先保存在本地。');
+        });
+      }, CLOUD_SAVE_DEBOUNCE_MS);
+
+      return () => window.clearTimeout(timer);
     }
 
     localStorage.setItem('tarot_spreads', JSON.stringify(spreads));
@@ -220,12 +234,15 @@ export const useReadings = (session: { uid?: string; email?: string | null } | n
       localStorage.setItem('tarot_card_metadata', JSON.stringify(cardMetadata));
       if (isCloudSyncPaused) return;
 
-      saveUserCardMetadata(session.uid, cardMetadata).catch(error => {
-        console.error('Failed to save card metadata:', error);
-        setIsCloudSyncPaused(true);
-        setSyncNotice('牌义注疏云端保存失败，已先保存在本地。');
-      });
-      return;
+      const timer = window.setTimeout(() => {
+        saveUserCardMetadata(session.uid, cardMetadata).catch(error => {
+          console.error('Failed to save card metadata:', error);
+          setIsCloudSyncPaused(true);
+          setSyncNotice('塔罗牌库云端保存失败，已先保存在本地。');
+        });
+      }, CLOUD_SAVE_DEBOUNCE_MS);
+
+      return () => window.clearTimeout(timer);
     }
 
     localStorage.setItem('tarot_card_metadata', JSON.stringify(cardMetadata));
@@ -238,40 +255,19 @@ export const useReadings = (session: { uid?: string; email?: string | null } | n
       localStorage.setItem('tarot_card_keyword_memory', JSON.stringify(cardKeywordMemory));
       if (isCloudSyncPaused) return;
 
-      saveUserCardKeywordMemory(session.uid, cardKeywordMemory).catch(error => {
-        console.error('Failed to save card keyword memory:', error);
-        setIsCloudSyncPaused(true);
-        setSyncNotice('个人牌义记忆云端保存失败，已先保存在本地。');
-      });
-      return;
+      const timer = window.setTimeout(() => {
+        saveUserCardKeywordMemory(session.uid, cardKeywordMemory).catch(error => {
+          console.error('Failed to save card keyword memory:', error);
+          setIsCloudSyncPaused(true);
+          setSyncNotice('个人牌义记忆云端保存失败，已先保存在本地。');
+        });
+      }, CLOUD_SAVE_DEBOUNCE_MS);
+
+      return () => window.clearTimeout(timer);
     }
 
     localStorage.setItem('tarot_card_keyword_memory', JSON.stringify(cardKeywordMemory));
   }, [activeDataKey, cardKeywordMemory, isCloudSyncPaused, loadedDataKey, session?.uid]);
-
-  // 过滤阅读记录
-  const filteredReadings = useMemo(() => {
-    let result = readings;
-
-    if (searchTags.length > 0 || searchQuery.trim()) {
-      const q = searchQuery.toLowerCase();
-      result = readings.filter(r => {
-        const matchesQuery = !q || 
-          r.id.toLowerCase().includes(q) ||
-          r.question.toLowerCase().includes(q) ||
-          r.keywords.some(k => k.toLowerCase().includes(q)) ||
-          r.authorName.toLowerCase().includes(q);
-        
-        const matchesTags = searchTags.length === 0 || 
-          searchTags.every(tag => r.keywords.includes(tag));
-        
-        return matchesQuery && matchesTags;
-      });
-    }
-
-    return result;
-  }, [readings, searchQuery, searchTags]);
-
   // 添加阅读记录
   const handleAddReading = useCallback(async (newReading: any, profile?: { display_name?: string; nickname?: string }, onShowSnackbar?: (msg: string) => void) => {
     setIsProcessing(true);
@@ -284,11 +280,12 @@ export const useReadings = (session: { uid?: string; email?: string | null } | n
           ? newReading.cards.map((s: any) => s.label)
           : (newReading.cardInput ? [/* placeholder */] : []),
         cardInterpretations: newReading.cardInterpretations || [],
-        isAiProcessed: false
+        isAiProcessed: false,
+        updatedAt: new Date().toISOString(),
       };
 
       if (editingReading) {
-        setReadings(readings.map(r => r.id === editingReading.id ? { ...editingReading, ...readingData } : r));
+        setReadings(readings.map(r => r.id === editingReading.id ? stampReadingUpdate({ ...editingReading, ...readingData }) : r));
         onShowSnackbar?.('✨ 灵见手帖已更新。');
       } else {
         const reading: TarotReading = {
@@ -351,6 +348,7 @@ export const useReadings = (session: { uid?: string; email?: string | null } | n
       keywords: Array.from(new Set([...(r.keywords || []), ...confirmedKeywords])),
       isAiProcessed: true,
       processedByAi: true,
+      updatedAt: new Date().toISOString(),
     } : r));
 
     setCardKeywordMemory(prev => mergeKeywordMemory(prev, reading, candidates));
@@ -398,7 +396,8 @@ export const useReadings = (session: { uid?: string; email?: string | null } | n
           ? recognizedCards.map((_: any, i: number) => `位置 ${i + 1}`)
           : r.slotLabels,
         isAiProcessed: true,
-        processedByAi: true
+        processedByAi: true,
+        updatedAt: new Date().toISOString(),
       } : r));
 
       if (keywordCandidates.length > 0) {
@@ -411,7 +410,7 @@ export const useReadings = (session: { uid?: string; email?: string | null } | n
 
   // 切换公开状态
   const togglePublic = useCallback((id: string) => {
-    setReadings(prev => prev.map(r => r.id === id ? { ...r, isPublic: !r.isPublic } : r));
+    setReadings(prev => prev.map(r => r.id === id ? stampReadingUpdate({ ...r, isPublic: !r.isPublic }) : r));
   }, []);
 
   // 删除阅读记录
@@ -450,7 +449,6 @@ export const useReadings = (session: { uid?: string; email?: string | null } | n
     isProcessing,
     editingReading,
     setEditingReading,
-    filteredReadings,
     handleAddReading,
     handleExtractKeywordCandidates,
     handleConfirmKeywordCandidates,

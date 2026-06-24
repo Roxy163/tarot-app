@@ -1,9 +1,8 @@
-import React, { useState, useRef } from 'react';
+import React, { useMemo, useState, useRef } from 'react';
 import { User, Sparkles, Edit3, Save, X, Calendar, BookOpen, Award, Check, Lock, ShieldCheck, Copy, LogOut, Camera, HelpCircle } from 'lucide-react';
 import { FeatureGuide } from './FeatureGuide';
 import { TarotReading, TarotCardMetadata, UserProfile } from '../types';
 import { AvatarCropModal } from './AvatarCropModal';
-import { uploadUserAvatar } from '../lib/firebaseData';
 
 interface ProfileViewProps {
   authorName: string;
@@ -46,14 +45,14 @@ export function ProfileView({
   const [editName, setEditName] = useState(profile?.display_name || profile?.nickname || authorName);
   const [editBio, setEditBio] = useState(profile?.bio || profile?.signature || '研习覃思，洞见未来');
 
-  const authorReadings = readings.filter(r => {
+  const authorReadings = useMemo(() => readings.filter(r => {
     // 阁主本人查看自己的印鉴：通过 userId 强匹配
     if (profile && r.userId === profile.id) return true;
     
     // 如果是匹配作者名（用于其他公开用户的视角）
     const nameMatch = r.authorName === authorName || (authorName === '研习阁主' && !r.authorName);
     return nameMatch;
-  });
+  }), [authorName, profile, readings]);
   
   const publicReadingsCount = authorReadings.filter(r => r.isPublic).length;
 
@@ -98,6 +97,7 @@ export function ProfileView({
 
     try {
       setIsUploading(true);
+      const { uploadUserAvatar } = await import('../lib/firebaseData');
       const publicUrlWithCacheBust = await uploadUserAvatar(profile.id, croppedBlob);
       await onUpdateProfile({ avatar_url: publicUrlWithCacheBust });
     } catch (error: any) {
@@ -403,4 +403,3 @@ export function ProfileView({
   </>
 );
 }
-

@@ -41,7 +41,7 @@
 ┌──────────────────────────────────────────────────────────────┐
 │                    数据层 (Firebase)                        │
 │  ┌─────────────┐ ┌─────────────┐ ┌─────────────────────┐   │
-│  │ Authentication│ │   Firestore │ │    Storage         │   │
+│  │ Authentication│ │ Firestore   │ │    Storage         │   │
 │  │  (用户认证)   │ │  (数据库)   │ │  (文件存储)        │   │
 │  └─────────────┘ └─────────────┘ └─────────────────────┘   │
 └──────────────────────────────────────────────────────────────┘
@@ -71,6 +71,7 @@ VITE_FIREBASE_PROJECT_ID=your-project-id
 VITE_FIREBASE_STORAGE_BUCKET=your-project.appspot.com
 VITE_FIREBASE_MESSAGING_SENDER_ID=your-sender-id
 VITE_FIREBASE_APP_ID=your-app-id
+VITE_FIREBASE_MEASUREMENT_ID=your-measurement-id
 ```
 
 3. **启动开发服务器**
@@ -95,8 +96,8 @@ src/
 ├── context/            # 全局状态管理
 │   └── AuthContext.tsx  # 认证上下文
 ├── lib/                # 工具函数与配置
-│   ├── firebase.ts      # Firebase 初始化
-│   └── firebaseData.ts  # 数据层 API
+│   ├── firebase.ts      # Firebase 初始化与认证
+│   └── firebaseData.ts  # Firestore / Storage 数据层 API
 ├── pages/              # 页面组件
 │   ├── StudyPage.tsx    # 研习台
 │   ├── DiaryPage.tsx    # 手记
@@ -113,25 +114,19 @@ src/
 
 1. **Authentication**
    - 启用 Email/Password 登录方式
-   - 添加授权域名
+   - 添加 Site URL 和 Redirect URLs
 
 2. **Firestore Database**
-   - 创建数据库实例
-   - 部署 `firestore.rules`
+   - 启用 Firestore
+   - 部署 `firestore.rules`，保护用户资料、手记、牌义注疏、灵数设置与公开广场数据
 
 3. **Storage**（可选）
-   - 启用 Cloud Storage
-   - 部署 `storage.rules`
+   - 启用 Firebase Storage
+   - 部署 `storage.rules`，用于头像上传
 
-### 安全规则部署
+### 安全策略
 
-```bash
-# 部署 Firestore 规则
-firebase deploy --only firestore:rules
-
-# 部署 Storage 规则
-firebase deploy --only storage:rules
-```
+请确保已部署仓库中的 `firestore.rules` 与 `storage.rules`。用户私有数据按 `request.auth.uid` 限制访问，公开广场只允许读取已公开记录。
 
 ## 📋 可用脚本
 

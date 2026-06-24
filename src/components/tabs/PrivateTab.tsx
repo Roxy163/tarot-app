@@ -1,8 +1,9 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { motion } from 'motion/react';
 import { Search, X, BookOpen, CheckCircle2, Circle, ChevronDown, Filter } from 'lucide-react';
 import { ReadingKeywordCandidate, TarotReading, TarotCardMetadata } from '../../types';
 import { ReadingCard } from '../ReadingCard';
+import { useProgressiveList } from '../../hooks/useProgressiveList';
 
 interface PrivateTabProps {
   readings: TarotReading[];
@@ -42,7 +43,7 @@ export const PrivateTab: React.FC<PrivateTabProps> = ({
   const [reviewFilter, setReviewFilter] = useState<'all' | 'reviewed' | 'unreviewed'>('all');
   const [isReviewFilterOpen, setIsReviewFilterOpen] = useState(false);
 
-  const filteredReadings = readings.filter(r => {
+  const filteredReadings = useMemo(() => readings.filter(r => {
     const hasFeedback = !!r.userFeedback?.trim();
     if (reviewFilter === 'reviewed' && !hasFeedback) return false;
     if (reviewFilter === 'unreviewed' && hasFeedback) return false;
@@ -60,7 +61,13 @@ export const PrivateTab: React.FC<PrivateTabProps> = ({
       searchTags.every(tag => r.keywords.includes(tag));
     
     return matchesQuery && matchesTags;
-  });
+  }), [readings, reviewFilter, searchQuery, searchTags]);
+
+  const {
+    hasMore,
+    sentinelRef,
+    visibleItems: visibleReadings,
+  } = useProgressiveList(filteredReadings);
 
   const handleClearFilters = () => {
     setSearchQuery('');
@@ -207,7 +214,7 @@ export const PrivateTab: React.FC<PrivateTabProps> = ({
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {filteredReadings.map(reading => (
+          {visibleReadings.map(reading => (
             <ReadingCard 
               key={reading.id} 
               reading={reading} 
@@ -224,6 +231,12 @@ export const PrivateTab: React.FC<PrivateTabProps> = ({
               onConfirmKeywordCandidates={onConfirmKeywordCandidates}
             />
           ))}
+          <div ref={sentinelRef} className="col-span-full h-1" aria-hidden />
+        </div>
+      )}
+      {hasMore && (
+        <div className="py-2 text-center text-[10px] font-bold text-forest-muted">
+          正在继续展开典籍...
         </div>
       )}
     </motion.div>

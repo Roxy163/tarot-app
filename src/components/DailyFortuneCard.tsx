@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Sun, Moon, Sparkles, ChevronDown, ChevronUp, PenLine, RefreshCw, Shuffle, Eye } from 'lucide-react';
 import { DailyFortune } from '../types';
@@ -33,20 +33,53 @@ export const DailyFortuneCard: React.FC<DailyFortuneCardProps> = ({
   const [shufflePhase, setShufflePhase] = useState<'idle' | 'shuffling' | 'selected' | 'revealed'>('idle');
   const [shuffleCount, setShuffleCount] = useState(0);
   const [fortuneChoice, setFortuneChoice] = useState<FortuneChoice | null>(null);
+  const shuffleIntervalRef = useRef<number | null>(null);
+  const shuffleEndTimerRef = useRef<number | null>(null);
 
   const cardData = fortune ? TAROT_CARDS.find(c => c.name === fortune.cardName) : null;
 
+  const clearShuffleTimers = () => {
+    if (shuffleIntervalRef.current !== null) {
+      window.clearInterval(shuffleIntervalRef.current);
+      shuffleIntervalRef.current = null;
+    }
+    if (shuffleEndTimerRef.current !== null) {
+      window.clearTimeout(shuffleEndTimerRef.current);
+      shuffleEndTimerRef.current = null;
+    }
+  };
+
+  useEffect(() => clearShuffleTimers, []);
+
+  const getShuffledCardIndex = (cardNumber: number) => {
+    const deck = [...Array(TAROT_CARDS.length).keys()];
+    for (let i = deck.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [deck[i], deck[j]] = [deck[j], deck[i]];
+    }
+    return deck[cardNumber - 1];
+  };
+
+  const selectFortuneCard = (cardNumber: number) => {
+    setFortuneChoice({
+      cardNumber,
+      cardIndex: getShuffledCardIndex(cardNumber),
+      isRevealed: false
+    });
+  };
+
   const handleShuffle = async () => {
+    clearShuffleTimers();
     setShufflePhase('shuffling');
     setShuffleCount(0);
     setFortuneChoice(null);
     setShowNumberInput(false);
     
-    const shuffleInterval = setInterval(() => {
+    shuffleIntervalRef.current = window.setInterval(() => {
       setShuffleCount(prev => {
         if (prev >= 15) {
-          clearInterval(shuffleInterval);
-          setTimeout(() => {
+          clearShuffleTimers();
+          shuffleEndTimerRef.current = window.setTimeout(() => {
             setShufflePhase('selected');
             setShowNumberInput(true);
           }, 300);
@@ -61,16 +94,7 @@ export const DailyFortuneCard: React.FC<DailyFortuneCardProps> = ({
     e.preventDefault();
     const num = parseInt(cardNumber);
     if (num >= 1 && num <= 78) {
-      const deck = [...Array(TAROT_CARDS.length).keys()];
-      for (let i = deck.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
-        [deck[i], deck[j]] = [deck[j], deck[i]];
-      }
-      setFortuneChoice({
-        cardNumber: num,
-        cardIndex: deck[num - 1],
-        isRevealed: false
-      });
+      selectFortuneCard(num);
       setShowNumberInput(false);
       setCardNumber('');
     }
@@ -85,17 +109,9 @@ export const DailyFortuneCard: React.FC<DailyFortuneCardProps> = ({
   };
 
   const handleRandomDraw = () => {
+    clearShuffleTimers();
     const randomNum = Math.floor(Math.random() * 78) + 1;
-    const deck = [...Array(TAROT_CARDS.length).keys()];
-    for (let i = deck.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [deck[i], deck[j]] = [deck[j], deck[i]];
-    }
-    setFortuneChoice({
-      cardNumber: randomNum,
-      cardIndex: deck[randomNum - 1],
-      isRevealed: false
-    });
+    selectFortuneCard(randomNum);
     setShufflePhase('selected');
   };
 
@@ -150,7 +166,7 @@ export const DailyFortuneCard: React.FC<DailyFortuneCardProps> = ({
 
           <button
             onClick={onReshuffle}
-            className="w-full mt-4 flex items-center justify-center gap-2 py-2 px-3 bg-white/50 hover:bg-white rounded-xl transition-all text-xs text-forest-ink"
+            className="w-full min-h-12 mt-4 flex items-center justify-center gap-2 px-3 bg-white/50 hover:bg-white rounded-xl transition-all text-xs text-forest-ink"
           >
             <RefreshCw size={14} />
             <span>重新抽牌</span>
@@ -158,7 +174,7 @@ export const DailyFortuneCard: React.FC<DailyFortuneCardProps> = ({
 
           <button
             onClick={() => setIsExpanded(!isExpanded)}
-            className="w-full mt-2 flex items-center justify-center gap-2 py-2 text-xs text-forest-muted hover:text-forest-accent transition-colors"
+            className="w-full min-h-12 mt-2 flex items-center justify-center gap-2 text-xs text-forest-muted hover:text-forest-accent transition-colors rounded-xl"
           >
             {isExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
             <span>{isExpanded ? '收起详情' : '查看详情'}</span>
@@ -184,7 +200,7 @@ export const DailyFortuneCard: React.FC<DailyFortuneCardProps> = ({
                   <div className="space-y-3">
                     <button
                       onClick={() => setShowReflectionInput(true)}
-                      className="w-full flex items-center justify-center gap-2 py-3 bg-forest-accent/5 hover:bg-forest-accent/10 rounded-xl transition-colors"
+                      className="w-full min-h-12 flex items-center justify-center gap-2 bg-forest-accent/5 hover:bg-forest-accent/10 rounded-xl transition-colors"
                     >
                       <PenLine size={14} className="text-forest-accent" />
                       <span className="text-xs text-forest-accent font-medium">记录今日感悟</span>
@@ -208,7 +224,7 @@ export const DailyFortuneCard: React.FC<DailyFortuneCardProps> = ({
                           <div className="flex gap-2">
                             <button
                               onClick={() => setShowReflectionInput(false)}
-                              className="flex-1 px-4 py-2 text-xs text-forest-muted hover:text-forest-ink transition-colors rounded-xl"
+                              className="flex-1 min-h-11 px-4 text-xs text-forest-muted hover:text-forest-ink transition-colors rounded-xl"
                             >
                               取消
                             </button>
@@ -220,7 +236,7 @@ export const DailyFortuneCard: React.FC<DailyFortuneCardProps> = ({
                                   setShowReflectionInput(false);
                                 }
                               }}
-                              className="flex-1 px-4 py-2 bg-forest-accent text-white text-xs font-medium rounded-xl hover:bg-forest-accent/90 transition-colors"
+                              className="flex-1 min-h-11 px-4 bg-forest-accent text-white text-xs font-medium rounded-xl hover:bg-forest-accent/90 transition-colors"
                             >
                               保存感悟
                             </button>
@@ -270,7 +286,7 @@ export const DailyFortuneCard: React.FC<DailyFortuneCardProps> = ({
                   setShufflePhase('idle');
                   setFortuneChoice(null);
                 }}
-                className="w-full px-6 py-3 bg-white/50 hover:bg-white rounded-xl text-sm text-forest-ink transition-all"
+                className="w-full min-h-12 px-6 bg-white/50 hover:bg-white rounded-xl text-sm text-forest-ink transition-all"
               >
                 重新选择
               </button>
@@ -307,7 +323,7 @@ export const DailyFortuneCard: React.FC<DailyFortuneCardProps> = ({
                   
                   <button
                     onClick={handleRandomDraw}
-                    className="w-full px-6 py-3 bg-white/50 hover:bg-white rounded-xl text-sm text-forest-ink transition-all"
+                    className="w-full min-h-12 px-6 bg-white/50 hover:bg-white rounded-xl text-sm text-forest-ink transition-all"
                   >
                     🎲 随机抽牌
                   </button>
@@ -401,14 +417,14 @@ export const DailyFortuneCard: React.FC<DailyFortuneCardProps> = ({
                           setShufflePhase('idle');
                           setCardNumber('');
                         }}
-                        className="flex-1 px-4 py-2 text-xs text-forest-muted hover:text-forest-ink transition-colors rounded-xl"
+                        className="flex-1 min-h-11 px-4 text-xs text-forest-muted hover:text-forest-ink transition-colors rounded-xl"
                       >
                         取消
                       </button>
                       <button
                         type="submit"
                         disabled={!cardNumber || parseInt(cardNumber) < 1 || parseInt(cardNumber) > 78}
-                        className="flex-1 px-4 py-2 bg-forest-accent text-white text-xs font-bold rounded-xl hover:bg-forest-accent/90 transition-all disabled:opacity-50"
+                        className="flex-1 min-h-11 px-4 bg-forest-accent text-white text-xs font-bold rounded-xl hover:bg-forest-accent/90 transition-all disabled:opacity-50"
                       >
                         确认选择
                       </button>

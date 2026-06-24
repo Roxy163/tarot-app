@@ -26,6 +26,28 @@ interface CardNumerologyCardProps {
   userId?: string;
 }
 
+const buildCardLibrary = (customMetadata: TarotCardMetadata[]) => {
+  const customById = new Map(customMetadata.map(card => [card.id, card]));
+  const officialIds = new Set(TAROT_CARDS.map(card => card.id));
+
+  return [
+    ...TAROT_CARDS.map(card => {
+      const custom = customById.get(card.id);
+      if (!custom) return card;
+
+      return {
+        ...card,
+        ...custom,
+        astrology: {
+          ...card.astrology,
+          ...custom.astrology,
+        },
+      };
+    }),
+    ...customMetadata.filter(card => !officialIds.has(card.id)),
+  ];
+};
+
 function CardNumerologyCard({ cardName, isLoggedIn, userId }: CardNumerologyCardProps) {
   const { numerology, meaning, keywords, isCustom, saveNumerology, restoreDefault } = useCardNumerology(cardName, isLoggedIn, userId);
   const [isEditing, setIsEditing] = useState(false);
@@ -59,7 +81,7 @@ function CardNumerologyCard({ cardName, isLoggedIn, userId }: CardNumerologyCard
               <button
                 key={opt}
                 onClick={() => setTempVal(opt)}
-                className={`w-8 h-8 rounded-lg text-xs font-bold transition-all ${
+                className={`w-11 h-11 rounded-lg text-xs font-bold transition-all ${
                   Number(tempVal) === opt 
                     ? 'bg-forest-accent text-white shadow-sm' 
                     : 'bg-white text-forest-muted border border-forest-accent/10 hover:border-forest-accent/30'
@@ -109,19 +131,19 @@ function CardNumerologyCard({ cardName, isLoggedIn, userId }: CardNumerologyCard
               await saveNumerology(valToSave, tempMeaning, tempKeywords);
               setIsEditing(false);
             }}
-            className="flex-1 py-2 bg-forest-accent text-white rounded-xl text-xs font-bold shadow-md hover:opacity-90 transition-opacity"
+            className="flex-1 min-h-11 py-2 bg-forest-accent text-white rounded-xl text-xs font-bold shadow-md hover:opacity-90 transition-opacity"
           >
             保存
           </button>
           <button
             onClick={() => setIsEditing(false)}
-            className="flex-1 py-2 bg-white text-forest-muted border border-forest-accent/10 rounded-xl text-xs font-bold hover:bg-forest-bg transition-colors"
+            className="flex-1 min-h-11 py-2 bg-white text-forest-muted border border-forest-accent/10 rounded-xl text-xs font-bold hover:bg-forest-bg transition-colors"
           >
             取消
           </button>
           <button
             onClick={() => setShowRestoreConfirm(true)}
-            className="px-3 py-2 text-red-400 hover:text-red-500 transition-colors"
+            className="min-h-11 min-w-11 px-3 py-2 text-red-400 hover:text-red-500 transition-colors flex items-center justify-center"
             title="恢复默认"
           >
             <RotateCcw size={16} />
@@ -148,12 +170,13 @@ function CardNumerologyCard({ cardName, isLoggedIn, userId }: CardNumerologyCard
     <div className="bg-forest-accent/5 rounded-[1.5rem] p-5 border border-forest-accent/10 relative group">
       <button 
         onClick={() => setIsEditing(true)}
-        className="absolute top-4 right-4 p-2 text-forest-muted hover:text-forest-accent transition-colors opacity-0 group-hover:opacity-100"
+        className="absolute top-3 right-3 min-h-11 min-w-11 p-2 text-forest-muted hover:text-forest-accent transition-colors opacity-100 sm:opacity-0 sm:group-hover:opacity-100 flex items-center justify-center rounded-xl hover:bg-white/70"
+        aria-label="编辑灵数注解"
       >
         <Pencil size={14} />
       </button>
 
-      <div className="space-y-3">
+      <div className="space-y-3 pr-10 sm:pr-0">
         <div className="flex items-center gap-2">
           <span className="text-sm font-serif text-forest-accent font-bold flex items-center gap-1.5">
             🔢 灵数注解
@@ -197,7 +220,7 @@ function CardNumerologyCard({ cardName, isLoggedIn, userId }: CardNumerologyCard
 export function CardMetadataManager({ metadata, onUpdate, readings, cardKeywordMemory = [], onShowSnackbar, isLoggedIn, userId, onAddReading }: CardMetadataManagerProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [editingCardId, setEditingCardId] = useState<string | null>(null);
-  const [localMetadata, setLocalMetadata] = useState<TarotCardMetadata[]>(metadata);
+  const [localMetadata, setLocalMetadata] = useState<TarotCardMetadata[]>(() => buildCardLibrary(metadata));
   const [filterType, setFilterType] = useState<'all' | 'major' | 'wands' | 'cups' | 'swords' | 'pentacles'>('all');
   const [personalMeanings, setPersonalMeanings] = useState<Record<string, string>>({});
   const [isSaving, setIsSaving] = useState(false);
@@ -206,6 +229,10 @@ export function CardMetadataManager({ metadata, onUpdate, readings, cardKeywordM
   const [annotationEditorCardId, setAnnotationEditorCardId] = useState<string | undefined>(undefined);
   const [modifiedCount, setModifiedCount] = useState(0);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
+
+  useEffect(() => {
+    setLocalMetadata(buildCardLibrary(metadata));
+  }, [metadata]);
   
   useEffect(() => {
     setModifiedCount(cardAnnotationService.getModifiedCardIds().length);
@@ -398,7 +425,7 @@ export function CardMetadataManager({ metadata, onUpdate, readings, cardKeywordM
         message="确定要重置所有修改吗？这将丢失您当前尚未保存的本地编辑。"
         confirmText="重置"
         destructive
-        onConfirm={() => setLocalMetadata(metadata)}
+        onConfirm={() => setLocalMetadata(buildCardLibrary(metadata))}
         onClose={() => setShowResetConfirm(false)}
       />
 
@@ -458,14 +485,14 @@ export function CardMetadataManager({ metadata, onUpdate, readings, cardKeywordM
                 <div className="flex gap-3">
                   <button
                     onClick={handleSaveFortuneToReading}
-                    className="flex-1 px-4 py-2.5 bg-amber-500 text-white rounded-xl text-sm font-bold hover:bg-amber-600 transition-all shadow-lg shadow-amber-500/20 flex items-center justify-center gap-2"
+                    className="flex-1 min-h-11 px-4 py-2.5 bg-amber-500 text-white rounded-xl text-sm font-bold hover:bg-amber-600 transition-all shadow-lg shadow-amber-500/20 flex items-center justify-center gap-2"
                   >
                     <Plus size={16} />
                     保存至典籍
                   </button>
                   <button
                     onClick={() => setShowFortuneSection(false)}
-                    className="px-4 py-2.5 bg-white/50 text-forest-muted rounded-xl text-sm hover:text-forest-ink transition-colors"
+                    className="min-h-11 px-4 py-2.5 bg-white/50 text-forest-muted rounded-xl text-sm hover:text-forest-ink transition-colors"
                   >
                     收起
                   </button>
@@ -480,15 +507,15 @@ export function CardMetadataManager({ metadata, onUpdate, readings, cardKeywordM
         </motion.div>
       )}
       
-      <div className="ancient-book-bg p-8 rounded-[2rem] border border-forest-accent/10 shadow-xl space-y-6">
+      <div className="ancient-book-bg p-4 sm:p-8 rounded-[2rem] border border-forest-accent/10 shadow-xl space-y-6">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
           <div className="flex items-center gap-4">
-            <div className="p-3 bg-forest-accent/10 text-forest-accent rounded-2xl">
-              <Book size={32} />
+            <div className="w-12 h-12 sm:w-14 sm:h-14 bg-forest-accent/10 text-forest-accent rounded-2xl flex items-center justify-center shrink-0">
+              <Book size={28} />
             </div>
-            <div>
-              <h2 className="text-3xl font-serif text-forest-accent">牌义注疏</h2>
-              <p className="text-xs text-forest-muted font-kai italic">汇集阁主见地，构建个人塔罗经纬</p>
+            <div className="min-w-0">
+              <h2 className="text-2xl sm:text-3xl font-serif text-forest-accent">塔罗牌库</h2>
+              <p className="text-xs text-forest-muted font-kai italic">查看 78 张牌，记录你的牌义笔记</p>
               {modifiedCount > 0 && (
                 <p className="text-xs text-forest-pink font-bold mt-1">
                   已自定义 {modifiedCount} 张牌的注解
@@ -496,25 +523,25 @@ export function CardMetadataManager({ metadata, onUpdate, readings, cardKeywordM
               )}
             </div>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="grid grid-cols-1 sm:flex sm:items-center gap-3">
             <button 
               onClick={() => {
                 setAnnotationEditorCardId(undefined);
                 setShowAnnotationEditor(true);
               }}
-              className="px-4 py-2 bg-forest-accent/10 text-forest-accent hover:bg-forest-accent/20 rounded-lg text-sm font-bold transition-colors flex items-center gap-2"
+              className="min-h-12 px-4 bg-forest-accent/10 text-forest-accent hover:bg-forest-accent/20 rounded-xl text-sm font-bold transition-colors flex items-center justify-center gap-2"
             >
-              <Edit3 size={16} /> 完整编辑器
+              <Edit3 size={16} /> 批量编辑牌义
             </button>
             <button 
               onClick={resetAll}
-              className="px-4 py-2 text-sm text-forest-muted hover:text-forest-accent transition-colors flex items-center gap-2"
+              className="min-h-12 px-4 text-sm text-forest-muted hover:text-forest-accent transition-colors flex items-center justify-center gap-2 rounded-xl hover:bg-forest-accent/5"
             >
               <RotateCcw size={16} /> 重置
             </button>
             <button 
               onClick={saveAll}
-              className="px-6 py-2 bg-forest-pink text-white rounded-full text-sm font-bold hover:bg-forest-pink/90 transition-all shadow-lg shadow-forest-pink/20 flex items-center gap-2"
+              className="min-h-12 px-6 bg-forest-pink text-white rounded-full text-sm font-bold hover:bg-forest-pink/90 transition-all shadow-lg shadow-forest-pink/20 flex items-center justify-center gap-2"
             >
               <Save size={16} /> 撰录成册
             </button>
@@ -537,7 +564,7 @@ export function CardMetadataManager({ metadata, onUpdate, readings, cardKeywordM
               <button
                 key={type}
                 onClick={() => setFilterType(type)}
-                className={`px-4 py-2 rounded-xl text-[10px] font-bold uppercase tracking-widest transition-all whitespace-nowrap border ${
+                className={`min-h-11 px-4 py-2 rounded-xl text-[10px] font-bold uppercase tracking-widest transition-all whitespace-nowrap border ${
                   filterType === type 
                     ? 'bg-forest-accent text-white border-forest-accent shadow-md' 
                     : 'bg-white text-forest-muted border-forest-accent/10 hover:bg-forest-accent/5'
@@ -562,8 +589,9 @@ export function CardMetadataManager({ metadata, onUpdate, readings, cardKeywordM
                 editingCardId === card.id ? 'ring-2 ring-forest-accent border-transparent shadow-2xl' : 'border-forest-accent/5 hover:border-forest-accent/20 shadow-sm'
               }`}
             >
-              <div 
-                className="p-5 flex items-center gap-5 cursor-pointer flex-1"
+              <button
+                type="button"
+                className="w-full p-5 flex items-center gap-5 cursor-pointer flex-1 text-left"
                 onClick={() => setEditingCardId(editingCardId === card.id ? null : card.id)}
               >
                 <div className="w-16 h-24 bg-forest-bg rounded-xl overflow-hidden flex-shrink-0 border border-forest-accent/10 shadow-inner">
@@ -602,7 +630,7 @@ export function CardMetadataManager({ metadata, onUpdate, readings, cardKeywordM
                   size={20} 
                   className={`text-forest-muted transition-transform ${editingCardId === card.id ? 'rotate-90' : ''}`} 
                 />
-              </div>
+              </button>
 
               <AnimatePresence>
                 {editingCardId === card.id && (
@@ -619,10 +647,10 @@ export function CardMetadataManager({ metadata, onUpdate, readings, cardKeywordM
                           setAnnotationEditorCardId(card.id);
                           setShowAnnotationEditor(true);
                         }}
-                        className="w-full py-3 bg-gradient-to-r from-forest-accent/10 to-forest-pink/10 text-forest-accent rounded-xl font-bold text-sm hover:from-forest-accent/20 hover:to-forest-pink/20 transition-all flex items-center justify-center gap-2"
+                        className="w-full min-h-12 bg-gradient-to-r from-forest-accent/10 to-forest-pink/10 text-forest-accent rounded-xl font-bold text-sm hover:from-forest-accent/20 hover:to-forest-pink/20 transition-all flex items-center justify-center gap-2"
                       >
                         <Edit3 size={16} />
-                        打开完整牌义编辑器
+                        编辑这张牌义
                       </button>
 
                       {/* Numerology Card */}
@@ -665,14 +693,14 @@ export function CardMetadataManager({ metadata, onUpdate, readings, cardKeywordM
                         <div className="flex items-center justify-between">
                           <h5 className="text-[10px] font-bold text-forest-accent uppercase tracking-widest flex items-center gap-2">
                             <Book size={12} />
-                            我的牌义注疏
+                            我的牌义笔记
                           </h5>
                           <button 
                             onClick={() => savePersonalMeaning(card.name)}
                             disabled={isSaving}
-                            className="text-[10px] font-bold text-forest-pink hover:opacity-80 transition-opacity flex items-center gap-1"
+                            className="min-h-11 px-3 -mr-3 rounded-xl text-[10px] font-bold text-forest-pink hover:bg-forest-pink/5 transition-colors flex items-center gap-1"
                           >
-                            <Save size={10} /> 保存注疏
+                            <Save size={10} /> 保存笔记
                           </button>
                         </div>
                         <textarea 
@@ -688,7 +716,7 @@ export function CardMetadataManager({ metadata, onUpdate, readings, cardKeywordM
                         <div className="space-y-1.5">
                           <label className="text-[9px] font-bold text-forest-muted uppercase tracking-wider">行星</label>
                           <input 
-                            className="w-full px-3 py-2 bg-white border border-forest-accent/10 rounded-xl text-xs focus:ring-2 focus:ring-forest-accent/20"
+                            className="w-full min-h-11 px-3 py-2 bg-white border border-forest-accent/10 rounded-xl text-xs focus:ring-2 focus:ring-forest-accent/20"
                             value={card.astrology?.planet || ''}
                             onChange={e => handleCardChange(card.id, 'planet', e.target.value)}
                             placeholder="无"
@@ -697,7 +725,7 @@ export function CardMetadataManager({ metadata, onUpdate, readings, cardKeywordM
                         <div className="space-y-1.5">
                           <label className="text-[9px] font-bold text-forest-muted uppercase tracking-wider">星座</label>
                           <input 
-                            className="w-full px-3 py-2 bg-white border border-forest-accent/10 rounded-xl text-xs focus:ring-2 focus:ring-forest-accent/20"
+                            className="w-full min-h-11 px-3 py-2 bg-white border border-forest-accent/10 rounded-xl text-xs focus:ring-2 focus:ring-forest-accent/20"
                             value={card.astrology?.zodiac || ''}
                             onChange={e => handleCardChange(card.id, 'zodiac', e.target.value)}
                             placeholder="无"
@@ -706,7 +734,7 @@ export function CardMetadataManager({ metadata, onUpdate, readings, cardKeywordM
                         <div className="space-y-1.5">
                           <label className="text-[9px] font-bold text-forest-muted uppercase tracking-wider">先天宫位</label>
                           <input 
-                            className="w-full px-3 py-2 bg-white border border-forest-accent/10 rounded-xl text-xs focus:ring-2 focus:ring-forest-accent/20"
+                            className="w-full min-h-11 px-3 py-2 bg-white border border-forest-accent/10 rounded-xl text-xs focus:ring-2 focus:ring-forest-accent/20"
                             value={card.astrology?.house || ''}
                             onChange={e => handleCardChange(card.id, 'house', e.target.value)}
                             placeholder="无"
@@ -715,7 +743,7 @@ export function CardMetadataManager({ metadata, onUpdate, readings, cardKeywordM
                         <div className="space-y-1.5">
                           <label className="text-[9px] font-bold text-forest-muted uppercase tracking-wider">四元素</label>
                           <input 
-                            className="w-full px-3 py-2 bg-white border border-forest-accent/10 rounded-xl text-xs focus:ring-2 focus:ring-forest-accent/20"
+                            className="w-full min-h-11 px-3 py-2 bg-white border border-forest-accent/10 rounded-xl text-xs focus:ring-2 focus:ring-forest-accent/20"
                             value={card.astrology?.element || ''}
                             onChange={e => handleCardChange(card.id, 'element', e.target.value)}
                             placeholder="无"

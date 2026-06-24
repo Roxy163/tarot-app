@@ -19,6 +19,13 @@ interface MainLayoutProps {
   sidebarContent: React.ReactNode;
 }
 
+const NAV_ITEMS = [
+  { tab: 'home' as const, id: 'tab-home', icon: History, label: '研习台', ariaLabel: '前往研习台' },
+  { tab: 'add' as const, id: 'tab-add', icon: Plus, label: '记录', ariaLabel: '新增抽牌手记' },
+  { tab: 'private' as const, id: 'tab-private', icon: BookOpen, label: '典籍', ariaLabel: '查看私人典籍' },
+  { tab: 'public' as const, id: 'tab-public', icon: Globe, label: '广场', ariaLabel: '查看研习广场' },
+];
+
 export const MainLayout: React.FC<MainLayoutProps> = ({
   children,
   activeTab,
@@ -64,7 +71,8 @@ export const MainLayout: React.FC<MainLayoutProps> = ({
         <div className="absolute left-0 top-0">
           <button 
             onClick={() => setIsSidebarOpen(true)}
-            className="p-2 bg-forest-accent/5 text-forest-accent rounded-full hover:bg-forest-accent/10 transition-all border border-forest-accent/10"
+            className="w-11 h-11 bg-forest-accent/5 text-forest-accent rounded-full hover:bg-forest-accent/10 transition-all border border-forest-accent/10 flex items-center justify-center"
+            aria-label="打开菜单"
             title="打开菜单"
           >
             <Menu size={20} />
@@ -86,34 +94,17 @@ export const MainLayout: React.FC<MainLayoutProps> = ({
       {/* Mobile Navigation */}
       <nav className="fixed bottom-0 left-0 right-0 bg-white/90 backdrop-blur-md border-t border-forest-accent/10 z-[100] px-2 py-1 shadow-[0_-4px_20px_-10px_rgba(0,0,0,0.1)]" style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}>
         <div className="flex justify-around items-center max-w-lg mx-auto h-16">
-          <TabButton 
-            id="tab-home" 
-            active={activeTab === 'home'} 
-            onClick={() => setActiveTab('home')} 
-            icon={History} 
-            label="研习台" 
-          />
-          <TabButton 
-            id="tab-add" 
-            active={activeTab === 'add'} 
-            onClick={() => setActiveTab('add')} 
-            icon={Plus} 
-            label="手记" 
-          />
-          <TabButton 
-            id="tab-private" 
-            active={activeTab === 'private'} 
-            onClick={() => setActiveTab('private')} 
-            icon={BookOpen} 
-            label="典籍" 
-          />
-          <TabButton 
-            id="tab-public" 
-            active={activeTab === 'public'} 
-            onClick={() => setActiveTab('public')} 
-            icon={Globe} 
-            label="广场" 
-          />
+          {NAV_ITEMS.map(item => (
+            <TabButton
+              key={item.id}
+              id={item.id}
+              active={activeTab === item.tab}
+              onClick={() => setActiveTab(item.tab)}
+              icon={item.icon}
+              label={item.label}
+              ariaLabel={item.ariaLabel}
+            />
+          ))}
           {session ? (
             <TabButton 
               id="tab-profile" 
@@ -124,12 +115,14 @@ export const MainLayout: React.FC<MainLayoutProps> = ({
               }} 
               icon={User} 
               label="印鉴" 
+              ariaLabel="查看个人印鉴"
             />
           ) : (
             <button 
               id="tab-login"
               onClick={onShowAuth}
-              className="flex flex-col items-center gap-1 px-3 py-2 text-forest-muted hover:text-forest-accent transition-all"
+              className="min-h-11 min-w-11 flex flex-col items-center gap-1 px-3 py-2 text-forest-muted hover:text-forest-accent transition-all"
+              aria-label="执印入阁登录"
             >
               <LogIn size={20} />
               <span className="text-[10px] font-bold whitespace-nowrap">执印入阁</span>

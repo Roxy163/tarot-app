@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { X, Sun, Calendar, Moon, Star, Leaf, Sparkles, BookOpen, PenLine, Settings, Share2, Heart } from 'lucide-react';
+import { X } from 'lucide-react';
+import { GUIDE_SECTIONS, SPREAD_GUIDE_FEATURES } from './onboarding/guideContent';
 
 interface FeatureGuideProps {
   isOpen: boolean;
@@ -8,79 +9,55 @@ interface FeatureGuideProps {
 }
 
 export const FeatureGuide: React.FC<FeatureGuideProps> = ({ isOpen, onClose }) => {
-  const [activeSection, setActiveSection] = useState('intro');
+  const [activeSection, setActiveSection] = useState<keyof typeof GUIDE_SECTIONS>('intro');
+  const dialogRef = useRef<HTMLDivElement>(null);
 
-  const features = [
-    {
-      id: 'daily',
-      icon: Sun,
-      title: '日运占卜',
-      description: '每日一抽，探索今日能量指引。支持即时揭晓或延迟揭晓，让你的一天充满期待。',
-      color: 'from-yellow-400 to-orange-500'
-    },
-    {
-      id: 'weekly',
-      icon: Calendar,
-      title: '周运预测',
-      description: '三张牌解读本周趋势，帮助你提前规划，把握机遇。',
-      color: 'from-blue-400 to-indigo-500'
-    },
-    {
-      id: 'monthly',
-      icon: Moon,
-      title: '月运分析',
-      description: '时间流牌阵解读本月能量变化，洞察未来发展趋势。',
-      color: 'from-purple-400 to-pink-500'
-    },
-    {
-      id: 'yearly',
-      icon: Star,
-      title: '年运展望',
-      description: '十二宫牌阵揭示全年运势，1-12月各有指引，底牌揭示深层能量。',
-      color: 'from-emerald-400 to-teal-500'
-    },
-    {
-      id: 'seasonal',
-      icon: Leaf,
-      title: '四季牌阵',
-      description: '感受四季更迭的能量变化，与自然节律同步。',
-      color: 'from-green-400 to-forest-500'
-    }
-  ];
+  useEffect(() => {
+    if (!isOpen) return;
 
-  const sections = {
-    intro: {
-      title: '🌲 欢迎来到塔罗研习阁',
-      subtitle: '探索未知，洞见内心',
-      content: '塔罗研习阁是一款专注于个人成长与灵性探索的塔罗占卜应用。在这里，你可以进行每日运势占卜、记录塔罗手记、创建自定义牌阵，开启你的灵性之旅。',
-      features: [
-        { icon: Sparkles, text: '每日运势自动生成' },
-        { icon: BookOpen, text: '丰富的牌阵选择' },
-        { icon: PenLine, text: '记录与回顾功能' },
-        { icon: Settings, text: '自定义牌阵设计' },
-        { icon: Share2, text: '分享你的解读' },
-        { icon: Heart, text: '建立个人占卜档案' }
-      ]
-    },
-    spreads: {
-      title: '🔮 牌阵介绍',
-      subtitle: '选择适合你的占卜方式',
-      content: ''
-    },
-    tips: {
-      title: '💡 使用小贴士',
-      subtitle: '让占卜更有仪式感',
-      content: '',
-      tips: [
-        '找一个安静的空间进行占卜',
-        '深呼吸，集中注意力',
-        '相信你的第一直觉',
-        '记录每次占卜的感悟',
-        '定期回顾你的占卜记录',
-        '尊重每张牌传达的信息'
-      ]
-    }
-  };
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+
+    const focusableSelector = 'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])';
+    const focusFirstControl = () => {
+      const firstControl = dialogRef.current?.querySelector<HTMLElement>(focusableSelector);
+      firstControl?.focus();
+    };
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        onClose();
+        return;
+      }
+
+      if (event.key !== 'Tab' || !dialogRef.current) return;
+
+      const focusable = Array.from(dialogRef.current.querySelectorAll<HTMLElement>(focusableSelector))
+        .filter(element => !element.hasAttribute('disabled'));
+
+      if (focusable.length === 0) return;
+
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+
+    const focusTimer = window.setTimeout(focusFirstControl, 0);
+    document.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      window.clearTimeout(focusTimer);
+      document.body.style.overflow = previousOverflow;
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isOpen, onClose]);
 
   return (
     <AnimatePresence>
@@ -97,6 +74,11 @@ export const FeatureGuide: React.FC<FeatureGuideProps> = ({ isOpen, onClose }) =
           />
           
           <motion.div
+            ref={dialogRef}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="feature-guide-title"
+            aria-describedby="feature-guide-subtitle"
             initial={{ scale: 0.9, opacity: 0, y: 20 }}
             animate={{ scale: 1, opacity: 1, y: 0 }}
             exit={{ scale: 0.9, opacity: 0, y: 20 }}
@@ -104,15 +86,16 @@ export const FeatureGuide: React.FC<FeatureGuideProps> = ({ isOpen, onClose }) =
           >
             <button
               onClick={onClose}
-              className="absolute top-4 right-4 z-10 p-2 rounded-full bg-white/80 hover:bg-white shadow-lg transition-all"
+              aria-label="关闭功能介绍"
+              className="absolute top-4 right-4 z-10 w-11 h-11 flex items-center justify-center rounded-full bg-white/80 hover:bg-white shadow-lg transition-all"
             >
               <X size={20} className="text-forest-ink" />
             </button>
 
             <div className="flex flex-col h-full">
               <div className="bg-gradient-to-r from-forest-accent to-forest-pink p-6 text-white">
-                <h2 className="text-2xl font-serif font-bold">{sections[activeSection].title}</h2>
-                <p className="text-white/80 text-sm mt-1">{sections[activeSection].subtitle}</p>
+                <h2 id="feature-guide-title" className="text-2xl font-serif font-bold">{GUIDE_SECTIONS[activeSection].title}</h2>
+                <p id="feature-guide-subtitle" className="text-white/80 text-sm mt-1">{GUIDE_SECTIONS[activeSection].subtitle}</p>
               </div>
 
               <div className="flex border-b border-forest-border">
@@ -120,6 +103,7 @@ export const FeatureGuide: React.FC<FeatureGuideProps> = ({ isOpen, onClose }) =
                   <button
                     key={section}
                     onClick={() => setActiveSection(section)}
+                    aria-pressed={activeSection === section}
                     className={`flex-1 px-4 py-3 text-xs font-bold uppercase tracking-wider transition-all ${
                       activeSection === section
                         ? 'text-forest-accent border-b-2 border-forest-accent bg-forest-accent/5'
@@ -139,10 +123,10 @@ export const FeatureGuide: React.FC<FeatureGuideProps> = ({ isOpen, onClose }) =
                     animate={{ opacity: 1, y: 0 }}
                   >
                     <p className="text-forest-ink/80 leading-relaxed mb-6">
-                      {sections.intro.content}
+                      {GUIDE_SECTIONS.intro.content}
                     </p>
                     <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                      {sections.intro.features.map((feature, idx) => (
+                      {GUIDE_SECTIONS.intro.features.map((feature, idx) => (
                         <div
                           key={idx}
                           className="flex items-center gap-3 p-3 bg-forest-bg/50 rounded-xl"
@@ -162,7 +146,7 @@ export const FeatureGuide: React.FC<FeatureGuideProps> = ({ isOpen, onClose }) =
                     animate={{ opacity: 1, y: 0 }}
                     className="space-y-4"
                   >
-                    {features.map((feature, idx) => (
+                    {SPREAD_GUIDE_FEATURES.map((feature, idx) => (
                       <motion.div
                         key={feature.id}
                         initial={{ opacity: 0, x: -20 }}
@@ -189,7 +173,7 @@ export const FeatureGuide: React.FC<FeatureGuideProps> = ({ isOpen, onClose }) =
                     animate={{ opacity: 1, y: 0 }}
                   >
                     <div className="space-y-3">
-                      {sections.tips.tips.map((tip, idx) => (
+                      {GUIDE_SECTIONS.tips.tips.map((tip, idx) => (
                         <motion.div
                           key={idx}
                           initial={{ opacity: 0, x: -20 }}
@@ -211,7 +195,7 @@ export const FeatureGuide: React.FC<FeatureGuideProps> = ({ isOpen, onClose }) =
               <div className="p-4 border-t border-forest-border">
                 <button
                   onClick={onClose}
-                  className="w-full py-3 bg-forest-accent text-white rounded-xl font-bold hover:bg-forest-accent/90 transition-all"
+                  className="w-full min-h-11 py-3 bg-forest-accent text-white rounded-xl font-bold hover:bg-forest-accent/90 transition-all"
                 >
                   开始探索
                 </button>

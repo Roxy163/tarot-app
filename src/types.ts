@@ -154,6 +154,7 @@ export interface TarotReading {
   processedByAi?: boolean;
   skipAi?: boolean;
   showSlotNumbers?: boolean;
+  updatedAt?: string;
 }
 
 export interface FreePosition {

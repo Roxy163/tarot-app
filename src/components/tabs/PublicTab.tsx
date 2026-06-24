@@ -1,9 +1,10 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { motion } from 'motion/react';
 import { Globe, Sparkles } from 'lucide-react';
 import { TarotReading, TarotCardMetadata } from '../../types';
 import { ReadingCard } from '../ReadingCard';
 import { getPublicReadings } from '../../lib/firebaseData';
+import { useProgressiveList } from '../../hooks/useProgressiveList';
 
 interface PublicTabProps {
   readings: TarotReading[];
@@ -12,6 +13,7 @@ interface PublicTabProps {
   onAuthorClick: (author: string) => void;
   onProcessAi: (id: string) => void;
   onPublicReadingsLoaded?: (readings: TarotReading[]) => void;
+  initialPublicReadings?: TarotReading[];
 }
 
 export const PublicTab: React.FC<PublicTabProps> = ({
@@ -20,16 +22,22 @@ export const PublicTab: React.FC<PublicTabProps> = ({
   onTagClick,
   onAuthorClick,
   onProcessAi,
-  onPublicReadingsLoaded
+  onPublicReadingsLoaded,
+  initialPublicReadings = []
 }) => {
-  const [cloudPublicReadings, setCloudPublicReadings] = useState<TarotReading[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const [cloudPublicReadings, setCloudPublicReadings] = useState<TarotReading[]>(initialPublicReadings);
+  const [isLoading, setIsLoading] = useState(initialPublicReadings.length === 0);
+  const hasLoadedRef = useRef(false);
 
   useEffect(() => {
+    if (hasLoadedRef.current) return;
+    hasLoadedRef.current = true;
     let cancelled = false;
 
     const loadPublicReadings = async () => {
-      setIsLoading(true);
+      if (cloudPublicReadings.length === 0) {
+        setIsLoading(true);
+      }
       try {
         const loaded = await getPublicReadings();
         if (!cancelled) setCloudPublicReadings(loaded);
@@ -67,6 +75,12 @@ export const PublicTab: React.FC<PublicTabProps> = ({
     onPublicReadingsLoaded?.(publicReadings);
   }, [onPublicReadingsLoaded, publicReadings]);
 
+  const {
+    hasMore,
+    sentinelRef,
+    visibleItems: visiblePublicReadings,
+  } = useProgressiveList(publicReadings);
+
   return (
     <motion.div 
       key="public" 
@@ -95,7 +109,7 @@ export const PublicTab: React.FC<PublicTabProps> = ({
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {publicReadings.map(reading => (
+          {visiblePublicReadings.map(reading => (
             <ReadingCard 
               key={reading.id} 
               reading={reading} 
@@ -106,6 +120,12 @@ export const PublicTab: React.FC<PublicTabProps> = ({
               onProcessAi={onProcessAi}
             />
           ))}
+          <div ref={sentinelRef} className="col-span-full h-1" aria-hidden />
+        </div>
+      )}
+      {hasMore && (
+        <div className="py-2 text-center text-[10px] font-bold text-forest-muted">
+          正在继续展开广场手记...
         </div>
       )}
     </motion.div>

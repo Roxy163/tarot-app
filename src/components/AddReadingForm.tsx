@@ -12,6 +12,7 @@ import { ReadingDetailView } from './ReadingDetailView';
 import { ReadingSpreadDisplay } from './ReadingSpreadDisplay';
 import { BasicInfoSection } from './BasicInfoSection';
 import { EmailShareModal } from './EmailShareModal';
+import { useLongPressClear } from '../hooks/useLongPressClear';
 
 interface AddReadingFormProps {
   onSubmit: (data: Partial<ReadingFormData>) => void;
@@ -105,8 +106,12 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
   const [showEmailModal, setShowEmailModal] = useState(false);
   const [submitNotice, setSubmitNotice] = useState('');
 
-  const [longPressTimer, setLongPressTimer] = useState<NodeJS.Timeout | null>(null);
-  const [isLongPressActive, setIsLongPressActive] = useState(false);
+  const {
+    isLongPressActive,
+    clearLongPressActive,
+    handleLongPressStart,
+    handleLongPressEnd,
+  } = useLongPressClear({ cardSlots, setCardSlots });
 
   const isDailyMode = formData.category === '日运';
   const isMultiCard = cardSlots.length > 1;
@@ -217,33 +222,11 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
 
   const handleSlotClick = (index: number) => {
     if (isLongPressActive) {
-      setIsLongPressActive(false);
+      clearLongPressActive();
       return;
     }
     setActiveSlotIndex(index);
     setShowPicker(true);
-  };
-
-  const handleLongPressStart = (index: number) => {
-    setIsLongPressActive(false);
-    const timer = setTimeout(() => {
-      const newSlots = [...cardSlots];
-      if (newSlots[index] && newSlots[index].name) {
-        newSlots[index] = { ...newSlots[index], name: '', isReversed: false };
-        setCardSlots(newSlots);
-        setIsLongPressActive(true);
-        if (window.navigator.vibrate) window.navigator.vibrate(50);
-      }
-      setLongPressTimer(null);
-    }, 600);
-    setLongPressTimer(timer);
-  };
-
-  const handleLongPressEnd = () => {
-    if (longPressTimer) {
-      clearTimeout(longPressTimer);
-      setLongPressTimer(null);
-    }
   };
 
   const updateCardSlotsWithHistory = (newSlots: typeof cardSlots) => {
@@ -662,14 +645,14 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
                 <button 
                   type="button"
                   onClick={() => setShowRestoreConfirm(null)}
-                  className="flex-1 py-2 bg-forest-bg text-forest-muted rounded-xl font-medium hover:bg-forest-accent/5 transition-all"
+                  className="flex-1 min-h-11 py-2 bg-forest-bg text-forest-muted rounded-xl font-medium hover:bg-forest-accent/5 transition-all"
                 >
                   取消
                 </button>
                 <button 
                   type="button"
                   onClick={() => restoreDefaults(showRestoreConfirm.name)}
-                  className="flex-1 py-2 bg-forest-accent text-white rounded-xl font-medium hover:bg-forest-accent/90 transition-all shadow-md"
+                  className="flex-1 min-h-11 py-2 bg-forest-accent text-white rounded-xl font-medium hover:bg-forest-accent/90 transition-all shadow-md"
                 >
                   确定恢复
                 </button>
@@ -897,10 +880,10 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
       <div className="space-y-3">
         <div className="flex items-center justify-between gap-3 px-1">
           <p className="text-xs font-bold text-forest-accent">补充解读视角（可选）</p>
-          <label className="flex items-center gap-2 text-[10px] font-bold text-forest-muted cursor-pointer">
+          <label className="min-h-12 px-2 -mr-2 flex items-center gap-2 text-[10px] font-bold text-forest-muted cursor-pointer rounded-xl hover:bg-forest-accent/5 transition-colors">
             <input
               type="checkbox"
-              className="accent-forest-accent w-3.5 h-3.5"
+              className="accent-forest-accent w-5 h-5"
               checked={expandInfluenceByDefault}
               onChange={e => handleToggleInfluenceDefault(e.target.checked)}
             />
@@ -917,7 +900,7 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
                 key={field.key}
                 type="button"
                 onClick={() => setActiveInfluenceKey(isActive ? null : field.key)}
-                className={`min-h-11 px-3 py-2 rounded-xl border text-xs font-bold flex items-center justify-center gap-1.5 transition-all ${
+                className={`min-h-12 px-3 py-2 rounded-xl border text-xs font-bold flex items-center justify-center gap-1.5 transition-all ${
                   isActive
                     ? 'bg-forest-accent text-white border-forest-accent shadow-sm'
                     : 'bg-forest-accent/5 text-forest-accent border-forest-accent/5 hover:bg-forest-accent/10'

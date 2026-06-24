@@ -20,6 +20,7 @@ export const SmartTipBanner: React.FC<SmartTipBannerProps> = ({
     <AnimatePresence>
       {isVisible && (
         <motion.div
+          data-smart-tip-banner
           initial={{ opacity: 0, y: 100, x: '-50%' }}
           animate={{ opacity: 1, y: 0, x: '-50%' }}
           exit={{ opacity: 0, y: 100, x: '-50%' }}
@@ -35,14 +36,15 @@ export const SmartTipBanner: React.FC<SmartTipBannerProps> = ({
             {tip.actionLabel && (
               <button
                 onClick={onAction}
-                className="px-3 py-1.5 bg-forest-accent text-white rounded-lg font-bold text-xs hover:bg-forest-accent/90 transition-colors"
+                className="min-h-11 px-3 py-2 bg-forest-accent text-white rounded-lg font-bold text-xs hover:bg-forest-accent/90 transition-colors"
               >
                 {tip.actionLabel}
               </button>
             )}
             <button
               onClick={onDismiss}
-              className="p-1.5 text-forest-muted hover:text-forest-accent transition-colors"
+              className="min-h-11 min-w-11 flex items-center justify-center text-forest-muted hover:text-forest-accent transition-colors rounded-lg hover:bg-forest-accent/5"
+              aria-label="关闭提示"
             >
               <X size={18} />
             </button>

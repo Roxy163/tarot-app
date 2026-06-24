@@ -1,8 +1,32 @@
-import { User } from 'firebase/auth';
-import { deleteDoc, doc, getDoc, getDocs, setDoc, updateDoc, collection } from 'firebase/firestore';
-import { getDownloadURL, ref, uploadBytes } from 'firebase/storage';
-import { CardKeywordMemory, SpreadDefinition, TarotCardMetadata, TarotReading, UserProfile } from '../types';
-import { firebaseDb, firebaseStorage } from './firebase';
+import type { User } from 'firebase/auth';
+import type { CardKeywordMemory, SpreadDefinition, TarotCardMetadata, TarotReading, UserProfile } from '../types';
+import { getFirebaseApp } from './firebase';
+
+type FirestoreApi = typeof import('firebase/firestore');
+type StorageApi = typeof import('firebase/storage');
+
+let firestoreApiPromise: Promise<FirestoreApi> | null = null;
+let storageApiPromise: Promise<StorageApi> | null = null;
+
+const loadFirestore = () => {
+  firestoreApiPromise ||= import('firebase/firestore');
+  return firestoreApiPromise;
+};
+
+const loadStorage = () => {
+  storageApiPromise ||= import('firebase/storage');
+  return storageApiPromise;
+};
+
+const getFirebaseDb = async () => {
+  const { getFirestore } = await loadFirestore();
+  return getFirestore(getFirebaseApp());
+};
+
+const getFirebaseStorage = async () => {
+  const { getStorage } = await loadStorage();
+  return getStorage(getFirebaseApp());
+};
 
 export interface NumerologySetting {
   numerology: number;
@@ -13,6 +37,15 @@ export interface NumerologySetting {
 const getCardDocId = (cardName: string) => encodeURIComponent(cardName);
 
 const withoutUndefined = <T,>(value: T): T => JSON.parse(JSON.stringify(value));
+
+const getReadingVersionTime = (reading: TarotReading) => (
+  new Date(reading.updatedAt || reading.date || reading.readingDate || 0).getTime()
+);
+
+const pickNewestReading = (incoming: TarotReading, previous?: TarotReading) => {
+  if (!previous) return incoming;
+  return getReadingVersionTime(previous) > getReadingVersionTime(incoming) ? previous : incoming;
+};
 
 const PUBLIC_ID_ALPHABET = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
 const PUBLIC_ID_LENGTH = 8;
@@ -53,14 +86,17 @@ const createDefaultProfile = (user: User, publicId: string): UserProfile => {
   return {
     id: user.uid,
     display_name: displayName,
+    nickname: displayName,
     bio: '研精覃思，洞见未来',
+    signature: '研精覃思，洞见未来',
     createdAt,
     user_public_id: publicId,
   };
 };
 
 export const getOrCreateUserProfile = async (user: User): Promise<UserProfile> => {
-  if (!firebaseDb) throw new Error('Firebase Firestore 未配置');
+  const { doc, getDoc, setDoc, updateDoc } = await loadFirestore();
+  const firebaseDb = await getFirebaseDb();
 
   const profileRef = doc(firebaseDb, 'profiles', user.uid);
   const snapshot = await getDoc(profileRef);
@@ -83,20 +119,20 @@ export const getOrCreateUserProfile = async (user: User): Promise<UserProfile> =
     return profile;
   }
 
-  const publicId = generatePublicId(user.uid);
-  const profile = createDefaultProfile(user, publicId);
+  const profile = createDefaultProfile(user, generatePublicId(user.uid));
   await setDoc(profileRef, profile);
   return profile;
 };
 
 export const updateUserProfile = async (uid: string, updated: Partial<UserProfile>): Promise<UserProfile> => {
-  if (!firebaseDb) throw new Error('Firebase Firestore 未配置');
+  const { doc, getDoc, updateDoc } = await loadFirestore();
+  const firebaseDb = await getFirebaseDb();
 
   const profileRef = doc(firebaseDb, 'profiles', uid);
-  await updateDoc(profileRef, {
+  await updateDoc(profileRef, withoutUndefined({
     ...updated,
     updatedAt: new Date().toISOString(),
-  });
+  }));
 
   const snapshot = await getDoc(profileRef);
   if (!snapshot.exists()) throw new Error('用户资料不存在');
@@ -105,10 +141,11 @@ export const updateUserProfile = async (uid: string, updated: Partial<UserProfil
 };
 
 export const deleteUserAccount = async (uid: string): Promise<void> => {
-  if (!firebaseDb) throw new Error('Firebase Firestore 未配置');
+  const { collection, deleteDoc, doc, getDocs } = await loadFirestore();
+  const firebaseDb = await getFirebaseDb();
 
   await deleteDoc(doc(firebaseDb, 'profiles', uid));
-  
+
   const userReadingsRef = collection(firebaseDb, 'users', uid, 'readings');
   const readingsSnapshot = await getDocs(userReadingsRef);
   const deletePromises = readingsSnapshot.docs.flatMap(item => {
@@ -118,11 +155,25 @@ export const deleteUserAccount = async (uid: string): Promise<void> => {
       ...(reading.isPublic ? [deletePublicReading(item.id)] : []),
     ];
   });
-  await Promise.all(deletePromises);
+
+  const settingsRef = collection(firebaseDb, 'users', uid, 'settings');
+  const settingsSnapshot = await getDocs(settingsRef);
+  const annotationsRef = collection(firebaseDb, 'users', uid, 'cardAnnotations');
+  const annotationsSnapshot = await getDocs(annotationsRef);
+  const numerologyRef = collection(firebaseDb, 'users', uid, 'numerologySettings');
+  const numerologySnapshot = await getDocs(numerologyRef);
+
+  await Promise.all([
+    ...deletePromises,
+    ...settingsSnapshot.docs.map(item => deleteDoc(item.ref)),
+    ...annotationsSnapshot.docs.map(item => deleteDoc(item.ref)),
+    ...numerologySnapshot.docs.map(item => deleteDoc(item.ref)),
+  ]);
 };
 
 export const uploadUserAvatar = async (uid: string, avatar: Blob): Promise<string> => {
-  if (!firebaseStorage) throw new Error('Firebase Storage 未配置');
+  const { getDownloadURL, ref, uploadBytes } = await loadStorage();
+  const firebaseStorage = await getFirebaseStorage();
 
   const avatarRef = ref(firebaseStorage, `avatars/${uid}/avatar.jpg`);
   await uploadBytes(avatarRef, avatar, { contentType: 'image/jpeg' });
@@ -132,7 +183,8 @@ export const uploadUserAvatar = async (uid: string, avatar: Blob): Promise<strin
 };
 
 export const getNumerologySetting = async (uid: string, cardName: string): Promise<NumerologySetting | null> => {
-  if (!firebaseDb) throw new Error('Firebase Firestore 未配置');
+  const { doc, getDoc } = await loadFirestore();
+  const firebaseDb = await getFirebaseDb();
 
   const settingRef = doc(firebaseDb, 'users', uid, 'numerologySettings', getCardDocId(cardName));
   const snapshot = await getDoc(settingRef);
@@ -152,25 +204,28 @@ export const saveNumerologySetting = async (
   cardName: string,
   setting: NumerologySetting,
 ): Promise<void> => {
-  if (!firebaseDb) throw new Error('Firebase Firestore 未配置');
+  const { doc, setDoc } = await loadFirestore();
+  const firebaseDb = await getFirebaseDb();
 
   const settingRef = doc(firebaseDb, 'users', uid, 'numerologySettings', getCardDocId(cardName));
-  await setDoc(settingRef, {
+  await setDoc(settingRef, withoutUndefined({
     cardName,
     ...setting,
     updatedAt: new Date().toISOString(),
-  });
+  }));
 };
 
 export const deleteNumerologySetting = async (uid: string, cardName: string): Promise<void> => {
-  if (!firebaseDb) throw new Error('Firebase Firestore 未配置');
+  const { deleteDoc, doc } = await loadFirestore();
+  const firebaseDb = await getFirebaseDb();
 
   const settingRef = doc(firebaseDb, 'users', uid, 'numerologySettings', getCardDocId(cardName));
   await deleteDoc(settingRef);
 };
 
 export const getCardAnnotations = async (uid: string): Promise<Record<string, string>> => {
-  if (!firebaseDb) throw new Error('Firebase Firestore 未配置');
+  const { collection, getDocs } = await loadFirestore();
+  const firebaseDb = await getFirebaseDb();
 
   const annotationsRef = collection(firebaseDb, 'users', uid, 'cardAnnotations');
   const snapshot = await getDocs(annotationsRef);
@@ -185,7 +240,8 @@ export const getCardAnnotations = async (uid: string): Promise<Record<string, st
 };
 
 export const saveCardAnnotation = async (uid: string, cardName: string, meaning: string): Promise<void> => {
-  if (!firebaseDb) throw new Error('Firebase Firestore 未配置');
+  const { doc, setDoc } = await loadFirestore();
+  const firebaseDb = await getFirebaseDb();
 
   const annotationRef = doc(firebaseDb, 'users', uid, 'cardAnnotations', getCardDocId(cardName));
   await setDoc(annotationRef, {
@@ -196,7 +252,8 @@ export const saveCardAnnotation = async (uid: string, cardName: string, meaning:
 };
 
 export const getUserReadings = async (uid: string): Promise<TarotReading[]> => {
-  if (!firebaseDb) throw new Error('Firebase Firestore 未配置');
+  const { collection, getDocs } = await loadFirestore();
+  const firebaseDb = await getFirebaseDb();
 
   const readingsRef = collection(firebaseDb, 'users', uid, 'readings');
   const snapshot = await getDocs(readingsRef);
@@ -207,7 +264,8 @@ export const getUserReadings = async (uid: string): Promise<TarotReading[]> => {
 };
 
 export const getPublicReadings = async (): Promise<TarotReading[]> => {
-  if (!firebaseDb) throw new Error('Firebase Firestore 未配置');
+  const { collection, getDocs } = await loadFirestore();
+  const firebaseDb = await getFirebaseDb();
 
   const readingsRef = collection(firebaseDb, 'publicReadings');
   const snapshot = await getDocs(readingsRef);
@@ -243,14 +301,16 @@ const toPublicReadingData = (reading: TarotReading) => withoutUndefined({
 });
 
 export const savePublicReading = async (reading: TarotReading): Promise<void> => {
-  if (!firebaseDb) throw new Error('Firebase Firestore 未配置');
+  const { doc, setDoc } = await loadFirestore();
+  const firebaseDb = await getFirebaseDb();
 
   const publicRef = doc(firebaseDb, 'publicReadings', reading.id);
   await setDoc(publicRef, toPublicReadingData(reading));
 };
 
 export const deletePublicReading = async (readingId: string): Promise<void> => {
-  if (!firebaseDb) throw new Error('Firebase Firestore 未配置');
+  const { deleteDoc, doc, getDoc } = await loadFirestore();
+  const firebaseDb = await getFirebaseDb();
 
   const publicRef = doc(firebaseDb, 'publicReadings', readingId);
   const publicSnapshot = await getDoc(publicRef);
@@ -261,45 +321,44 @@ export const deletePublicReading = async (readingId: string): Promise<void> => {
 };
 
 export const replaceUserReadings = async (uid: string, readings: TarotReading[]): Promise<void> => {
-  if (!firebaseDb) throw new Error('Firebase Firestore 未配置');
+  const { collection, deleteDoc, doc, getDocs, setDoc } = await loadFirestore();
+  const firebaseDb = await getFirebaseDb();
 
   const readingsRef = collection(firebaseDb, 'users', uid, 'readings');
   const snapshot = await getDocs(readingsRef);
-  const previousReadingsById = new Map(snapshot.docs.map(item => [item.id, item.data() as TarotReading]));
+  const previousReadingsById = new Map<string, TarotReading>(
+    snapshot.docs.map(item => [item.id, { id: item.id, ...item.data() } as TarotReading] as const),
+  );
   const ownedReadings = readings.map(reading => ({ ...reading, userId: uid }));
+  const mergedReadings = ownedReadings.map(reading => pickNewestReading(reading, previousReadingsById.get(reading.id)));
   const incomingIds = new Set(ownedReadings.map(reading => reading.id));
 
   await Promise.all(
-    ownedReadings.map(reading => setDoc(
+    mergedReadings.map(reading => setDoc(
       doc(firebaseDb, 'users', uid, 'readings', reading.id),
       withoutUndefined(reading),
     )),
   );
 
   await Promise.all([
-    ...ownedReadings
-      .filter(reading => {
-        const wasPublic = previousReadingsById.get(reading.id)?.isPublic === true;
-        return !reading.isPublic && wasPublic;
-      })
+    ...mergedReadings
+      .filter(reading => reading.isPublic)
+      .map(reading => savePublicReading(reading)),
+    ...mergedReadings
+      .filter(reading => !reading.isPublic && previousReadingsById.get(reading.id)?.isPublic === true)
       .map(reading => deletePublicReading(reading.id)),
+    ...snapshot.docs
+      .filter(item => !incomingIds.has(item.id))
+      .map(item => deleteDoc(item.ref)),
     ...snapshot.docs
       .filter(item => !incomingIds.has(item.id) && item.data().isPublic === true)
       .map(item => deletePublicReading(item.id)),
   ]);
-
-  await Promise.all([
-    ...ownedReadings
-      .filter(reading => reading.isPublic)
-      .map(reading => savePublicReading(reading)),
-    ...snapshot.docs
-      .filter(item => !incomingIds.has(item.id))
-      .map(item => deleteDoc(doc(firebaseDb, 'users', uid, 'readings', item.id))),
-  ]);
 };
 
 const getUserSetting = async <T,>(uid: string, key: string): Promise<T[] | null> => {
-  if (!firebaseDb) throw new Error('Firebase Firestore 未配置');
+  const { doc, getDoc } = await loadFirestore();
+  const firebaseDb = await getFirebaseDb();
 
   const settingRef = doc(firebaseDb, 'users', uid, 'settings', key);
   const snapshot = await getDoc(settingRef);
@@ -311,7 +370,8 @@ const getUserSetting = async <T,>(uid: string, key: string): Promise<T[] | null>
 };
 
 const saveUserSetting = async <T,>(uid: string, key: string, items: T[]): Promise<void> => {
-  if (!firebaseDb) throw new Error('Firebase Firestore 未配置');
+  const { doc, setDoc } = await loadFirestore();
+  const firebaseDb = await getFirebaseDb();
 
   const settingRef = doc(firebaseDb, 'users', uid, 'settings', key);
   await setDoc(settingRef, {

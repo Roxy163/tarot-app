@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useReducer, useEffect, ReactNode } from 'react';
+import React, { createContext, useContext, useReducer, useEffect, ReactNode, useState } from 'react';
 
 export interface Achievement {
   id: string;
@@ -119,32 +119,55 @@ const OnboardingContext = createContext<OnboardingContextType | undefined>(undef
 
 export function OnboardingProvider({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(onboardingReducer, initialState);
+  const [hasLoadedStoredState, setHasLoadedStoredState] = useState(false);
 
   useEffect(() => {
     const saved = localStorage.getItem('tarot_onboarding_state');
+    const hasSeen = localStorage.getItem('has_seen_first_entry_scroll') === 'true';
+
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
-        dispatch({ type: 'LOAD_STATE', payload: parsed });
+        const parsedHasCompleted = Boolean(parsed.hasCompletedFirstEntry || hasSeen);
+
+        dispatch({
+          type: 'LOAD_STATE',
+          payload: {
+            ...parsed,
+            hasCompletedFirstEntry: parsedHasCompleted,
+          },
+        });
+
+        if (!parsedHasCompleted) {
+          dispatch({ type: 'START_FIRST_ENTRY' });
+        }
       } catch (e) {
         console.error('Failed to load onboarding state:', e);
+        if (!hasSeen) {
+          dispatch({ type: 'START_FIRST_ENTRY' });
+        }
       }
     } else {
-      const hasSeen = localStorage.getItem('has_seen_first_entry_scroll');
       if (!hasSeen) {
         dispatch({ type: 'START_FIRST_ENTRY' });
+      } else {
+        dispatch({ type: 'LOAD_STATE', payload: { hasCompletedFirstEntry: true } });
       }
     }
+
+    setHasLoadedStoredState(true);
   }, []);
 
   useEffect(() => {
+    if (!hasLoadedStoredState) return;
+
     const stateToSave = {
       hasCompletedFirstEntry: state.hasCompletedFirstEntry,
       completedGuides: state.completedGuides,
       achievements: state.achievements,
     };
     localStorage.setItem('tarot_onboarding_state', JSON.stringify(stateToSave));
-  }, [state.hasCompletedFirstEntry, state.completedGuides, state.achievements]);
+  }, [hasLoadedStoredState, state.hasCompletedFirstEntry, state.completedGuides, state.achievements]);
 
   const startFirstEntry = () => dispatch({ type: 'START_FIRST_ENTRY' });
   const nextStep = () => dispatch({ type: 'NEXT_STEP' });

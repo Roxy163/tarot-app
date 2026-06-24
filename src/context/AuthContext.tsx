@@ -1,13 +1,13 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
 import { User } from 'firebase/auth';
-import { 
-  signOutUser, 
-  onAuthStateChangedListener, 
-  getCurrentUser, 
-  signInWithPassword, 
-  signUpWithEmail, 
-  saveLoginHistory, 
-  getLastLoginInfo, 
+import {
+  signOutUser,
+  onAuthStateChangedListener,
+  getCurrentUser,
+  signInWithPassword,
+  signUpWithEmail,
+  saveLoginHistory,
+  getLastLoginInfo,
   sendPasswordReset,
   updateUserPassword,
   sendCurrentUserEmailVerification,
@@ -69,7 +69,6 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   const signIn = useCallback(async (email: string, password: string) => {
     const userCredential = await signInWithPassword(email, password);
-    
     const now = new Date();
     const loginRecord = {
       type: 'email' as const,
@@ -85,13 +84,13 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   const signUp = useCallback(async (email: string, password: string) => {
     const userCredential = await signUpWithEmail(email, password);
-    
+
     try {
       await sendCurrentUserEmailVerification();
     } catch (error) {
       console.warn('Email verification was not sent automatically:', error);
     }
-    
+
     const now = new Date();
     const loginRecord = {
       type: 'email' as const,
