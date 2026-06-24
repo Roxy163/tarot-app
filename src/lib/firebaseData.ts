@@ -1,6 +1,7 @@
 import type { User } from 'firebase/auth';
 import type { CardKeywordMemory, SpreadDefinition, TarotCardMetadata, TarotReading, UserProfile } from '../types';
 import { getFirebaseApp } from './firebase';
+import { createUserReadingSyncPlan } from './readingCloudSync';
 
 type FirestoreApi = typeof import('firebase/firestore');
 type StorageApi = typeof import('firebase/storage');
@@ -37,15 +38,6 @@ export interface NumerologySetting {
 const getCardDocId = (cardName: string) => encodeURIComponent(cardName);
 
 const withoutUndefined = <T,>(value: T): T => JSON.parse(JSON.stringify(value));
-
-const getReadingVersionTime = (reading: TarotReading) => (
-  new Date(reading.updatedAt || reading.date || reading.readingDate || 0).getTime()
-);
-
-const pickNewestReading = (incoming: TarotReading, previous?: TarotReading) => {
-  if (!previous) return incoming;
-  return getReadingVersionTime(previous) > getReadingVersionTime(incoming) ? previous : incoming;
-};
 
 const PUBLIC_ID_ALPHABET = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
 const PUBLIC_ID_LENGTH = 8;
@@ -326,33 +318,22 @@ export const replaceUserReadings = async (uid: string, readings: TarotReading[])
 
   const readingsRef = collection(firebaseDb, 'users', uid, 'readings');
   const snapshot = await getDocs(readingsRef);
-  const previousReadingsById = new Map<string, TarotReading>(
-    snapshot.docs.map(item => [item.id, { id: item.id, ...item.data() } as TarotReading] as const),
-  );
-  const ownedReadings = readings.map(reading => ({ ...reading, userId: uid }));
-  const mergedReadings = ownedReadings.map(reading => pickNewestReading(reading, previousReadingsById.get(reading.id)));
-  const incomingIds = new Set(ownedReadings.map(reading => reading.id));
+  const previousReadings = snapshot.docs.map(item => ({ id: item.id, ...item.data() }) as TarotReading);
+  const syncPlan = createUserReadingSyncPlan(uid, readings, previousReadings);
 
   await Promise.all(
-    mergedReadings.map(reading => setDoc(
+    syncPlan.readingsToWrite.map(reading => setDoc(
       doc(firebaseDb, 'users', uid, 'readings', reading.id),
       withoutUndefined(reading),
     )),
   );
 
   await Promise.all([
-    ...mergedReadings
-      .filter(reading => reading.isPublic)
-      .map(reading => savePublicReading(reading)),
-    ...mergedReadings
-      .filter(reading => !reading.isPublic && previousReadingsById.get(reading.id)?.isPublic === true)
-      .map(reading => deletePublicReading(reading.id)),
-    ...snapshot.docs
-      .filter(item => !incomingIds.has(item.id))
-      .map(item => deleteDoc(item.ref)),
-    ...snapshot.docs
-      .filter(item => !incomingIds.has(item.id) && item.data().isPublic === true)
-      .map(item => deletePublicReading(item.id)),
+    ...syncPlan.publicReadingsToSave.map(reading => savePublicReading(reading)),
+    ...syncPlan.publicReadingIdsToDelete.map(readingId => deletePublicReading(readingId)),
+    ...syncPlan.readingsToDelete.map(reading => (
+      deleteDoc(doc(firebaseDb, 'users', uid, 'readings', reading.id))
+    )),
   ]);
 };
 

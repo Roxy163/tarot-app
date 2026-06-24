@@ -233,7 +233,7 @@ export const OFFICIAL_SPREADS = [
     name: '十字牌阵', 
     layout: 'cross', 
     slots: ['中心', '左侧', '右侧', '上方', '下方'],
-    slotPositions: ['col-start-3 row-start-2', 'col-start-2 row-start-2', 'col-start-4 row-start-2', 'col-start-3 row-start-1', 'col-start-3 row-start-3']
+    slotPositions: ['col-start-2 row-start-2', 'col-start-1 row-start-2', 'col-start-3 row-start-2', 'col-start-2 row-start-1', 'col-start-2 row-start-3']
   },
   { 
     name: '四季牌阵', 
