@@ -32,6 +32,7 @@ import {
   upsertSpreadDefinition,
 } from '../lib/spreadPersistence';
 import { centerGridSlots, shiftGridSlots } from '../lib/spreadGridLayout';
+import { buildReadingSubmitPayload } from '../lib/readingSubmitPayload';
 
 interface AddReadingFormProps {
   onSubmit: (data: Partial<ReadingFormData>) => void;
@@ -460,52 +461,20 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
 
   const handleSubmit = (e: FormEvent) => {
     e.preventDefault();
-    const {
-      singleCard,
-      combination,
-      numerologyInfluence,
-      astrologyInfluence,
-      houseInfluence,
-      elementInfluence,
-      readingDate,
-      ...rest
-    } = formData;
-    
-    // In daily mode or single card spread, keep the note as a single-card reading.
-    const filledSlots = cardSlots
-      .map((slot, index) => ({ slot, index }))
-      .filter(item => item.slot.name);
 
-    if (filledSlots.length === 0) {
-      setSubmitNotice('请至少选择一张牌，再录入手记。');
+    const result = buildReadingSubmitPayload({
+      formData,
+      cardSlots,
+      cardInterpretations,
+    });
+
+    if (result.ok === false) {
+      setSubmitNotice(result.notice);
       return;
     }
 
     setSubmitNotice('');
-
-    const submittedCards = filledSlots.map(item => item.slot);
-    const submittedInterpretations = filledSlots.map(item => cardInterpretations[item.index] || '');
-    const isSingleCardReading = isDailyMode || formData.spread === '单牌阵' || submittedCards.length <= 1;
-    const finalSingleCard = isSingleCardReading ? (submittedInterpretations[0] || singleCard) : singleCard;
-    const finalCombination = isSingleCardReading ? '' : combination;
-
-    onSubmit({ 
-      ...rest, 
-      readingDate: new Date(readingDate).toISOString(),
-      interpretation: {
-        singleCard: finalSingleCard,
-        combination: finalCombination,
-        numerologyInfluence,
-        astrologyInfluence,
-        houseInfluence,
-        elementInfluence,
-      },
-      cards: submittedCards,
-      slotLabels: submittedCards.map(s => s.label || ''),
-      slotPositions: submittedCards.map(s => s.position || ''),
-      rotatedSlots: submittedCards.map((s, i) => s.isRotated ? i : -1).filter(i => i !== -1),
-      cardInterpretations: submittedInterpretations
-    });
+    onSubmit(result.payload);
   };
 
   const currentTemplate = LAYOUT_TEMPLATES[formData.layoutType] || LAYOUT_TEMPLATES.horizontal;
