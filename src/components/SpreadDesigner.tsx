@@ -11,7 +11,7 @@ interface SpreadDesignerProps {
   spreads: SpreadDefinition[];
   currentSpread: string;
   layoutType: string;
-  cardSlots: any[];
+  cardSlots: ReadingSlotData[];
   designActiveSlot: number;
   newSpreadName: string;
   isEditingSession?: boolean;
@@ -264,8 +264,8 @@ export const SpreadDesigner: React.FC<SpreadDesignerProps> = ({
                   const row = Math.floor(i / gridCols) + 1;
                   const col = (i % gridCols) + 1;
                   const posStr = `col-start-${col} row-start-${row}`;
-                  const slotIndices = cardSlots.map((s: any, idx: number) => {
-                    const slotPos = s.position || (itemClasses[idx] || '');
+                  const slotIndices = cardSlots.map((slot, idx) => {
+                    const slotPos = slot.position || (itemClasses[idx] || '');
                     return slotPos === posStr ? idx : -1;
                   }).filter(idx => idx !== -1);
                   const isCelticCenter = isCelticCross && posStr === 'col-start-2 row-start-2';

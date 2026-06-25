@@ -33,9 +33,10 @@ export const createUserReadingSyncPlan = (
   );
   const ownedReadings = incomingReadings.map(reading => ({ ...reading, userId: uid }));
   const incomingIds = new Set(ownedReadings.map(reading => reading.id));
-  const mergedReadings = ownedReadings.map(reading => (
-    pickNewestReading(reading, previousReadingsById.get(reading.id))
-  ));
+  const mergedReadings = ownedReadings.map(reading => ({
+    ...pickNewestReading(reading, previousReadingsById.get(reading.id)),
+    userId: uid,
+  }));
   const readingsToDelete = previousReadings.filter(reading => !incomingIds.has(reading.id));
   const publicReadingIdsToDelete = Array.from(new Set([
     ...mergedReadings

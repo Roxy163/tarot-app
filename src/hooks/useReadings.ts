@@ -12,6 +12,7 @@ import {
   saveUserCardMetadata,
   saveUserSpreads,
 } from '../lib/firebaseData';
+import { mergeOfficialSpreadsWithCustom } from '../lib/spreadPersistence';
 
 const CLOUD_SAVE_DEBOUNCE_MS = 1200;
 
@@ -132,7 +133,7 @@ export const useReadings = (session: { uid?: string; email?: string | null } | n
       setSyncNotice(null);
       const localReadings = parseSavedArray<TarotReading>(session?.uid ? 'tarot_readings' : 'tarot_guest_data') || [];
       const savedSpreads = parseSavedArray<SpreadDefinition>('tarot_spreads') || [];
-      const localSpreads = [...OFFICIAL_SPREADS, ...savedSpreads.filter(s => !OFFICIAL_SPREADS.some(os => os.name === s.name))];
+      const localSpreads = mergeOfficialSpreadsWithCustom(savedSpreads, OFFICIAL_SPREADS);
       const localMetadata = parseSavedArray<TarotCardMetadata>('tarot_card_metadata') || [];
       const localKeywordMemory = parseSavedArray<CardKeywordMemory>('tarot_card_keyword_memory') || [];
       
@@ -157,7 +158,10 @@ export const useReadings = (session: { uid?: string; email?: string | null } | n
         if (cancelled) return;
 
         setReadings([...exampleReadings, ...(cloudReadings.length > 0 ? cloudReadings : localReadings)]);
-        const mergedSpreads = [...OFFICIAL_SPREADS, ...(cloudSpreads && cloudSpreads.length > 0 ? cloudSpreads : savedSpreads).filter(s => !OFFICIAL_SPREADS.some(os => os.name === s.name))];
+        const mergedSpreads = mergeOfficialSpreadsWithCustom(
+          cloudSpreads && cloudSpreads.length > 0 ? cloudSpreads : savedSpreads,
+          OFFICIAL_SPREADS,
+        );
         setSpreads(mergedSpreads);
         setCardMetadata(cloudMetadata && cloudMetadata.length > 0 ? cloudMetadata : localMetadata);
         setCardKeywordMemory(cloudKeywordMemory && cloudKeywordMemory.length > 0 ? cloudKeywordMemory : localKeywordMemory);

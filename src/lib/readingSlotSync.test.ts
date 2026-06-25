@@ -55,6 +55,43 @@ describe('readingSlotSync', () => {
     ]);
   });
 
+  it('restores free layout coordinates when mapping to a saved custom spread', () => {
+    const freeSpread: SpreadDefinition = {
+      name: '自由牌阵',
+      layout: 'free',
+      slots: ['核心', '建议'],
+      freePositions: [
+        { x: 120, y: 80, rotation: 15, scale: 1.2 },
+        { x: 260, y: 180, rotation: -30, scale: 0.9 },
+      ],
+    };
+
+    expect(mapSlotsToSpread([{ name: '愚者', isReversed: true }], freeSpread)).toEqual([
+      {
+        name: '愚者',
+        isReversed: true,
+        label: '核心',
+        position: '',
+        isRotated: false,
+        x: 120,
+        y: 80,
+        rotation: 15,
+        scale: 1.2,
+      },
+      {
+        name: '',
+        isReversed: false,
+        label: '建议',
+        position: '',
+        isRotated: false,
+        x: 260,
+        y: 180,
+        rotation: -30,
+        scale: 0.9,
+      },
+    ]);
+  });
+
   it('pads interpretations when the new spread has more slots', () => {
     expect(normalizeInterpretationsForSlots(['第一张'], 3)).toEqual(['第一张', '', '']);
   });

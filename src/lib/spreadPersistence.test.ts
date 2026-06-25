@@ -4,6 +4,7 @@ import {
   createBlankSlotsForSpread,
   createSpreadDefinitionFromSlots,
   getSafeCustomSpreadName,
+  mergeOfficialSpreadsWithCustom,
   restoreAllOfficialSpreads,
   restoreOfficialSpread,
   upsertSpreadDefinition,
@@ -25,6 +26,8 @@ describe('spreadPersistence', () => {
     expect(getSafeCustomSpreadName('单牌阵', '', officialSpreads)).toBe('单牌阵 (自定义)');
     expect(getSafeCustomSpreadName('单牌阵', '三牌阵', officialSpreads)).toBe('三牌阵 (自定义)');
     expect(getSafeCustomSpreadName('自定义牌阵', '', officialSpreads)).toBe('自定义牌阵');
+    expect(getSafeCustomSpreadName('单牌阵', '  单牌阵  ', officialSpreads)).toBe('单牌阵 (自定义)');
+    expect(getSafeCustomSpreadName('', '  ', officialSpreads)).toBe('');
   });
 
   it('creates a spread definition from slot labels, positions, rotation and free layout data', () => {
@@ -78,11 +81,64 @@ describe('spreadPersistence', () => {
     });
   });
 
+  it('leaves spreads untouched when asked to restore an unknown official spread', () => {
+    const customSpread = { name: '私人牌阵', layout: 'custom', slots: ['一'] };
+    const currentSpreads = [officialSpreads[0], customSpread];
+
+    expect(restoreOfficialSpread(currentSpreads, officialSpreads, '不存在的牌阵')).toEqual({
+      official: null,
+      spreads: currentSpreads,
+    });
+  });
+
   it('restores all official spreads and preserves custom spreads', () => {
     const changedOfficial = { ...officialSpreads[1], slots: ['被改过'] };
     const customSpread = { name: '私人牌阵', layout: 'custom', slots: ['一'] };
 
     expect(restoreAllOfficialSpreads([changedOfficial, customSpread], officialSpreads)).toEqual([
+      ...officialSpreads,
+      customSpread,
+    ]);
+  });
+
+  it('always prefers current official definitions while preserving custom spreads', () => {
+    const staleOfficial = {
+      ...officialSpreads[0],
+      slots: ['旧版本主牌'],
+      slotPositions: ['old-position'],
+    };
+    const customSpread = {
+      name: '私人牌阵',
+      layout: 'free',
+      slots: ['一', '二'],
+      slotPositions: ['col-start-1 row-start-1', 'col-start-2 row-start-1'],
+      freePositions: [
+        { x: 20, y: 40, rotation: 10, scale: 1.1 },
+        { x: 120, y: 140, rotation: -20, scale: 0.8 },
+      ],
+    };
+
+    expect(mergeOfficialSpreadsWithCustom([staleOfficial, customSpread], officialSpreads)).toEqual([
+      ...officialSpreads,
+      customSpread,
+    ]);
+    expect(mergeOfficialSpreadsWithCustom(null, officialSpreads)).toEqual(officialSpreads);
+  });
+
+  it('ignores malformed saved spread entries instead of interrupting spread loading', () => {
+    const customSpread: SpreadDefinition = {
+      name: '有效自定义',
+      layout: 'custom',
+      slots: ['一'],
+      slotPositions: ['col-start-1 row-start-1'],
+    };
+
+    expect(mergeOfficialSpreadsWithCustom([
+      null,
+      { name: '缺 layout', slots: ['一'] },
+      { name: '缺 slots', layout: 'custom' },
+      customSpread,
+    ], officialSpreads)).toEqual([
       ...officialSpreads,
       customSpread,
     ]);

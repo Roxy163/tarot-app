@@ -411,13 +411,7 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
     setGridCols(spreadDef.gridCols || 5);
     setGridRows(spreadDef.gridRows || 5);
     
-    setCardSlots(spreadDef.slots.map((label, i) => ({
-      name: cardSlots[i]?.name || '',
-      isReversed: cardSlots[i]?.isReversed || false,
-      position: spreadDef.slotPositions?.[i] || '',
-      label,
-      isRotated: spreadDef.rotatedSlots?.includes(i) || false
-    })));
+    setCardSlots(mapSlotsToSpread(cardSlots, spreadDef));
   };
 
   const shiftSlots = (dx: number, dy: number) => {
@@ -611,17 +605,7 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
                 setFormData(prev => ({ ...prev, spread: s.name, layoutType: s.layout }));
                 setGridCols(s.gridCols || 5);
                 setGridRows(s.gridRows || 5);
-                setCardSlots(s.slots.map((label, i) => ({ 
-                  name: '', 
-                  isReversed: false, 
-                  position: s.slotPositions?.[i] || '', 
-                  label,
-                  isRotated: s.rotatedSlots?.includes(i) || false,
-                  x: s.freePositions?.[i]?.x,
-                  y: s.freePositions?.[i]?.y,
-                  rotation: s.freePositions?.[i]?.rotation,
-                  scale: s.freePositions?.[i]?.scale
-                })));
+                setCardSlots(mapSlotsToSpread([], s));
                 setIsEditingSession(false);
               }}
               onStartNewSession={handleCreateNewSpread}
@@ -724,13 +708,7 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
         onConfirmSync={(name) => {
           const spreadDef = spreads.find(s => s.name === name);
           if (spreadDef) {
-            const newSlots = spreadDef.slots.map((label, i) => ({
-              name: cardSlots[i]?.name || '',
-              isReversed: cardSlots[i]?.isReversed || false,
-              position: spreadDef.slotPositions?.[i] || '',
-              label: label
-            }));
-            setCardSlots(newSlots);
+            setCardSlots(mapSlotsToSpread(cardSlots, spreadDef));
           }
           setShowUpdatePrompt(null);
         }}

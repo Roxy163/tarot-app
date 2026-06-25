@@ -10,6 +10,10 @@ export const mapSlotsToSpread = (
     position: spreadDef.slotPositions?.[index] || '',
     label,
     isRotated: spreadDef.rotatedSlots?.includes(index) || false,
+    x: spreadDef.freePositions?.[index]?.x,
+    y: spreadDef.freePositions?.[index]?.y,
+    rotation: spreadDef.freePositions?.[index]?.rotation,
+    scale: spreadDef.freePositions?.[index]?.scale,
   }))
 );
 

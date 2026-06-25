@@ -50,6 +50,45 @@ describe('readingCloudSync', () => {
     expect(plan.readingsToDelete).toEqual([]);
   });
 
+  it('keeps newer cloud content without leaking stale ownership', () => {
+    const staleIncoming = createReading({
+      id: 'cloud-newer',
+      userId: 'local-user',
+      updatedAt: '2026-06-20T00:00:00.000Z',
+      question: '本地旧问题',
+    });
+    const newerPrevious = createReading({
+      id: 'cloud-newer',
+      userId: 'old-owner',
+      updatedAt: '2026-06-21T00:00:00.000Z',
+      question: '云端新问题',
+      isPublic: true,
+    });
+    const plan = createUserReadingSyncPlan('uid-1', [staleIncoming], [newerPrevious]);
+
+    expect(plan.mergedReadings).toEqual([{ ...newerPrevious, userId: 'uid-1' }]);
+    expect(plan.publicReadingsToSave).toEqual([{ ...newerPrevious, userId: 'uid-1' }]);
+    expect(plan.readingsToWrite).toEqual([{ ...newerPrevious, userId: 'uid-1' }]);
+  });
+
+  it('does not resurrect a public mirror from stale local data', () => {
+    const stalePublicIncoming = createReading({
+      id: 'private-newer',
+      isPublic: true,
+      updatedAt: '2026-06-20T00:00:00.000Z',
+    });
+    const newerPrivatePrevious = createReading({
+      id: 'private-newer',
+      isPublic: false,
+      updatedAt: '2026-06-21T00:00:00.000Z',
+    });
+    const plan = createUserReadingSyncPlan('uid-1', [stalePublicIncoming], [newerPrivatePrevious]);
+
+    expect(plan.mergedReadings).toEqual([{ ...newerPrivatePrevious, userId: 'uid-1' }]);
+    expect(plan.publicReadingsToSave).toEqual([]);
+    expect(plan.publicReadingIdsToDelete).toEqual([]);
+  });
+
   it('plans user reading deletions and public mirror removals for missing readings', () => {
     const kept = createReading({ id: 'kept', userId: 'uid-1' });
     const deletedPrivate = createReading({ id: 'deleted-private', userId: 'uid-1', isPublic: false });

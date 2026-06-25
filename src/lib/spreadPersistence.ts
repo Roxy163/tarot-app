@@ -81,12 +81,25 @@ export const restoreAllOfficialSpreads = (
   spreads: SpreadDefinition[],
   officialSpreads: SpreadDefinition[],
 ) => {
-  const officialNames = new Set(officialSpreads.map(spread => spread.name));
-  const customSpreads = spreads.filter(spread => !officialNames.has(spread.name));
-
-  return [...officialSpreads, ...customSpreads];
+  return mergeOfficialSpreadsWithCustom(spreads, officialSpreads);
 };
 
 export const createBlankSlotsForSpread = (spread: SpreadDefinition) => (
   mapSlotsToSpread([], spread)
 );
+
+export const mergeOfficialSpreadsWithCustom = (
+  savedSpreads: Array<Partial<SpreadDefinition> | null | undefined> | null | undefined,
+  officialSpreads: SpreadDefinition[],
+): SpreadDefinition[] => {
+  const officialNames = new Set(officialSpreads.map(spread => spread.name));
+  const customSpreads = (Array.isArray(savedSpreads) ? savedSpreads : [])
+    .filter((spread): spread is SpreadDefinition => Boolean(
+      spread?.name
+      && spread.layout
+      && Array.isArray(spread.slots)
+      && !officialNames.has(spread.name),
+    ));
+
+  return [...officialSpreads, ...customSpreads];
+};

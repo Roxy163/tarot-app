@@ -34,4 +34,20 @@ describe('official spread definitions', () => {
       });
     });
   });
+
+  it('keeps dedicated official spread defaults aligned with their layout templates', () => {
+    const dedicatedLayoutNames = new Set(['triangle', 'cross', 'choice', 'seasons', 'celtic', 'yearly']);
+
+    OFFICIAL_SPREADS.forEach(spread => {
+      const template = LAYOUT_TEMPLATES[spread.layout];
+      if (!template || !dedicatedLayoutNames.has(spread.layout)) return;
+
+      expect(spread.slots, `${spread.name} slot labels differ from template defaults`).toEqual(
+        template.defaultSlots,
+      );
+      expect(spread.slotPositions, `${spread.name} positions differ from template defaults`).toEqual(
+        template.itemClasses,
+      );
+    });
+  });
 });
