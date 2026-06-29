@@ -62,7 +62,7 @@ const formatMeaning = (meaning?: string, fallback?: string) => {
   const fragments = splitMeaning(meaning || fallback).slice(0, 2);
   return fragments.length > 0
     ? `${fragments.join('。')}。`
-    : '这张牌需要结合画面、牌位和问题语境来理解；先观察它带来的情绪，再判断它要求行动、等待、取舍还是修正。';
+    : '这张牌需要结合画面、位置和问题语境来理解；先观察它带来的情绪，再判断它要求行动、等待、取舍还是修正。';
 };
 
 const getElementPrompt = (element?: string | null) => {

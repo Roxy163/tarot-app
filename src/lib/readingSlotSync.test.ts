@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { ReadingSlotData, SpreadDefinition } from '../types';
 import { mapSlotsToSpread, normalizeInterpretationsForSlots } from './readingSlotSync';
+import { ensureFreeLayoutSlots } from './freeLayout';
 
 const spreadDef: SpreadDefinition = {
   name: '测试牌阵',
@@ -90,6 +91,19 @@ describe('readingSlotSync', () => {
         scale: 0.9,
       },
     ]);
+  });
+
+  it('can convert mapped grid slots into free layout slots', () => {
+    const mappedSlots = mapSlotsToSpread([{ name: '愚者', isReversed: false }], spreadDef);
+    const freeSlots = ensureFreeLayoutSlots(mappedSlots);
+
+    expect(freeSlots).toHaveLength(3);
+    expect(freeSlots[0].name).toBe('愚者');
+    expect(freeSlots[0].position).toBe('');
+    expect(freeSlots[0].x).toEqual(expect.any(Number));
+    expect(freeSlots[0].y).toEqual(expect.any(Number));
+    expect(freeSlots[0].rotation).toBe(0);
+    expect(freeSlots[0].scale).toBe(1);
   });
 
   it('pads interpretations when the new spread has more slots', () => {

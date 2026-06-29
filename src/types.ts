@@ -124,7 +124,7 @@ export interface TarotReading {
   date: string;
   question: string;
   spread: string;
-  cards: { name: string; isReversed: boolean }[];
+  cards: ReadingSlotData[];
   cardInterpretations?: string[];
   interpretation: {
     singleCard: string;

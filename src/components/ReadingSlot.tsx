@@ -102,7 +102,7 @@ export const ReadingSlot: React.FC<ReadingSlotProps> = ({
         type="button" 
         onClick={(e) => onRemove(index, e)} 
         className="absolute -top-3 -right-3 bg-white text-forest-muted hover:text-red-500 rounded-full w-11 h-11 shadow-sm border border-forest-accent/10 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity z-10 flex items-center justify-center"
-        aria-label={`移除第 ${index + 1} 个牌位`}
+        aria-label={`移除第 ${index + 1} 个位置`}
       >
         <X size={14} />
       </button>
@@ -112,7 +112,7 @@ export const ReadingSlot: React.FC<ReadingSlotProps> = ({
           onClick={(e) => onCycle(index, e)} 
           className="absolute -top-3 -left-3 bg-white text-forest-accent hover:text-forest-accent/80 rounded-full w-11 h-11 shadow-sm border border-forest-accent/10 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity z-10 flex items-center justify-center"
           title="切换层级"
-          aria-label={`切换第 ${index + 1} 个牌位层级`}
+          aria-label={`切换第 ${index + 1} 个位置层级`}
         >
           <Layers size={14} />
         </button>

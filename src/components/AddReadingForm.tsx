@@ -4,7 +4,7 @@ import { Sparkles, Layers, User, MessageSquare, RotateCcw, BookOpen, X, Settings
 import { CardKeywordMemory, SpreadDefinition, TarotCardMetadata, ReadingSlotData, TarotReading, ReadingFormData } from '../types';
 import { LAYOUT_TEMPLATES, TAROT_CARDS, getCardImageUrl, OFFICIAL_SPREADS } from '../constants';
 import { CardPicker } from './CardPicker';
-import { SpreadDesigner } from './SpreadDesigner';
+import { FreeLayoutSaveMode, SpreadDesigner } from './SpreadDesigner';
 import { CardCorrespondenceEditor } from './CardCorrespondenceEditor';
 import { ReadingSlot } from './ReadingSlot';
 import { FoldableSection } from './FoldableSection';
@@ -16,6 +16,7 @@ import { useLongPressClear } from '../hooks/useLongPressClear';
 import { mapSlotsToSpread, normalizeInterpretationsForSlots } from '../lib/readingSlotSync';
 import {
   addReadingSlot,
+  applyGridSlotPositionClick,
   appendSlotHistory,
   removeReadingSlot,
   selectCardForSlot,
@@ -33,6 +34,7 @@ import {
 } from '../lib/spreadPersistence';
 import { centerGridSlots, shiftGridSlots } from '../lib/spreadGridLayout';
 import { buildReadingSubmitPayload } from '../lib/readingSubmitPayload';
+import { ensureFreeLayoutSlots } from '../lib/freeLayout';
 
 interface AddReadingFormProps {
   onSubmit: (data: Partial<ReadingFormData>) => void;
@@ -92,12 +94,13 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
   const [editingCorrespondence, setEditingCorrespondence] = useState<{ index: number; card: ReadingSlotData; metadata: TarotCardMetadata } | null>(null);
   const [cardSlots, setCardSlots] = useState<ReadingSlotData[]>(() => {
     if (initialData?.cards) {
-      return initialData.cards.map((c: { name: string; isReversed: boolean }, i: number) => ({
+      const restoredSlots = initialData.cards.map((c: ReadingSlotData, i: number) => ({
         ...c,
         label: initialData.slotLabels?.[i] || '',
-        position: initialData.slotPositions?.[i] || '',
-        isRotated: initialData.rotatedSlots?.includes(i) || false
+        position: initialData.slotPositions?.[i] || c.position || '',
+        isRotated: initialData.rotatedSlots?.includes(i) || c.isRotated || false,
       }));
+      return initialData.layoutType === 'free' ? ensureFreeLayoutSlots(restoredSlots) : restoredSlots;
     }
     return [{ name: '', isReversed: false }];
   });
@@ -121,6 +124,7 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
   const [isEditingSession, setIsEditingSession] = useState(false);
   const [gridCols, setGridCols] = useState(5);
   const [gridRows, setGridRows] = useState(5);
+  const [freeLayoutSaveMode, setFreeLayoutSaveMode] = useState<FreeLayoutSaveMode>('original');
   const [showUpdatePrompt, setShowUpdatePrompt] = useState<{ name: string, oldSlots: string[] } | null>(null);
   const [showRestoreConfirm, setShowRestoreConfirm] = useState<{ name?: string } | null>(null);
   const [showEmailModal, setShowEmailModal] = useState(false);
@@ -287,7 +291,8 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
   };
 
   const saveSpread = () => {
-    const name = getSafeCustomSpreadName(formData.spread, newSpreadName, OFFICIAL_SPREADS);
+    const requestedName = newSpreadName.trim() || (formData.spread ? '' : '我的新牌阵');
+    const name = getSafeCustomSpreadName(formData.spread, requestedName, OFFICIAL_SPREADS);
     if (!name) return;
     
     // Safety check: if user hasn't changed the name from an official one, and is saving, 
@@ -302,14 +307,19 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
       slots: cardSlots,
       gridCols,
       gridRows,
+      freeLayoutSaveMode,
     });
     const updatedSpreads = upsertSpreadDefinition(spreads, newSpread);
     
     onUpdateSpreads(updatedSpreads);
-    setFormData(prev => ({ ...prev, spread: name }));
+    setFormData(prev => ({ ...prev, spread: name, layoutType: newSpread.layout }));
+    setCardSlots(mapSlotsToSpread(cardSlots, newSpread));
+    setGridCols(newSpread.gridCols || gridCols);
+    setGridRows(newSpread.gridRows || gridRows);
     setNewSpreadName('');
     setSaveSuccess(true);
     setIsEditingSession(false);
+    setShowSpreadManager(false);
   };
 
   const restoreDefaults = (name?: string) => {
@@ -340,51 +350,17 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
   };
 
   const updateSlotPosition = (col: number, row: number) => {
-    const posStr = `col-start-${col} row-start-${row}`;
-    const slotsAtPos = cardSlots.map((s, i) => s.position === posStr ? i : -1).filter(i => i !== -1);
-    
-    if (slotsAtPos.length > 0) {
-      const isActiveAtPos = slotsAtPos.includes(designActiveSlot);
-      if (isActiveAtPos) {
-        // If clicking the already active slot
-        if (slotsAtPos.length === 1) {
-          // If only one slot here, add a second one (stacking)
-          const newSlots = [...cardSlots];
-          newSlots.push({ 
-            name: '', 
-            isReversed: false, 
-            position: posStr, 
-            label: `叠放牌 ${newSlots.length + 1}` 
-          });
-          updateCardSlotsWithHistory(newSlots);
-          setDesignActiveSlot(newSlots.length - 1);
-        } else {
-          // If multiple slots, cycle through them
-          const currentLocalIdx = slotsAtPos.indexOf(designActiveSlot);
-          const nextLocalIdx = (currentLocalIdx + 1) % slotsAtPos.length;
-          setDesignActiveSlot(slotsAtPos[nextLocalIdx]);
-        }
-      } else {
-        // Select the first slot at this position
-        setDesignActiveSlot(slotsAtPos[0]);
-      }
-    } else {
-      // Add new slot logic
-      if (formData.layoutType === 'horizontal') {
-        setFormData(prev => ({ ...prev, layoutType: 'custom' }));
-      }
-      const newSlots = [...cardSlots];
-      if (newSlots.length === 0) {
-        newSlots.push({ name: '', isReversed: false, position: posStr, label: '牌 1' });
-      } else if (newSlots.length === 1 && !newSlots[0].position) {
-        newSlots[0].position = posStr;
-        newSlots[0].label = '牌 1';
-      } else {
-        newSlots.push({ name: '', isReversed: false, position: posStr, label: `牌 ${newSlots.length + 1}` });
-      }
-      updateCardSlotsWithHistory(newSlots);
-      setDesignActiveSlot(newSlots.length - 1);
+    const result = applyGridSlotPositionClick(cardSlots, designActiveSlot, col, row, formData.layoutType);
+
+    if (result.shouldConvertHorizontalLayout) {
+      setFormData(prev => ({ ...prev, layoutType: 'custom' }));
     }
+
+    if (result.changed) {
+      updateCardSlotsWithHistory(result.slots);
+    }
+
+    setDesignActiveSlot(result.activeSlotIndex);
   };
 
   const swapSlotIndex = (oldIndex: number, newIndex: number) => {
@@ -402,8 +378,14 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
   };
 
   const handleOpenSpreadManager = () => {
+    setFormData(prev => ({ ...prev, spread: '', layoutType: 'free' }));
+    setCardSlots([]);
+    setGridCols(20);
+    setGridRows(12);
+    setNewSpreadName('我的新牌阵');
+    setDesignActiveSlot(-1);
     setShowSpreadManager(true);
-    setIsEditingSession(false);
+    setIsEditingSession(true);
   };
 
   const handleSpreadSelection = (spreadDef: SpreadDefinition) => {
@@ -411,7 +393,8 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
     setGridCols(spreadDef.gridCols || 5);
     setGridRows(spreadDef.gridRows || 5);
     
-    setCardSlots(mapSlotsToSpread(cardSlots, spreadDef));
+    const nextSlots = mapSlotsToSpread(cardSlots, spreadDef);
+    setCardSlots(spreadDef.layout === 'free' ? ensureFreeLayoutSlots(nextSlots) : nextSlots);
   };
 
   const shiftSlots = (dx: number, dy: number) => {
@@ -429,14 +412,14 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
   };
 
   const handleCreateNewSpread = () => {
-    setFormData(prev => ({ ...prev, spread: '自定义牌阵', layoutType: 'custom' }));
-    setCardSlots([{ name: '', isReversed: false, label: '位置 1', position: 'col-start-3 row-start-3' }]);
-    setGridCols(5);
-    setGridRows(5);
+    setFormData(prev => ({ ...prev, spread: '', layoutType: 'free' }));
+    setCardSlots([]);
+    setGridCols(20);
+    setGridRows(12);
     setNewSpreadName('我的新牌阵');
     setShowSpreadManager(true);
     setIsEditingSession(true);
-    setDesignActiveSlot(0);
+    setDesignActiveSlot(-1);
   };
 
   const handleCycleSlot = (index: number, e: React.MouseEvent) => {
@@ -513,7 +496,7 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
             className="fixed top-24 left-1/2 -translate-x-1/2 z-[100] bg-green-500 text-white px-6 py-3 rounded-full shadow-lg flex items-center gap-2 font-bold"
           >
             <Sparkles size={18} />
-            <span>牌阵保存成功！</span>
+            <span>已保存，当前手记正在使用这个牌阵</span>
           </motion.div>
         )}
       </AnimatePresence>
@@ -594,6 +577,8 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
               designActiveSlot={designActiveSlot}
               newSpreadName={newSpreadName}
               isEditingSession={isEditingSession}
+              freeLayoutSaveMode={freeLayoutSaveMode}
+              onUpdateFreeLayoutSaveMode={setFreeLayoutSaveMode}
               gridRows={gridRows}
               onUpdateGrid={(cols, rows) => {
                 setGridCols(cols);
@@ -605,7 +590,8 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
                 setFormData(prev => ({ ...prev, spread: s.name, layoutType: s.layout }));
                 setGridCols(s.gridCols || 5);
                 setGridRows(s.gridRows || 5);
-                setCardSlots(mapSlotsToSpread([], s));
+                const nextSlots = mapSlotsToSpread([], s);
+                setCardSlots(s.layout === 'free' ? ensureFreeLayoutSlots(nextSlots) : nextSlots);
                 setIsEditingSession(false);
               }}
               onStartNewSession={handleCreateNewSpread}
@@ -629,6 +615,11 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
                 } else {
                   setGridCols(5);
                   setGridRows(5);
+                }
+                if (layout === 'free') {
+                  setCardSlots(prev => ensureFreeLayoutSlots(prev.length > 0 ? prev : [{ name: '', isReversed: false, label: '位置1' }]));
+                  setDesignActiveSlot(0);
+                  return;
                 }
                 const template = LAYOUT_TEMPLATES[layout];
                 if (template) {
@@ -708,7 +699,8 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
         onConfirmSync={(name) => {
           const spreadDef = spreads.find(s => s.name === name);
           if (spreadDef) {
-            setCardSlots(mapSlotsToSpread(cardSlots, spreadDef));
+            const nextSlots = mapSlotsToSpread(cardSlots, spreadDef);
+            setCardSlots(spreadDef.layout === 'free' ? ensureFreeLayoutSlots(nextSlots) : nextSlots);
           }
           setShowUpdatePrompt(null);
         }}

@@ -333,7 +333,7 @@ export async function suggestAiInspiration(request: AiInspirationRequest): Promi
 输出要求：
 1. 只返回 JSON 数组，例如 ["灵感1","灵感2","灵感3"]。
 2. 给 3 条，每条 28-55 个中文字符。
-3. 每条必须同时结合：当前牌、正逆位、牌位、用户问题。
+3. 每条必须同时结合：当前牌、正逆位、位置、用户问题。
 4. 不要空泛地说“描述感受”“看看连接”；要给具体切入角度。
 5. 避免绝对化预言，使用“可能、可以、也许、提醒”。
 6. 优先结合用户自己的个人关键词记忆；没有记忆时，依据下方官方牌义。
@@ -342,7 +342,7 @@ export async function suggestAiInspiration(request: AiInspirationRequest): Promi
 问题：${request.question || '未填写'}
 分类：${request.category || '未分类'}
 牌阵：${request.spread || '未填写'}
-牌位：${request.slotLabel || '当前位置'}
+位置：${request.slotLabel || '当前位置'}
 当前牌：${request.cardName}（${direction}）
 官方/基础关键词：${officialKeywords}
 对应关系：${correspondenceText}

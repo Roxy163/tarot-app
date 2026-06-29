@@ -174,7 +174,7 @@ export const BasicInfoSection: React.FC<BasicInfoSectionProps> = ({
                 type="button" 
                 onClick={onAddSlot} 
                 className="w-11 h-11 bg-white text-forest-accent rounded-lg border border-forest-accent/10 hover:bg-forest-accent hover:text-white transition-all shadow-sm shrink-0 flex items-center justify-center"
-                title="添加牌位"
+                title="添加位置"
               >
                 <Plus size={16} />
               </button>

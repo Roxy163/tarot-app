@@ -57,6 +57,34 @@ describe('spreadPersistence', () => {
     });
   });
 
+  it('can save free layout positions in adaptive mode', () => {
+    const slots: ReadingSlotData[] = [
+      { name: '', isReversed: false, label: '远左', x: -180, y: 20, rotation: 0, scale: 1.3 },
+      { name: '', isReversed: false, label: '远右', x: 980, y: 540, rotation: 10, scale: 1.3 },
+    ];
+
+    const original = createSpreadDefinitionFromSlots({
+      name: '原缩放牌阵',
+      layout: 'free',
+      slots,
+      gridCols: 5,
+      gridRows: 5,
+      freeLayoutSaveMode: 'original',
+    });
+    const adaptive = createSpreadDefinitionFromSlots({
+      name: '自适应牌阵',
+      layout: 'free',
+      slots,
+      gridCols: 5,
+      gridRows: 5,
+      freeLayoutSaveMode: 'adaptive',
+    });
+
+    expect(original.freePositions?.[0].x).toBe(-180);
+    expect(adaptive.freePositions?.[0].x).not.toBe(-180);
+    expect(adaptive.freePositions?.[0].scale).toBeLessThan(1.3);
+  });
+
   it('replaces an existing spread or appends a new one', () => {
     const replacement = { ...officialSpreads[0], slots: ['替换'] };
     expect(upsertSpreadDefinition(officialSpreads, replacement)).toEqual([

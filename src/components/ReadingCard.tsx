@@ -4,6 +4,13 @@ import { ZoomIn, ZoomOut, RefreshCw, Share2, ChevronDown, ChevronUp, PencilLine,
 import { ReadingKeywordCandidate, TarotReading, TarotCardMetadata } from '../types';
 import { TAROT_CARDS, getCardImageUrl, LAYOUT_TEMPLATES } from '../constants';
 import { ConfirmDialog } from './ConfirmDialog';
+import {
+  FREE_LAYOUT_CANVAS_HEIGHT,
+  FREE_LAYOUT_CANVAS_WIDTH,
+  getFreeLayoutDisplayFrame,
+  FREE_LAYOUT_SLOT_HEIGHT,
+  FREE_LAYOUT_SLOT_WIDTH,
+} from '../lib/freeLayout';
 
 interface ReadingCardProps {
   reading: TarotReading;
@@ -174,6 +181,8 @@ export const ReadingCard: React.FC<ReadingCardProps> = ({
     const layout = reading.layoutType ? (LAYOUT_TEMPLATES[reading.layoutType] || LAYOUT_TEMPLATES.horizontal) : null;
     const isCeltic = reading.layoutType === 'celtic-cross' || reading.spread === '凯尔特十字牌阵';
     const isYearly = reading.layoutType === 'yearly' || reading.spread === '年运十二宫牌阵';
+    const isFreeLayout = reading.layoutType === 'free';
+    const freeLayoutFrame = isFreeLayout ? getFreeLayoutDisplayFrame(reading.cards) : null;
 
     return (
       <div
@@ -193,7 +202,15 @@ export const ReadingCard: React.FC<ReadingCardProps> = ({
             transition: isDragging ? 'none' : 'transform 0.2s ease-out'
           }}
         >
-          <div className={`${reading.layoutType ? layout?.class : 'flex flex-wrap justify-center gap-2 p-4'} ${isYearly ? 'h-[280px] sm:h-[360px]' : ''}`}>
+          <div
+            className={isFreeLayout
+              ? 'relative mx-auto'
+              : `${reading.layoutType ? layout?.class : 'flex flex-wrap justify-center gap-2 p-4'} ${isYearly ? 'h-[280px] sm:h-[360px]' : ''}`}
+            style={isFreeLayout ? {
+              width: freeLayoutFrame?.width || FREE_LAYOUT_CANVAS_WIDTH,
+              height: freeLayoutFrame?.height || FREE_LAYOUT_CANVAS_HEIGHT,
+            } : undefined}
+          >
             {reading.cards.map((card, idx) => {
               const cardData = TAROT_CARDS.find(c =>
                 c.name === card.name ||
@@ -204,6 +221,58 @@ export const ReadingCard: React.FC<ReadingCardProps> = ({
               const label = reading.slotLabels?.[idx];
 
               const isRotated = reading.rotatedSlots?.includes(idx) || (isCeltic && idx === 1);
+
+              if (isFreeLayout) {
+                const scale = card.scale || 1;
+
+                return (
+                  <div
+                    key={idx}
+                    className="absolute flex flex-col items-center gap-1 cursor-pointer group/card"
+                    style={{
+                      left: (card.x || 0) + (freeLayoutFrame?.offsetX || 0),
+                      top: (card.y || 0) + (freeLayoutFrame?.offsetY || 0),
+                      width: FREE_LAYOUT_SLOT_WIDTH,
+                      minHeight: FREE_LAYOUT_SLOT_HEIGHT,
+                      transform: `rotate(${card.rotation || 0}deg) scale(${scale})`,
+                      transformOrigin: 'center center',
+                    }}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setSelectedCardIdx(selectedCardIdx === idx ? null : idx);
+                    }}
+                  >
+                    <div
+                      className={`relative rounded-lg overflow-hidden border-2 transition-all ${selectedCardIdx === idx ? 'border-forest-accent ring-4 ring-forest-accent/10 scale-110 z-30' : 'border-forest-accent/10 group-hover/card:border-forest-accent/30'} shadow-sm ${card.isReversed ? 'rotate-180' : ''}`}
+                      style={{
+                        width: FREE_LAYOUT_SLOT_WIDTH,
+                        height: FREE_LAYOUT_SLOT_HEIGHT,
+                      }}
+                    >
+                      {reading.showSlotNumbers !== false && (
+                        <div className="absolute top-1 left-1/2 -translate-x-1/2 bg-forest-text/60 text-white text-[8px] px-1.5 py-0.5 rounded-sm z-20 font-black">
+                          {idx + 1}
+                        </div>
+                      )}
+                      <img
+                        src={getCardImageUrl(cardData?.id || 'ar00')}
+                        alt={card.name}
+                        className="w-full h-full object-contain bg-white"
+                        referrerPolicy="no-referrer"
+                      />
+                      <div className="absolute inset-x-0 bottom-0 bg-forest-text/70 text-white text-[8px] py-0.5 text-center font-sans">
+                        {cardData?.name || card.name}
+                      </div>
+                    </div>
+                    {label && (
+                      <span className={`text-[9px] font-medium px-2 py-0.5 rounded leading-tight transition-colors ${selectedCardIdx === idx ? 'bg-forest-accent text-white' : 'text-forest-accent bg-forest-accent/10'}`}>
+                        {label}
+                      </span>
+                    )}
+                    {!label && card.isReversed && <span className="text-[9px] text-red-500">逆位</span>}
+                  </div>
+                );
+              }
               
               if (isCeltic && idx === 1) {
                 return (

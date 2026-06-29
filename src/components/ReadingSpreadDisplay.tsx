@@ -3,6 +3,13 @@ import { motion, AnimatePresence } from 'motion/react';
 import { Sparkles } from 'lucide-react';
 import { ReadingSlotData, SpreadDefinition } from '../types';
 import { ReadingSlot } from './ReadingSlot';
+import {
+  FREE_LAYOUT_CANVAS_HEIGHT,
+  FREE_LAYOUT_CANVAS_WIDTH,
+  getFreeLayoutDisplayFrame,
+  FREE_LAYOUT_SLOT_HEIGHT,
+  FREE_LAYOUT_SLOT_WIDTH,
+} from '../lib/freeLayout';
 
 interface ReadingSpreadDisplayProps {
   formData: any;
@@ -43,6 +50,11 @@ export const ReadingSpreadDisplay: React.FC<ReadingSpreadDisplayProps> = ({
   onConfirmSync,
   onCancelSync
 }) => {
+  const isFreeLayout = formData.layoutType === 'free';
+  const freeLayoutFrame = isFreeLayout ? getFreeLayoutDisplayFrame(cardSlots) : null;
+  const isCustomGridLayout = formData.layoutType === 'custom';
+  const customGridGapClass = cardSlots.length > 3 ? 'gap-2 sm:gap-4' : 'gap-3 sm:gap-4';
+
   return (
     <div className="space-y-4">
       <AnimatePresence>
@@ -76,58 +88,108 @@ export const ReadingSpreadDisplay: React.FC<ReadingSpreadDisplayProps> = ({
           </motion.div>
         )}
       </AnimatePresence>
-      
-      <div 
-        className={`${currentTemplate.class} ${cardSlots.length > 3 ? 'gap-2 sm:gap-4' : ''}`}
-        style={formData.layoutType === 'custom' ? { 
-          gridTemplateColumns: `repeat(${gridCols}, minmax(0, 1fr))`,
-          display: 'grid'
-        } : {}}
-      >
-        {(() => {
-          const isCelticCross = formData.layoutType === 'celtic' || formData.spread === '凯尔特十字牌阵';
-          const renderedPositions = new Set<string>();
-          const isSmall = cardSlots.length > 3;
-          
-          return cardSlots.map((slot, index) => {
-            const pos = slot.position || itemClasses[index] || '';
-            if (renderedPositions.has(pos)) return null;
-            renderedPositions.add(pos);
 
-            const slotsAtPos = cardSlots.map((s, i) => ({ ...s, idx: i }))
-              .filter(s => (s.position || itemClasses[s.idx] || '') === pos);
-            
-            const isCelticCenter = isCelticCross && pos === 'col-start-2 row-start-2';
-
-            return (
-              <div 
-                key={pos} 
-                className={`relative ${pos} flex items-center justify-center z-10 hover:z-50 transition-all`}
-                style={{ zIndex: isCelticCross && pos === 'col-start-2 row-start-3' ? 30 : undefined }}
-              >
-                {slotsAtPos.map((s, sIdx) => (
-                  <ReadingSlot 
-                    key={s.idx}
-                    slot={s}
-                    index={s.idx}
-                    isActive={activeSlotIndex === s.idx}
-                    isCelticCenter={isCelticCenter && slotsAtPos.length > 1}
-                    stackIndex={sIdx}
-                    isSmall={isSmall}
+      {isFreeLayout ? (
+        <div className="w-full overflow-x-auto pb-2">
+          <div
+            className="relative mx-auto rounded-2xl border border-forest-accent/10 bg-forest-bg/30"
+            style={{
+              width: freeLayoutFrame?.width || FREE_LAYOUT_CANVAS_WIDTH,
+              height: freeLayoutFrame?.height || FREE_LAYOUT_CANVAS_HEIGHT,
+            }}
+          >
+            {cardSlots.map((slot, index) => {
+              const scale = slot.scale || 1;
+              return (
+                <div
+                  key={`${slot.label || index}-${index}`}
+                  className="absolute"
+                  style={{
+                    left: (slot.x || 0) + (freeLayoutFrame?.offsetX || 0),
+                    top: (slot.y || 0) + (freeLayoutFrame?.offsetY || 0),
+                    width: FREE_LAYOUT_SLOT_WIDTH,
+                    minHeight: FREE_LAYOUT_SLOT_HEIGHT,
+                    transform: `rotate(${slot.rotation || 0}deg) scale(${scale})`,
+                    transformOrigin: 'center center',
+                  }}
+                >
+                  <ReadingSlot
+                    slot={slot}
+                    index={index}
+                    isActive={activeSlotIndex === index}
+                    isCelticCenter={false}
+                    stackIndex={0}
+                    isSmall
                     showSlotNumbers={showSlotNumbers}
                     onSlotClick={onSlotClick}
                     onLongPressStart={handleLongPressStart}
                     onLongPressEnd={handleLongPressEnd}
                     onToggleReverse={toggleReverse}
                     onRemove={removeSlot}
-                    onCycle={slotsAtPos.length > 1 ? handleCycleSlot : undefined}
                   />
-                ))}
-              </div>
-            );
-          });
-        })()}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      ) : (
+      <div className={isCustomGridLayout ? 'w-full overflow-x-auto pb-2' : ''}>
+        <div
+          className={isCustomGridLayout
+            ? `grid mx-auto justify-items-center ${customGridGapClass}`
+            : `${currentTemplate.class} ${cardSlots.length > 3 ? 'gap-2 sm:gap-4' : ''}`}
+          style={isCustomGridLayout ? {
+            gridTemplateColumns: `repeat(${gridCols}, max-content)`,
+            width: 'max-content',
+            display: 'grid'
+          } : {}}
+        >
+          {(() => {
+            const isCelticCross = formData.layoutType === 'celtic' || formData.spread === '凯尔特十字牌阵';
+            const renderedPositions = new Set<string>();
+            const isSmall = cardSlots.length > 3;
+
+            return cardSlots.map((slot, index) => {
+              const pos = slot.position || itemClasses[index] || '';
+              if (renderedPositions.has(pos)) return null;
+              renderedPositions.add(pos);
+
+              const slotsAtPos = cardSlots.map((s, i) => ({ ...s, idx: i }))
+                .filter(s => (s.position || itemClasses[s.idx] || '') === pos);
+
+              const isCelticCenter = isCelticCross && pos === 'col-start-2 row-start-2';
+
+              return (
+                <div
+                  key={pos}
+                  className={`relative ${pos} flex items-center justify-center z-10 hover:z-50 transition-all`}
+                  style={{ zIndex: isCelticCross && pos === 'col-start-2 row-start-3' ? 30 : undefined }}
+                >
+                  {slotsAtPos.map((s, sIdx) => (
+                    <ReadingSlot
+                      key={s.idx}
+                      slot={s}
+                      index={s.idx}
+                      isActive={activeSlotIndex === s.idx}
+                      isCelticCenter={isCelticCenter && slotsAtPos.length > 1}
+                      stackIndex={sIdx}
+                      isSmall={isSmall}
+                      showSlotNumbers={showSlotNumbers}
+                      onSlotClick={onSlotClick}
+                      onLongPressStart={handleLongPressStart}
+                      onLongPressEnd={handleLongPressEnd}
+                      onToggleReverse={toggleReverse}
+                      onRemove={removeSlot}
+                      onCycle={slotsAtPos.length > 1 ? handleCycleSlot : undefined}
+                    />
+                  ))}
+                </div>
+              );
+            });
+          })()}
+        </div>
       </div>
+      )}
     </div>
   );
 };

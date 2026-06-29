@@ -81,6 +81,31 @@ describe('useLongPressClear', () => {
     expect(result.current.isLongPressActive).toBe(false);
   });
 
+  it('cancels a pending long press when a different slot starts pressing', () => {
+    const setCardSlots = vi.fn();
+    const slots = createSlots();
+    const { result } = renderHook(() => useLongPressClear({ cardSlots: slots, setCardSlots }));
+
+    act(() => {
+      result.current.handleLongPressStart(0);
+      vi.advanceTimersByTime(300);
+      result.current.handleLongPressStart(1);
+      vi.advanceTimersByTime(599);
+    });
+
+    expect(setCardSlots).not.toHaveBeenCalled();
+
+    act(() => {
+      vi.advanceTimersByTime(1);
+    });
+
+    expect(setCardSlots).toHaveBeenCalledWith([
+      { name: '愚者', isReversed: true, label: '主牌' },
+      { name: '', isReversed: false, label: '辅助' },
+    ]);
+    expect(window.navigator.vibrate).toHaveBeenCalledTimes(1);
+  });
+
   it('allows the consumed long press flag to be cleared after click handling', () => {
     const setCardSlots = vi.fn();
     const slots = createSlots();

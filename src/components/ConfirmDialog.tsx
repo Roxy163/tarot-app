@@ -54,6 +54,7 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
               </div>
               <button
                 type="button"
+                aria-label="关闭"
                 onClick={onClose}
                 className="w-9 h-9 rounded-xl text-forest-muted hover:text-forest-accent hover:bg-forest-accent/5 flex items-center justify-center transition-colors"
               >

@@ -1,4 +1,5 @@
 import { ReadingSlotData, SpreadDefinition } from '../types';
+import { adaptFreeLayoutSlotsToCanvas } from './freeLayout';
 import { mapSlotsToSpread } from './readingSlotSync';
 
 export const getSafeCustomSpreadName = (
@@ -24,12 +25,14 @@ export const createSpreadDefinitionFromSlots = ({
   slots,
   gridCols,
   gridRows,
+  freeLayoutSaveMode = 'original',
 }: {
   name: string;
   layout: string;
   slots: ReadingSlotData[];
   gridCols: number;
   gridRows: number;
+  freeLayoutSaveMode?: 'original' | 'adaptive';
 }): SpreadDefinition => ({
   name,
   layout,
@@ -40,7 +43,7 @@ export const createSpreadDefinitionFromSlots = ({
     .filter(index => index !== -1),
   gridCols,
   gridRows,
-  freePositions: slots.map(slot => ({
+  freePositions: (layout === 'free' && freeLayoutSaveMode === 'adaptive' ? adaptFreeLayoutSlotsToCanvas(slots) : slots).map(slot => ({
     x: slot.x,
     y: slot.y,
     rotation: slot.rotation,

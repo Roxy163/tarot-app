@@ -58,6 +58,26 @@ describe('buildReadingSubmitPayload', () => {
     expect(result.payload.interpretation?.combination).toBe('组合原文');
   });
 
+  it('keeps free layout coordinates on submitted cards', () => {
+    const freeSlots: ReadingSlotData[] = [
+      { name: '愚者', isReversed: false, label: '核心', x: 120, y: 80, rotation: 15, scale: 1.2 },
+      { name: '', isReversed: false, label: '空位', x: 240, y: 80, rotation: 0, scale: 1 },
+      { name: '魔术师', isReversed: true, label: '建议', x: 300, y: 200, rotation: -20, scale: 0.9 },
+    ];
+    const result = buildReadingSubmitPayload({
+      formData: { ...baseFormData, layoutType: 'free', spread: '自由牌阵' },
+      cardSlots: freeSlots,
+      cardInterpretations: ['核心解读', '', '建议解读'],
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    expect(result.payload.cards).toEqual([freeSlots[0], freeSlots[2]]);
+    expect(result.payload.slotLabels).toEqual(['核心', '建议']);
+    expect(result.payload.slotPositions).toEqual(['', '']);
+  });
+
   it('uses the first submitted interpretation as single-card text for daily readings', () => {
     const result = buildReadingSubmitPayload({
       formData: { ...baseFormData, category: '日运', spread: '时间流牌阵' },
