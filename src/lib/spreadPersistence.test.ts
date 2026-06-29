@@ -4,6 +4,7 @@ import {
   createBlankSlotsForSpread,
   createSpreadDefinitionFromSlots,
   getSafeCustomSpreadName,
+  getUniqueSpreadName,
   mergeOfficialSpreadsWithCustom,
   restoreAllOfficialSpreads,
   restoreOfficialSpread,
@@ -28,6 +29,15 @@ describe('spreadPersistence', () => {
     expect(getSafeCustomSpreadName('自定义牌阵', '', officialSpreads)).toBe('自定义牌阵');
     expect(getSafeCustomSpreadName('单牌阵', '  单牌阵  ', officialSpreads)).toBe('单牌阵 (自定义)');
     expect(getSafeCustomSpreadName('', '  ', officialSpreads)).toBe('');
+  });
+
+  it('generates a unique copy name for an existing spread', () => {
+    expect(getUniqueSpreadName('我的牌阵', [
+      { name: '我的牌阵', layout: 'free', slots: ['一'] },
+      { name: '我的牌阵 副本', layout: 'free', slots: ['一'] },
+    ])).toBe('我的牌阵 副本 2');
+    expect(getUniqueSpreadName('单牌阵', [], officialSpreads)).toBe('单牌阵 副本');
+    expect(getUniqueSpreadName('  ', [], officialSpreads)).toBe('');
   });
 
   it('creates a spread definition from slot labels, positions, rotation and free layout data', () => {

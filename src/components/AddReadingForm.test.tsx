@@ -3,13 +3,14 @@ import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { OFFICIAL_SPREADS } from '../constants';
 import { AddReadingForm } from './AddReadingForm';
+import { SpreadDefinition } from '../types';
 
-const renderForm = () => {
+const renderForm = (overrides: { spreads?: SpreadDefinition[] } = {}) => {
   const props = {
     onSubmit: vi.fn(),
     isLoading: false,
     isLoggedIn: false,
-    spreads: OFFICIAL_SPREADS,
+    spreads: overrides.spreads || OFFICIAL_SPREADS,
     onUpdateSpreads: vi.fn(),
     cardMetadata: [],
     onUpdateCardMetadata: vi.fn(),
@@ -66,5 +67,79 @@ describe('AddReadingForm spread designer flow', () => {
     const spreadSelect = screen.getByText('牌阵：').closest('div')?.parentElement;
     expect(spreadSelect).toBeTruthy();
     expect(within(spreadSelect as HTMLElement).getByRole('button', { name: '牌阵工作台' })).toBeInTheDocument();
+  });
+
+  it('asks before overwriting an existing custom spread name', async () => {
+    const user = userEvent.setup();
+    const existingSpread: SpreadDefinition = {
+      name: '我的新牌阵',
+      layout: 'free',
+      slots: ['旧位置'],
+      freePositions: [{ x: 10, y: 20, rotation: 0, scale: 1 }],
+    };
+    const props = renderForm({ spreads: [...OFFICIAL_SPREADS, existingSpread] });
+
+    await user.click(screen.getByRole('button', { name: '牌阵工作台' }));
+    await user.click(screen.getByTestId('free-layout-canvas'));
+    await user.click(screen.getByTestId('free-layout-pending-slot'));
+    await user.click(screen.getByRole('button', { name: '保存并使用' }));
+
+    expect(screen.getByText('牌阵名称已存在')).toBeInTheDocument();
+    expect(props.onUpdateSpreads).not.toHaveBeenCalled();
+  });
+
+  it('can save a conflicting spread as a copy', async () => {
+    const user = userEvent.setup();
+    const existingSpread: SpreadDefinition = {
+      name: '我的新牌阵',
+      layout: 'free',
+      slots: ['旧位置'],
+      freePositions: [{ x: 10, y: 20, rotation: 0, scale: 1 }],
+    };
+    const props = renderForm({ spreads: [...OFFICIAL_SPREADS, existingSpread] });
+
+    await user.click(screen.getByRole('button', { name: '牌阵工作台' }));
+    await user.click(screen.getByTestId('free-layout-canvas'));
+    await user.click(screen.getByTestId('free-layout-pending-slot'));
+    await user.click(screen.getByRole('button', { name: '保存并使用' }));
+    await user.click(screen.getByRole('button', { name: '另存为副本' }));
+
+    expect(props.onUpdateSpreads).toHaveBeenCalledWith(
+      expect.arrayContaining([
+        existingSpread,
+        expect.objectContaining({
+          name: '我的新牌阵 副本',
+          layout: 'free',
+          slots: ['位置1'],
+        }),
+      ]),
+    );
+  });
+
+  it('can overwrite a conflicting custom spread after confirmation', async () => {
+    const user = userEvent.setup();
+    const existingSpread: SpreadDefinition = {
+      name: '我的新牌阵',
+      layout: 'free',
+      slots: ['旧位置'],
+      freePositions: [{ x: 10, y: 20, rotation: 0, scale: 1 }],
+    };
+    const props = renderForm({ spreads: [...OFFICIAL_SPREADS, existingSpread] });
+
+    await user.click(screen.getByRole('button', { name: '牌阵工作台' }));
+    await user.click(screen.getByTestId('free-layout-canvas'));
+    await user.click(screen.getByTestId('free-layout-pending-slot'));
+    await user.click(screen.getByRole('button', { name: '保存并使用' }));
+    await user.click(screen.getByRole('button', { name: '覆盖原牌阵' }));
+
+    const updatedSpreads = props.onUpdateSpreads.mock.calls[0][0] as SpreadDefinition[];
+    const overwritten = updatedSpreads.find(spread => spread.name === '我的新牌阵');
+
+    expect(updatedSpreads.filter(spread => spread.name === '我的新牌阵')).toHaveLength(1);
+    expect(overwritten).toEqual(expect.objectContaining({
+      name: '我的新牌阵',
+      layout: 'free',
+      slots: ['位置1'],
+    }));
   });
 });

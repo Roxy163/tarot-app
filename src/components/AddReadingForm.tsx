@@ -28,6 +28,7 @@ import {
   createBlankSlotsForSpread,
   createSpreadDefinitionFromSlots,
   getSafeCustomSpreadName,
+  getUniqueSpreadName,
   restoreAllOfficialSpreads,
   restoreOfficialSpread,
   upsertSpreadDefinition,
@@ -51,6 +52,11 @@ interface AddReadingFormProps {
 }
 
 type InfluenceFieldKey = 'numerologyInfluence' | 'astrologyInfluence' | 'houseInfluence' | 'elementInfluence';
+
+type SpreadSaveConflict = {
+  name: string;
+  spread: SpreadDefinition;
+};
 
 export const AddReadingForm: React.FC<AddReadingFormProps> = ({ 
   onSubmit, 
@@ -127,6 +133,7 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
   const [freeLayoutSaveMode, setFreeLayoutSaveMode] = useState<FreeLayoutSaveMode>('original');
   const [showUpdatePrompt, setShowUpdatePrompt] = useState<{ name: string, oldSlots: string[] } | null>(null);
   const [showRestoreConfirm, setShowRestoreConfirm] = useState<{ name?: string } | null>(null);
+  const [spreadSaveConflict, setSpreadSaveConflict] = useState<SpreadSaveConflict | null>(null);
   const [showEmailModal, setShowEmailModal] = useState(false);
   const [submitNotice, setSubmitNotice] = useState('');
 
@@ -290,36 +297,58 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
     onUpdateSpreads(spreads.filter(s => s.name !== spreadName));
   };
 
-  const saveSpread = () => {
-    const requestedName = newSpreadName.trim() || (formData.spread ? '' : '我的新牌阵');
-    const name = getSafeCustomSpreadName(formData.spread, requestedName, OFFICIAL_SPREADS);
-    if (!name) return;
-    
-    // Safety check: if user hasn't changed the name from an official one, and is saving, 
-    // we should make sure they don't overwrite the original unless they really want to.
-    // However, the findIndex logic already handles replacing by name.
-    // To prevent the "Official Spreads Changed" confusion, we'll avoid overwriting 
-    // official names if we started from a "Create New" session or if the name matches an official one exactly but definitions differ.
-    
-    const newSpread = createSpreadDefinitionFromSlots({
-      name,
-      layout: formData.layoutType,
-      slots: cardSlots,
-      gridCols,
-      gridRows,
-      freeLayoutSaveMode,
-    });
+  const completeSpreadSave = (newSpread: SpreadDefinition) => {
     const updatedSpreads = upsertSpreadDefinition(spreads, newSpread);
     
     onUpdateSpreads(updatedSpreads);
-    setFormData(prev => ({ ...prev, spread: name, layoutType: newSpread.layout }));
+    setFormData(prev => ({ ...prev, spread: newSpread.name, layoutType: newSpread.layout }));
     setCardSlots(mapSlotsToSpread(cardSlots, newSpread));
     setGridCols(newSpread.gridCols || gridCols);
     setGridRows(newSpread.gridRows || gridRows);
     setNewSpreadName('');
+    setSpreadSaveConflict(null);
     setSaveSuccess(true);
     setIsEditingSession(false);
     setShowSpreadManager(false);
+  };
+
+  const buildSpreadDefinition = (name: string) => createSpreadDefinitionFromSlots({
+    name,
+    layout: formData.layoutType,
+    slots: cardSlots,
+    gridCols,
+    gridRows,
+    freeLayoutSaveMode,
+  });
+
+  const saveSpread = () => {
+    const requestedName = newSpreadName.trim() || (formData.spread ? '' : '我的新牌阵');
+    const name = getSafeCustomSpreadName(formData.spread, requestedName, OFFICIAL_SPREADS);
+    if (!name) return;
+
+    const newSpread = buildSpreadDefinition(name);
+    const isEditingSameCustomSpread = Boolean(
+      formData.spread
+      && formData.spread === name
+      && !OFFICIAL_SPREADS.some(spread => spread.name === name),
+    );
+    const hasNameConflict = spreads.some(spread => spread.name === name) && !isEditingSameCustomSpread;
+
+    if (hasNameConflict) {
+      setSpreadSaveConflict({ name, spread: newSpread });
+      return;
+    }
+
+    completeSpreadSave(newSpread);
+  };
+
+  const saveSpreadAsCopy = () => {
+    if (!spreadSaveConflict) return;
+
+    completeSpreadSave({
+      ...spreadSaveConflict.spread,
+      name: getUniqueSpreadName(spreadSaveConflict.name, spreads, OFFICIAL_SPREADS),
+    });
   };
 
   const restoreDefaults = (name?: string) => {
@@ -533,6 +562,50 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
                   className="flex-1 min-h-11 py-2 bg-forest-accent text-white rounded-xl font-medium hover:bg-forest-accent/90 transition-all shadow-md"
                 >
                   确定恢复
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {spreadSaveConflict && (
+          <div className="fixed inset-0 z-[150] flex items-center justify-center p-4 bg-forest-text/20 backdrop-blur-sm">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.9 }}
+              className="bg-white rounded-3xl p-6 max-w-sm w-full shadow-2xl space-y-4"
+            >
+              <div className="flex items-center gap-3 text-forest-accent">
+                <Layers size={24} />
+                <h3 className="text-xl font-serif">牌阵名称已存在</h3>
+              </div>
+              <p className="text-sm text-forest-muted leading-relaxed">
+                “{spreadSaveConflict.name}”已经存在。你可以覆盖原牌阵，或另存为一个副本。
+              </p>
+              <div className="grid gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={saveSpreadAsCopy}
+                  className="min-h-11 rounded-xl bg-forest-accent text-white font-bold hover:bg-forest-accent/90 transition-all shadow-md"
+                >
+                  另存为副本
+                </button>
+                <button
+                  type="button"
+                  onClick={() => completeSpreadSave(spreadSaveConflict.spread)}
+                  className="min-h-11 rounded-xl bg-amber-100 text-amber-700 font-bold hover:bg-amber-200 transition-all"
+                >
+                  覆盖原牌阵
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSpreadSaveConflict(null)}
+                  className="min-h-11 rounded-xl bg-forest-bg text-forest-muted font-bold hover:text-forest-accent transition-colors"
+                >
+                  取消
                 </button>
               </div>
             </motion.div>

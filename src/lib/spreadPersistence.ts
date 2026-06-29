@@ -19,6 +19,35 @@ export const getSafeCustomSpreadName = (
     : baseName;
 };
 
+export const getUniqueSpreadName = (
+  baseName: string,
+  spreads: SpreadDefinition[],
+  officialSpreads: SpreadDefinition[] = [],
+) => {
+  const trimmedName = baseName.trim();
+  if (!trimmedName) return '';
+
+  const existingNames = new Set([
+    ...spreads.map(spread => spread.name),
+    ...officialSpreads.map(spread => spread.name),
+  ]);
+  const firstCopyName = `${trimmedName} 副本`;
+
+  if (!existingNames.has(firstCopyName)) {
+    return firstCopyName;
+  }
+
+  let copyIndex = 2;
+  let nextName = `${firstCopyName} ${copyIndex}`;
+
+  while (existingNames.has(nextName)) {
+    copyIndex += 1;
+    nextName = `${firstCopyName} ${copyIndex}`;
+  }
+
+  return nextName;
+};
+
 export const createSpreadDefinitionFromSlots = ({
   name,
   layout,
