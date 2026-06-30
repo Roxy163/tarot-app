@@ -1,6 +1,7 @@
 import React from 'react';
 import { ChevronDown, Layers, Plus, User, Calendar, Tag, Mail } from 'lucide-react';
 import { SpreadDefinition } from '../types';
+import { OFFICIAL_SPREADS } from '../constants';
 
 interface BasicInfoSectionProps {
   question: string;
@@ -13,6 +14,7 @@ interface BasicInfoSectionProps {
   spreads: SpreadDefinition[];
   onSelectSpread: (s: SpreadDefinition) => void;
   onOpenSpreadManager: () => void;
+  onCreateSpread: () => void;
   isMultiCard: boolean;
   activeSlotIndex: number;
   onSetActiveSlotIndex: (idx: number) => void;
@@ -37,6 +39,7 @@ export const BasicInfoSection: React.FC<BasicInfoSectionProps> = ({
   spreads,
   onSelectSpread,
   onOpenSpreadManager,
+  onCreateSpread,
   isMultiCard,
   activeSlotIndex,
   onSetActiveSlotIndex,
@@ -49,6 +52,11 @@ export const BasicInfoSection: React.FC<BasicInfoSectionProps> = ({
   onCancel,
   onOpenEmailModal
 }) => {
+  const officialSpreadNames = new Set(OFFICIAL_SPREADS.map(item => item.name));
+  const officialSpreads = spreads.filter(item => officialSpreadNames.has(item.name));
+  const customSpreads = spreads.filter(item => !officialSpreadNames.has(item.name));
+  const isSelectedCustomSpread = customSpreads.some(item => item.name === spread);
+
   return (
     <div className="space-y-6 mb-8">
       <div className="flex flex-col gap-4 sticky top-0 bg-white/80 backdrop-blur-md z-30 pb-4 border-b border-forest-accent/5">
@@ -129,6 +137,11 @@ export const BasicInfoSection: React.FC<BasicInfoSectionProps> = ({
             <div className="flex items-center gap-2 px-3 text-sm font-bold text-forest-accent whitespace-nowrap">
               <Layers size={14} />
               牌阵：
+              {isSelectedCustomSpread && (
+                <span className="rounded-full bg-forest-pink/10 px-2 py-0.5 text-[10px] text-forest-pink">
+                  自定义
+                </span>
+              )}
             </div>
             <div className="flex-1 relative w-full">
               <select 
@@ -139,19 +152,37 @@ export const BasicInfoSection: React.FC<BasicInfoSectionProps> = ({
                   if (spreadDef) onSelectSpread(spreadDef);
                 }}
               >
-                {spreads.map(s => <option key={s.name} value={s.name}>{s.name}</option>)}
+                <optgroup label="官方牌阵">
+                  {officialSpreads.map(s => <option key={s.name} value={s.name}>{s.name}</option>)}
+                </optgroup>
+                {customSpreads.length > 0 && (
+                  <optgroup label={`自定义牌阵 (${customSpreads.length})`}>
+                    {customSpreads.map(s => <option key={s.name} value={s.name}>{s.name}</option>)}
+                  </optgroup>
+                )}
               </select>
               <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-forest-accent/40"><ChevronDown size={14} /></div>
             </div>
-            <div className="flex items-center gap-2 shrink-0">
+            <div className="flex w-full items-center gap-2 sm:w-auto sm:shrink-0">
               <button 
                 type="button" 
                 onClick={onOpenSpreadManager}
-                className="min-h-12 flex items-center gap-2 px-4 py-2 bg-white border border-forest-accent/10 rounded-lg text-xs font-bold text-forest-muted hover:text-forest-accent hover:border-forest-accent transition-all shadow-sm shrink-0"
-                title="管理已有牌阵或创作新牌阵"
+                aria-label={`编辑当前牌阵 ${spread}`}
+                className="min-h-12 flex flex-1 items-center justify-center gap-2 rounded-lg border border-forest-accent/10 bg-white px-4 py-2 text-xs font-bold text-forest-muted shadow-sm transition-all hover:border-forest-accent hover:text-forest-accent sm:flex-none"
+                title="编辑当前牌阵"
               >
                 <Layers size={14} />
-                <span>牌阵工作台</span>
+                <span>编辑牌阵</span>
+              </button>
+              <button
+                type="button"
+                onClick={onCreateSpread}
+                aria-label="新建自定义牌阵"
+                className="flex min-h-12 flex-1 items-center justify-center gap-2 rounded-lg border border-forest-accent/10 bg-white px-4 py-2 text-xs font-bold text-forest-accent shadow-sm transition-all hover:border-forest-accent hover:bg-forest-accent hover:text-white sm:flex-none"
+                title="新建自定义牌阵"
+              >
+                <Plus size={14} />
+                <span>新建</span>
               </button>
             </div>
           </div>

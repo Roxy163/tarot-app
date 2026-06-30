@@ -362,25 +362,28 @@ export const ReadingCard: React.FC<ReadingCardProps> = ({
 
         <div className="absolute top-2 right-2 flex gap-1.5 z-40">
           <button
-            className="card-zoom-handler p-1.5 bg-white/80 backdrop-blur rounded-lg shadow-sm hover:bg-white transition-colors"
+            className="card-zoom-handler flex min-h-11 min-w-11 items-center justify-center bg-white/80 backdrop-blur rounded-xl shadow-sm hover:bg-white transition-colors"
             onClick={(e) => { e.stopPropagation(); setScale(prev => Math.min(prev + 0.2, 2)); }}
             title="放大"
+            aria-label="放大牌阵预览"
           >
-            <ZoomIn size={14} className="text-forest-accent" />
+            <ZoomIn size={16} className="text-forest-accent" />
           </button>
           <button
-            className="card-zoom-handler p-1.5 bg-white/80 backdrop-blur rounded-lg shadow-sm hover:bg-white transition-colors"
+            className="card-zoom-handler flex min-h-11 min-w-11 items-center justify-center bg-white/80 backdrop-blur rounded-xl shadow-sm hover:bg-white transition-colors"
             onClick={(e) => { e.stopPropagation(); setScale(prev => Math.max(prev - 0.2, 0.5)); }}
             title="缩小"
+            aria-label="缩小牌阵预览"
           >
-            <ZoomOut size={14} className="text-forest-accent" />
+            <ZoomOut size={16} className="text-forest-accent" />
           </button>
           <button
-            className="card-zoom-handler p-1.5 bg-white/80 backdrop-blur rounded-lg shadow-sm hover:bg-white transition-colors"
+            className="card-zoom-handler flex min-h-11 min-w-11 items-center justify-center bg-white/80 backdrop-blur rounded-xl shadow-sm hover:bg-white transition-colors"
             onClick={(e) => { e.stopPropagation(); resetView(); }}
             title="重置"
+            aria-label="重置牌阵预览"
           >
-            <RefreshCw size={14} className="text-forest-accent" />
+            <RefreshCw size={16} className="text-forest-accent" />
           </button>
         </div>
       </div>
@@ -459,8 +462,9 @@ export const ReadingCard: React.FC<ReadingCardProps> = ({
               {onTogglePublic && !reading.isExample && (
                 <button
                   onClick={onTogglePublic}
-                  className="p-2 hover:bg-forest-accent/5 rounded-lg transition-colors"
+                  className="flex min-h-11 min-w-11 items-center justify-center rounded-xl hover:bg-forest-accent/5 transition-colors"
                   title={reading.isPublic ? '收回私人' : '公开到广场'}
+                  aria-label={reading.isPublic ? '收回私人' : '公开到广场'}
                 >
                   {reading.isPublic ? (
                     <Lock size={16} className="text-forest-accent" />
@@ -472,8 +476,9 @@ export const ReadingCard: React.FC<ReadingCardProps> = ({
               {onEdit && (
                 <button
                   onClick={onEdit}
-                  className="p-2 hover:bg-forest-accent/5 rounded-lg transition-colors"
+                  className="flex min-h-11 min-w-11 items-center justify-center rounded-xl hover:bg-forest-accent/5 transition-colors"
                   title="编辑"
+                  aria-label="编辑手记"
                 >
                   <PencilLine size={16} className="text-forest-accent" />
                 </button>
@@ -481,8 +486,9 @@ export const ReadingCard: React.FC<ReadingCardProps> = ({
               {onDelete && !reading.isExample && (
                 <button
                   onClick={() => setShowDeleteConfirm(true)}
-                  className="p-2 hover:bg-red-50 rounded-lg transition-colors"
+                  className="flex min-h-11 min-w-11 items-center justify-center rounded-xl hover:bg-red-50 transition-colors"
                   title="删除"
+                  aria-label="删除手记"
                 >
                   <Trash2 size={16} className="text-red-500" />
                 </button>
@@ -532,7 +538,7 @@ export const ReadingCard: React.FC<ReadingCardProps> = ({
           }
           setIsExpanded(!isExpanded);
         }}
-        className="w-full px-4 py-3 flex items-center justify-center gap-2 text-xs text-forest-muted hover:text-forest-accent hover:bg-forest-accent/5 transition-all"
+        className="flex min-h-11 w-full items-center justify-center gap-2 px-4 py-3 text-xs text-forest-muted hover:text-forest-accent hover:bg-forest-accent/5 transition-all"
       >
         {onViewDetails ? <Eye size={14} /> : (isExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />)}
         <span>{onViewDetails ? '查看详情' : (isExpanded ? '收起解读' : '查看解读')}</span>

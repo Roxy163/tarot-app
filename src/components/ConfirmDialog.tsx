@@ -23,6 +23,8 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
   onConfirm,
   onClose,
 }) => {
+  const titleId = React.useId();
+
   const handleConfirm = async () => {
     await onConfirm();
     onClose();
@@ -43,6 +45,9 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
             initial={{ opacity: 0, y: 16, scale: 0.98 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 16, scale: 0.98 }}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby={titleId}
             className="relative w-full max-w-sm rounded-3xl bg-white border border-forest-border shadow-2xl p-5 space-y-4"
           >
             <div className="flex items-start justify-between gap-3">
@@ -50,7 +55,7 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
                 <div className={`w-10 h-10 rounded-2xl flex items-center justify-center ${destructive ? 'bg-red-50 text-red-500' : 'bg-forest-accent/10 text-forest-accent'}`}>
                   <AlertTriangle size={18} />
                 </div>
-                <h3 className="text-lg font-serif font-bold text-forest-ink">{title}</h3>
+                <h3 id={titleId} className="text-lg font-serif font-bold text-forest-ink">{title}</h3>
               </div>
               <button
                 type="button"

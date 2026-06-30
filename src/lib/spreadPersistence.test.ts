@@ -3,9 +3,11 @@ import { ReadingSlotData, SpreadDefinition } from '../types';
 import {
   createBlankSlotsForSpread,
   createSpreadDefinitionFromSlots,
+  getLegacyCustomSpreadNameMap,
   getSafeCustomSpreadName,
   getUniqueSpreadName,
   mergeOfficialSpreadsWithCustom,
+  normalizeLegacyReadingSpreadNames,
   restoreAllOfficialSpreads,
   restoreOfficialSpread,
   upsertSpreadDefinition,
@@ -161,6 +163,47 @@ describe('spreadPersistence', () => {
       customSpread,
     ]);
     expect(mergeOfficialSpreadsWithCustom(null, officialSpreads)).toEqual(officialSpreads);
+  });
+
+  it('renames old default custom spread names for a cleaner recording-ready list', () => {
+    const legacySpread: SpreadDefinition = {
+      name: '我的新牌阵',
+      layout: 'free',
+      slots: ['一'],
+    };
+    const legacyCopy: SpreadDefinition = {
+      name: '我的新牌阵 副本',
+      layout: 'free',
+      slots: ['二'],
+    };
+
+    expect(mergeOfficialSpreadsWithCustom([legacySpread, legacyCopy], officialSpreads)).toEqual([
+      ...officialSpreads,
+      { ...legacySpread, name: '个人牌阵' },
+      { ...legacyCopy, name: '个人牌阵 副本' },
+    ]);
+  });
+
+  it('keeps legacy spread references aligned when the new default name already exists', () => {
+    const savedSpreads: SpreadDefinition[] = [
+      { name: '个人牌阵', layout: 'free', slots: ['现有'] },
+      { name: '我的新牌阵', layout: 'free', slots: ['旧默认'] },
+    ];
+    const nameMap = getLegacyCustomSpreadNameMap(savedSpreads, officialSpreads);
+
+    expect(mergeOfficialSpreadsWithCustom(savedSpreads, officialSpreads)).toEqual([
+      ...officialSpreads,
+      savedSpreads[0],
+      { ...savedSpreads[1], name: '个人牌阵 2' },
+    ]);
+    expect(nameMap).toEqual({ '我的新牌阵': '个人牌阵 2' });
+    expect(normalizeLegacyReadingSpreadNames([
+      { id: 'r1', spread: '我的新牌阵' },
+      { id: 'r2', spread: '个人牌阵' },
+    ], nameMap)).toEqual([
+      { id: 'r1', spread: '个人牌阵 2' },
+      { id: 'r2', spread: '个人牌阵' },
+    ]);
   });
 
   it('ignores malformed saved spread entries instead of interrupting spread loading', () => {

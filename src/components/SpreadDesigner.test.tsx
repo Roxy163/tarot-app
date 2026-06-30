@@ -1,3 +1,4 @@
+import React, { useState } from 'react';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
@@ -46,6 +47,88 @@ const renderDesigner = (overrides = {}) => {
 };
 
 describe('SpreadDesigner', () => {
+  it('keeps the main save action visible in the workbench header', () => {
+    renderDesigner({ currentSpread: '', isEditingSession: true });
+
+    expect(screen.getByRole('button', { name: '保存并使用' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: '牌阵工作台' })).toBeInTheDocument();
+  });
+
+  it('starts a blank spread without selecting an existing template', async () => {
+    const user = userEvent.setup();
+    const onStartNewSession = vi.fn();
+    const onUpdateNewSpreadName = vi.fn();
+    const onSetDesignActiveSlot = vi.fn();
+
+    renderDesigner({
+      onStartNewSession,
+      onUpdateNewSpreadName,
+      onSetDesignActiveSlot,
+    });
+
+    await user.click(screen.getByRole('button', { name: '新建空白' }));
+
+    expect(onUpdateNewSpreadName).toHaveBeenCalledWith('个人牌阵');
+    expect(onSetDesignActiveSlot).toHaveBeenCalledWith(-1);
+    expect(onStartNewSession).toHaveBeenCalled();
+  });
+
+  it('groups official and custom templates in the workbench selector', () => {
+    renderDesigner();
+
+    const templateSelect = screen.getByLabelText('模板');
+    expect(templateSelect.querySelector('optgroup[label="官方牌阵"]')).toBeInTheDocument();
+    expect(templateSelect.querySelector('optgroup[label="自定义牌阵 (1)"]')).toBeInTheDocument();
+  });
+
+  it('updates the spread name from the name field', async () => {
+    const user = userEvent.setup();
+    const onUpdateNewSpreadName = vi.fn();
+
+    const ControlledDesigner = () => {
+      const [name, setName] = useState('自由牌阵');
+
+      return (
+        <SpreadDesigner
+          spreads={spreads}
+          currentSpread="自由牌阵"
+          layoutType="free"
+          cardSlots={[
+            { name: '', isReversed: false, label: '核心', x: 120, y: 120, rotation: 0, scale: 1 },
+          ]}
+          designActiveSlot={0}
+          newSpreadName={name}
+          isEditingSession
+          onSelectSpread={vi.fn()}
+          onDeleteSpread={vi.fn()}
+          onSaveSpread={vi.fn()}
+          onUpdateNewSpreadName={(nextName) => {
+            setName(nextName);
+            onUpdateNewSpreadName(nextName);
+          }}
+          onUpdateLayoutType={vi.fn()}
+          onUpdateSlotPosition={vi.fn()}
+          onSwapSlotIndex={vi.fn()}
+          onUpdateSlotLabel={vi.fn()}
+          onSetDesignActiveSlot={vi.fn()}
+          onRemoveSlot={vi.fn()}
+          onRestoreDefaults={vi.fn()}
+          onStartNewSession={vi.fn()}
+          onClose={vi.fn()}
+          onUpdateSlots={vi.fn()}
+        />
+      );
+    };
+
+    render(<ControlledDesigner />);
+
+    const nameInput = screen.getByLabelText('名称');
+    await user.clear(nameInput);
+    await user.type(nameInput, '镜像牌阵');
+
+    expect(onUpdateNewSpreadName).toHaveBeenLastCalledWith('镜像牌阵');
+  });
+
   it('previews a free canvas position from the canvas without starting a grid session', async () => {
     const user = userEvent.setup();
     const onStartNewSession = vi.fn();

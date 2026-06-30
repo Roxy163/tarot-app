@@ -1,6 +1,75 @@
 import { ReadingSlotData, SpreadDefinition } from '../types';
+import { DEFAULT_CUSTOM_SPREAD_NAME } from '../constants';
 import { adaptFreeLayoutSlotsToCanvas } from './freeLayout';
 import { mapSlotsToSpread } from './readingSlotSync';
+
+const LEGACY_DEFAULT_CUSTOM_SPREAD_NAME = '我的新牌阵';
+
+export const normalizeLegacyCustomSpreadName = (name: string) => {
+  const trimmedName = name.trim();
+  const legacyCopyPrefix = `${LEGACY_DEFAULT_CUSTOM_SPREAD_NAME} 副本`;
+
+  if (trimmedName === LEGACY_DEFAULT_CUSTOM_SPREAD_NAME) {
+    return DEFAULT_CUSTOM_SPREAD_NAME;
+  }
+
+  if (trimmedName === legacyCopyPrefix || trimmedName.startsWith(`${legacyCopyPrefix} `)) {
+    return `${DEFAULT_CUSTOM_SPREAD_NAME}${trimmedName.slice(LEGACY_DEFAULT_CUSTOM_SPREAD_NAME.length)}`;
+  }
+
+  return name;
+};
+
+const getUniqueMigratedSpreadName = (baseName: string, usedNames: Set<string>) => {
+  if (!usedNames.has(baseName)) return baseName;
+
+  let copyIndex = 2;
+  let nextName = `${baseName} ${copyIndex}`;
+
+  while (usedNames.has(nextName)) {
+    copyIndex += 1;
+    nextName = `${baseName} ${copyIndex}`;
+  }
+
+  return nextName;
+};
+
+const getNormalizedCustomSpreadEntries = (
+  savedSpreads: Array<Partial<SpreadDefinition> | null | undefined> | null | undefined,
+  officialSpreads: SpreadDefinition[],
+) => {
+  const officialNames = new Set(officialSpreads.map(spread => spread.name));
+  const customSpreads = (Array.isArray(savedSpreads) ? savedSpreads : [])
+    .filter((spread): spread is SpreadDefinition => Boolean(
+      spread?.name
+      && spread.layout
+      && Array.isArray(spread.slots)
+      && !officialNames.has(spread.name),
+    ));
+  const stableCustomNames = new Set(
+    customSpreads
+      .filter(spread => normalizeLegacyCustomSpreadName(spread.name) === spread.name)
+      .map(spread => spread.name),
+  );
+  const usedNames = new Set(officialNames);
+  const nameMap: Record<string, string> = {};
+  const spreads = customSpreads.map(spread => {
+    const migratedName = normalizeLegacyCustomSpreadName(spread.name);
+    const namesToAvoid = migratedName === spread.name
+      ? usedNames
+      : new Set([...usedNames, ...stableCustomNames]);
+    const uniqueName = getUniqueMigratedSpreadName(migratedName, namesToAvoid);
+
+    usedNames.add(uniqueName);
+    if (uniqueName !== spread.name) {
+      nameMap[spread.name] = uniqueName;
+    }
+
+    return uniqueName === spread.name ? spread : { ...spread, name: uniqueName };
+  });
+
+  return { nameMap, spreads };
+};
 
 export const getSafeCustomSpreadName = (
   currentSpreadName: string,
@@ -120,18 +189,33 @@ export const createBlankSlotsForSpread = (spread: SpreadDefinition) => (
   mapSlotsToSpread([], spread)
 );
 
+export const normalizeLegacyCustomSpreads = (
+  savedSpreads: Array<Partial<SpreadDefinition> | null | undefined> | null | undefined,
+  officialSpreads: SpreadDefinition[],
+): SpreadDefinition[] => getNormalizedCustomSpreadEntries(savedSpreads, officialSpreads).spreads;
+
+export const getLegacyCustomSpreadNameMap = (
+  savedSpreads: Array<Partial<SpreadDefinition> | null | undefined> | null | undefined,
+  officialSpreads: SpreadDefinition[],
+) => getNormalizedCustomSpreadEntries(savedSpreads, officialSpreads).nameMap;
+
+export const normalizeLegacyReadingSpreadNames = <T extends { spread?: string }>(
+  readings: T[],
+  spreadNameMap: Record<string, string> = {},
+): T[] => (
+  readings.map(reading => {
+    if (!reading.spread) return reading;
+
+    const spreadName = spreadNameMap[reading.spread] || normalizeLegacyCustomSpreadName(reading.spread);
+    return spreadName === reading.spread ? reading : { ...reading, spread: spreadName };
+  })
+);
+
 export const mergeOfficialSpreadsWithCustom = (
   savedSpreads: Array<Partial<SpreadDefinition> | null | undefined> | null | undefined,
   officialSpreads: SpreadDefinition[],
 ): SpreadDefinition[] => {
-  const officialNames = new Set(officialSpreads.map(spread => spread.name));
-  const customSpreads = (Array.isArray(savedSpreads) ? savedSpreads : [])
-    .filter((spread): spread is SpreadDefinition => Boolean(
-      spread?.name
-      && spread.layout
-      && Array.isArray(spread.slots)
-      && !officialNames.has(spread.name),
-    ));
+  const customSpreads = normalizeLegacyCustomSpreads(savedSpreads, officialSpreads);
 
   return [...officialSpreads, ...customSpreads];
 };

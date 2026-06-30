@@ -1015,7 +1015,7 @@ export const FreeLayoutEditor: React.FC<FreeLayoutEditorProps> = ({
               <button
                 type="button"
                 onClick={() => setInteractionMode('place')}
-                className={`flex min-h-9 items-center gap-1 rounded-lg px-3 text-xs font-bold transition-all ${
+                className={`flex min-h-11 items-center gap-1 rounded-lg px-3 text-xs font-bold transition-all ${
                   interactionMode === 'place'
                     ? 'bg-white text-forest-accent shadow-sm'
                     : 'text-forest-muted hover:text-forest-accent'
@@ -1027,7 +1027,7 @@ export const FreeLayoutEditor: React.FC<FreeLayoutEditorProps> = ({
               <button
                 type="button"
                 onClick={() => setInteractionMode('pan')}
-                className={`flex min-h-9 items-center gap-1 rounded-lg px-3 text-xs font-bold transition-all ${
+                className={`flex min-h-11 items-center gap-1 rounded-lg px-3 text-xs font-bold transition-all ${
                   interactionMode === 'pan'
                     ? 'bg-white text-forest-accent shadow-sm'
                     : 'text-forest-muted hover:text-forest-accent'
@@ -1336,19 +1336,15 @@ export const FreeLayoutEditor: React.FC<FreeLayoutEditorProps> = ({
               ))}
             </AnimatePresence>
 
-            <div
-              className="absolute flex items-center gap-2 px-3 py-1.5 bg-white/90 backdrop-blur-sm rounded-full shadow-sm pointer-events-none"
-              style={{
-                left: (viewportWidth / 2 - viewportOffset.x) / canvasScale,
-                top: (FREE_LAYOUT_VIEWPORT_HEIGHT - 44 - viewportOffset.y) / canvasScale,
-                transform: `translateX(-50%) scale(${1 / canvasScale})`,
-                transformOrigin: 'center bottom',
-              }}
-            >
-              <Plus size={14} className="text-forest-accent" />
-              <span className="text-xs text-forest-muted">单击出现虚影，拖动后点击固定</span>
-            </div>
           </div>
+        </div>
+
+        <div
+          data-testid="free-layout-action-hint"
+          className="pointer-events-none absolute bottom-3 left-1/2 z-40 flex max-w-[calc(100%-1rem)] -translate-x-1/2 items-center gap-2 rounded-full bg-white/90 px-3 py-1.5 shadow-sm backdrop-blur-sm"
+        >
+          <Plus size={14} className="shrink-0 text-forest-accent" />
+          <span className="truncate whitespace-nowrap text-xs text-forest-muted">单击出现虚影，拖动后点击固定</span>
         </div>
 
         <div className="absolute left-3 top-3 flex items-center gap-1.5 px-2 py-1 bg-white/90 rounded-full shadow-sm text-[10px] font-bold text-forest-accent pointer-events-none">

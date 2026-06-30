@@ -2,7 +2,7 @@ import React, { useState, useEffect, FormEvent } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Sparkles, Layers, User, MessageSquare, RotateCcw, BookOpen, X, Settings, Save, Hash, Orbit, Home, Wind } from 'lucide-react';
 import { CardKeywordMemory, SpreadDefinition, TarotCardMetadata, ReadingSlotData, TarotReading, ReadingFormData } from '../types';
-import { LAYOUT_TEMPLATES, TAROT_CARDS, getCardImageUrl, OFFICIAL_SPREADS } from '../constants';
+import { DEFAULT_CUSTOM_SPREAD_NAME, LAYOUT_TEMPLATES, TAROT_CARDS, getCardImageUrl, OFFICIAL_SPREADS } from '../constants';
 import { CardPicker } from './CardPicker';
 import { FreeLayoutSaveMode, SpreadDesigner } from './SpreadDesigner';
 import { CardCorrespondenceEditor } from './CardCorrespondenceEditor';
@@ -12,6 +12,7 @@ import { ReadingDetailView } from './ReadingDetailView';
 import { ReadingSpreadDisplay } from './ReadingSpreadDisplay';
 import { BasicInfoSection } from './BasicInfoSection';
 import { EmailShareModal } from './EmailShareModal';
+import { ConfirmDialog } from './ConfirmDialog';
 import { useLongPressClear } from '../hooks/useLongPressClear';
 import { mapSlotsToSpread, normalizeInterpretationsForSlots } from '../lib/readingSlotSync';
 import {
@@ -136,6 +137,7 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
   const [spreadSaveConflict, setSpreadSaveConflict] = useState<SpreadSaveConflict | null>(null);
   const [showEmailModal, setShowEmailModal] = useState(false);
   const [submitNotice, setSubmitNotice] = useState('');
+  const [pendingDeleteSpreadName, setPendingDeleteSpreadName] = useState<string | null>(null);
 
   const {
     isLongPressActive,
@@ -293,8 +295,29 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
     }
   };
 
-  const deleteSpread = (spreadName: string) => {
-    onUpdateSpreads(spreads.filter(s => s.name !== spreadName));
+  const requestDeleteSpread = (spreadName: string) => {
+    if (!spreadName || OFFICIAL_SPREADS.some(spread => spread.name === spreadName)) return;
+
+    setPendingDeleteSpreadName(spreadName);
+  };
+
+  const confirmDeleteSpread = () => {
+    if (!pendingDeleteSpreadName) return;
+
+    const updatedSpreads = spreads.filter(s => s.name !== pendingDeleteSpreadName);
+    const fallbackSpread = updatedSpreads[0] || OFFICIAL_SPREADS[0];
+
+    onUpdateSpreads(updatedSpreads);
+    if (formData.spread === pendingDeleteSpreadName && fallbackSpread) {
+      setFormData(prev => ({ ...prev, spread: fallbackSpread.name, layoutType: fallbackSpread.layout }));
+      setCardSlots(createBlankSlotsForSpread(fallbackSpread));
+      setGridCols(fallbackSpread.gridCols || 5);
+      setGridRows(fallbackSpread.gridRows || 5);
+      setNewSpreadName('');
+      setDesignActiveSlot(0);
+      setIsEditingSession(false);
+    }
+    setPendingDeleteSpreadName(null);
   };
 
   const completeSpreadSave = (newSpread: SpreadDefinition) => {
@@ -322,7 +345,7 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
   });
 
   const saveSpread = () => {
-    const requestedName = newSpreadName.trim() || (formData.spread ? '' : '我的新牌阵');
+    const requestedName = newSpreadName.trim() || (formData.spread ? '' : DEFAULT_CUSTOM_SPREAD_NAME);
     const name = getSafeCustomSpreadName(formData.spread, requestedName, OFFICIAL_SPREADS);
     if (!name) return;
 
@@ -407,11 +430,24 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
   };
 
   const handleOpenSpreadManager = () => {
+    const currentSpreadDef = spreads.find(spread => spread.name === formData.spread);
+    const isCurrentOfficial = OFFICIAL_SPREADS.some(spread => spread.name === formData.spread);
+
+    if (currentSpreadDef) {
+      setGridCols(currentSpreadDef.gridCols || gridCols || 5);
+      setGridRows(currentSpreadDef.gridRows || gridRows || 5);
+      setNewSpreadName(isCurrentOfficial ? `${currentSpreadDef.name} (自定义)` : currentSpreadDef.name);
+      setDesignActiveSlot(cardSlots.length > 0 ? 0 : -1);
+      setShowSpreadManager(true);
+      setIsEditingSession(!isCurrentOfficial);
+      return;
+    }
+
     setFormData(prev => ({ ...prev, spread: '', layoutType: 'free' }));
     setCardSlots([]);
     setGridCols(20);
     setGridRows(12);
-    setNewSpreadName('我的新牌阵');
+    setNewSpreadName(DEFAULT_CUSTOM_SPREAD_NAME);
     setDesignActiveSlot(-1);
     setShowSpreadManager(true);
     setIsEditingSession(true);
@@ -445,7 +481,7 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
     setCardSlots([]);
     setGridCols(20);
     setGridRows(12);
-    setNewSpreadName('我的新牌阵');
+    setNewSpreadName(DEFAULT_CUSTOM_SPREAD_NAME);
     setShowSpreadManager(true);
     setIsEditingSession(true);
     setDesignActiveSlot(-1);
@@ -625,6 +661,7 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
         spreads={spreads}
         onSelectSpread={handleSpreadSelection}
         onOpenSpreadManager={handleOpenSpreadManager}
+        onCreateSpread={handleCreateNewSpread}
         isMultiCard={isMultiCard}
         activeSlotIndex={activeSlotIndex}
         onSetActiveSlotIndex={setActiveSlotIndex}
@@ -669,7 +706,7 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
               }}
               onStartNewSession={handleCreateNewSpread}
               onClose={() => setShowSpreadManager(false)}
-              onDeleteSpread={deleteSpread}
+              onDeleteSpread={requestDeleteSpread}
               onSaveSpread={saveSpread}
               onUpdateNewSpreadName={setNewSpreadName}
               onShiftSlots={shiftSlots}
@@ -751,6 +788,17 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
         question={formData.question}
         cardSlots={cardSlots}
         interpretation={cardInterpretations.filter(id => id).join('\n') + (formData.combination ? `\n\n组合解读:\n${formData.combination}` : '')}
+      />
+
+      <ConfirmDialog
+        isOpen={Boolean(pendingDeleteSpreadName)}
+        title="删除自定义牌阵"
+        message={`确定要删除“${pendingDeleteSpreadName || ''}”吗？已经保存的抽牌手记不会被删除，但之后不能再从列表里选择这个牌阵。`}
+        confirmText="删除"
+        cancelText="取消"
+        destructive
+        onConfirm={confirmDeleteSpread}
+        onClose={() => setPendingDeleteSpreadName(null)}
       />
 
       <ReadingSpreadDisplay 

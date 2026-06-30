@@ -63,6 +63,17 @@ describe('FreeLayoutEditor', () => {
     expect(screen.queryByRole('button', { name: '添加位置' })).not.toBeInTheDocument();
   });
 
+  it('keeps the canvas action hint outside the scaled infinite canvas', () => {
+    renderEditor();
+
+    const canvas = screen.getByTestId('free-layout-canvas');
+    const actionHint = screen.getByTestId('free-layout-action-hint');
+
+    expect(actionHint).toHaveTextContent('单击出现虚影，拖动后点击固定');
+    expect(actionHint.querySelector('span')).toHaveClass('whitespace-nowrap');
+    expect(canvas).not.toContainElement(actionHint);
+  });
+
   it('previews a new position by clicking the canvas center', () => {
     const onUpdateSlots = vi.fn();
     renderEditor({ onUpdateSlots });

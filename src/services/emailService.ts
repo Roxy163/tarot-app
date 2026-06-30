@@ -78,7 +78,6 @@ ${interpretation || '暂无解读记录'}
         EMAILJS_USER_ID
       );
 
-      console.log('Email sent successfully:', response);
       return response;
     } catch (error: any) {
       console.error('Email send failed:', error);

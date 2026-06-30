@@ -2,7 +2,7 @@ import React, { Suspense, lazy, useCallback, useMemo, useState, useEffect } from
 import { motion, AnimatePresence } from 'motion/react';
 import { Plus, Globe, Sparkles, X, User, ChevronRight, Info, LogOut, Database, ShieldCheck, ArrowRight, LogIn, Book, Upload, Moon, CheckCircle, AlertTriangle, Mail } from 'lucide-react';
 import { TarotReading, SpreadDefinition, TarotCardMetadata, UserProfile } from './types';
-import { PAVILION_PROVERBS, TAROT_CARDS } from './constants';
+import { OFFICIAL_SPREADS, PAVILION_PROVERBS, TAROT_CARDS } from './constants';
 import { Modal } from './components/Modal';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { checkIfMagicLink, verifyMagicLink, deleteUserAccount } from './lib/firebase';
@@ -17,6 +17,11 @@ import { SmartTipBanner } from './components/onboarding/SmartTipBanner';
 import { useSmartTips } from './hooks/useSmartTips';
 import { useDarkMode } from './hooks/useDarkMode';
 import { usePersistentTab } from './hooks/usePersistentTab';
+import {
+  getLegacyCustomSpreadNameMap,
+  normalizeLegacyCustomSpreads,
+  normalizeLegacyReadingSpreadNames,
+} from './lib/spreadPersistence';
 
 const loadCardMetadataManager = () => import('./components/CardMetadataManager');
 const loadReadingDetailModal = () => import('./components/ReadingDetailModal');
@@ -321,6 +326,17 @@ function AppContent() {
       // Get local data from localStorage
       const localReadings = localStorage.getItem('tarot_readings');
       const localSpreads = localStorage.getItem('tarot_spreads');
+      let parsedLocalSpreads: unknown = [];
+
+      try {
+        parsedLocalSpreads = localSpreads ? JSON.parse(localSpreads) : [];
+      } catch (error) {
+        console.warn('Failed to parse local spreads:', error);
+      }
+
+      const localSpreadNameMap = Array.isArray(parsedLocalSpreads)
+        ? getLegacyCustomSpreadNameMap(parsedLocalSpreads, OFFICIAL_SPREADS)
+        : {};
       
       let migratedCount = 0;
       
@@ -329,7 +345,10 @@ function AppContent() {
         try {
           const readingsData = JSON.parse(localReadings);
           if (Array.isArray(readingsData)) {
-            const migratedReadings = readingsData.filter((reading: TarotReading) => !reading.isExample && reading.id);
+            const migratedReadings = normalizeLegacyReadingSpreadNames<TarotReading>(
+              readingsData.filter((reading: TarotReading) => !reading.isExample && reading.id),
+              localSpreadNameMap,
+            );
             if (migratedReadings.length > 0) {
               setReadings(prev => {
                 const existingIds = new Set(prev.map(reading => reading.id));
@@ -347,11 +366,12 @@ function AppContent() {
       // Migrate spreads
       if (localSpreads) {
         try {
-          const spreadsData = JSON.parse(localSpreads);
+          const spreadsData = parsedLocalSpreads;
           if (Array.isArray(spreadsData)) {
+            const migratedSpreads = normalizeLegacyCustomSpreads(spreadsData, OFFICIAL_SPREADS);
             setSpreads(prev => {
               const existingNames = new Set(prev.map(spread => spread.name));
-              const newSpreads = spreadsData.filter((spread: SpreadDefinition) => spread.name && spread.slots && !existingNames.has(spread.name));
+              const newSpreads = migratedSpreads.filter((spread: SpreadDefinition) => !existingNames.has(spread.name));
               return [...prev, ...newSpreads];
             });
           }
@@ -497,11 +517,17 @@ function AppContent() {
         
         let importedCount = 0;
         const uid = session?.uid;
+        const importedSpreadNameMap = Array.isArray(importedData.spreads)
+          ? getLegacyCustomSpreadNameMap(importedData.spreads, OFFICIAL_SPREADS)
+          : {};
         
         if (importedData.readings && Array.isArray(importedData.readings)) {
-          const importableReadings = importedData.readings.filter((reading: TarotReading) => (
-            !reading.isExample && reading.question && reading.cards && reading.cards.length > 0
-          ));
+          const importableReadings = normalizeLegacyReadingSpreadNames<TarotReading>(
+            importedData.readings.filter((reading: TarotReading) => (
+              !reading.isExample && reading.question && reading.cards && reading.cards.length > 0
+            )),
+            importedSpreadNameMap,
+          );
 
           if (importableReadings.length > 0) {
             const currentReadings = readings.filter((r: TarotReading) => !r.isExample);
@@ -520,7 +546,8 @@ function AppContent() {
         
         if (importedData.spreads && Array.isArray(importedData.spreads)) {
           const existingNames = new Set(spreads.map((s: SpreadDefinition) => s.name));
-          const newSpreads = importedData.spreads.filter((s: SpreadDefinition) => !existingNames.has(s.name));
+          const importedSpreads = normalizeLegacyCustomSpreads(importedData.spreads, OFFICIAL_SPREADS);
+          const newSpreads = importedSpreads.filter((s: SpreadDefinition) => !existingNames.has(s.name));
           const nextSpreads = [...spreads, ...newSpreads];
 
           importedCount += newSpreads.length;

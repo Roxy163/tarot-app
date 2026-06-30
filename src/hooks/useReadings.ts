@@ -12,7 +12,11 @@ import {
   saveUserCardMetadata,
   saveUserSpreads,
 } from '../lib/firebaseData';
-import { mergeOfficialSpreadsWithCustom } from '../lib/spreadPersistence';
+import {
+  getLegacyCustomSpreadNameMap,
+  mergeOfficialSpreadsWithCustom,
+  normalizeLegacyReadingSpreadNames,
+} from '../lib/spreadPersistence';
 
 const CLOUD_SAVE_DEBOUNCE_MS = 1200;
 
@@ -131,8 +135,10 @@ export const useReadings = (session: { uid?: string; email?: string | null } | n
       setLoadedDataKey(null);
       setIsCloudSyncPaused(false);
       setSyncNotice(null);
-      const localReadings = parseSavedArray<TarotReading>(session?.uid ? 'tarot_readings' : 'tarot_guest_data') || [];
+      const savedLocalReadings = parseSavedArray<TarotReading>(session?.uid ? 'tarot_readings' : 'tarot_guest_data') || [];
       const savedSpreads = parseSavedArray<SpreadDefinition>('tarot_spreads') || [];
+      const localSpreadNameMap = getLegacyCustomSpreadNameMap(savedSpreads, OFFICIAL_SPREADS);
+      const localReadings = normalizeLegacyReadingSpreadNames(savedLocalReadings, localSpreadNameMap);
       const localSpreads = mergeOfficialSpreadsWithCustom(savedSpreads, OFFICIAL_SPREADS);
       const localMetadata = parseSavedArray<TarotCardMetadata>('tarot_card_metadata') || [];
       const localKeywordMemory = parseSavedArray<CardKeywordMemory>('tarot_card_keyword_memory') || [];
@@ -157,11 +163,11 @@ export const useReadings = (session: { uid?: string; email?: string | null } | n
 
         if (cancelled) return;
 
-        setReadings([...exampleReadings, ...(cloudReadings.length > 0 ? cloudReadings : localReadings)]);
-        const mergedSpreads = mergeOfficialSpreadsWithCustom(
-          cloudSpreads && cloudSpreads.length > 0 ? cloudSpreads : savedSpreads,
-          OFFICIAL_SPREADS,
-        );
+        const sourceSpreads = cloudSpreads && cloudSpreads.length > 0 ? cloudSpreads : savedSpreads;
+        const sourceReadings = cloudReadings.length > 0 ? cloudReadings : savedLocalReadings;
+        const sourceSpreadNameMap = getLegacyCustomSpreadNameMap(sourceSpreads, OFFICIAL_SPREADS);
+        const mergedSpreads = mergeOfficialSpreadsWithCustom(sourceSpreads, OFFICIAL_SPREADS);
+        setReadings([...exampleReadings, ...normalizeLegacyReadingSpreadNames(sourceReadings, sourceSpreadNameMap)]);
         setSpreads(mergedSpreads);
         setCardMetadata(cloudMetadata && cloudMetadata.length > 0 ? cloudMetadata : localMetadata);
         setCardKeywordMemory(cloudKeywordMemory && cloudKeywordMemory.length > 0 ? cloudKeywordMemory : localKeywordMemory);

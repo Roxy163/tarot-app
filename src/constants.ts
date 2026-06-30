@@ -125,6 +125,8 @@ export const INITIAL_READINGS = [
   }
 ];
 
+export const DEFAULT_CUSTOM_SPREAD_NAME = '个人牌阵';
+
 export const LAYOUT_TEMPLATES: Record<string, { name: string, class: string, itemClasses: string[], defaultSlots: string[] }> = {
   'horizontal': { 
     name: '横排布局', 
