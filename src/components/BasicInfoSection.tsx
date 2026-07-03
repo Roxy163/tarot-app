@@ -1,5 +1,5 @@
 import React from 'react';
-import { ChevronDown, Layers, Plus, User, Calendar, Tag, Mail } from 'lucide-react';
+import { ChevronDown, Layers, Plus, User, Calendar, Tag } from 'lucide-react';
 import { SpreadDefinition } from '../types';
 import { OFFICIAL_SPREADS } from '../constants';
 
@@ -25,7 +25,6 @@ interface BasicInfoSectionProps {
   onToggleClientMode: () => void;
   initialData?: any;
   onCancel?: () => void;
-  onOpenEmailModal?: () => void;
 }
 
 export const BasicInfoSection: React.FC<BasicInfoSectionProps> = ({
@@ -49,8 +48,7 @@ export const BasicInfoSection: React.FC<BasicInfoSectionProps> = ({
   isForClient,
   onToggleClientMode,
   initialData,
-  onCancel,
-  onOpenEmailModal
+  onCancel
 }) => {
   const officialSpreadNames = new Set(OFFICIAL_SPREADS.map(item => item.name));
   const officialSpreads = spreads.filter(item => officialSpreadNames.has(item.name));
@@ -63,15 +61,6 @@ export const BasicInfoSection: React.FC<BasicInfoSectionProps> = ({
         <div className="flex items-center justify-between">
           <h2 className="text-2xl font-serif text-forest-accent">{initialData ? '修改手记' : '抽牌手记'}</h2>
           <div className="flex items-center gap-3">
-            <button 
-              type="button" 
-              onClick={onOpenEmailModal}
-              className="min-h-12 flex items-center gap-2 px-4 py-2 bg-white text-forest-muted hover:text-forest-accent border border-forest-accent/10 rounded-full text-xs font-bold transition-all shadow-sm group"
-              title="发送至邮箱"
-            >
-              <Mail size={14} className="group-hover:scale-110 transition-transform" />
-              <span>邮件分享</span>
-            </button>
             {initialData && (
               <button type="button" onClick={onCancel} className="min-h-12 px-3 text-xs font-medium text-forest-muted hover:text-forest-accent transition-colors rounded-xl">取消修改</button>
             )}

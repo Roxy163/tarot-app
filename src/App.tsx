@@ -15,13 +15,13 @@ import { useOnboarding } from './context/OnboardingContext';
 import { FirstEntryGuide } from './components/onboarding/FirstEntryGuide';
 import { SmartTipBanner } from './components/onboarding/SmartTipBanner';
 import { useSmartTips } from './hooks/useSmartTips';
-import { useDarkMode } from './hooks/useDarkMode';
 import { usePersistentTab } from './hooks/usePersistentTab';
 import {
   getLegacyCustomSpreadNameMap,
   normalizeLegacyCustomSpreads,
   normalizeLegacyReadingSpreadNames,
 } from './lib/spreadPersistence';
+import { createTarotExportPdfBlob } from './lib/pdfExport';
 
 const loadCardMetadataManager = () => import('./components/CardMetadataManager');
 const loadReadingDetailModal = () => import('./components/ReadingDetailModal');
@@ -100,8 +100,6 @@ function AppContent() {
   const [dailyProverb, setDailyProverb] = useState('');
   const [formQuestion, setFormQuestion] = useState('');
   const [hasCards, setHasCards] = useState(false);
-
-  const { isDarkMode, toggleDarkMode } = useDarkMode();
 
   // Use custom hook for readings state
   const {
@@ -328,6 +326,7 @@ function AppContent() {
     try {
       // Get local data from localStorage
       const localReadings = localStorage.getItem('tarot_readings');
+      const guestReadings = localStorage.getItem('tarot_guest_data');
       const localSpreads = localStorage.getItem('tarot_spreads');
       let parsedLocalSpreads: unknown = [];
 
@@ -344,9 +343,14 @@ function AppContent() {
       let migratedCount = 0;
       
       // Migrate readings
-      if (localReadings) {
+      const localReadingSources = [localReadings, guestReadings].filter(Boolean);
+      if (localReadingSources.length > 0) {
         try {
-          const readingsData = JSON.parse(localReadings);
+          const readingsData = localReadingSources.flatMap(source => {
+            const parsed = JSON.parse(source as string);
+            return Array.isArray(parsed) ? parsed : [];
+          });
+
           if (Array.isArray(readingsData)) {
             const migratedReadings = normalizeLegacyReadingSpreadNames<TarotReading>(
               readingsData.filter((reading: TarotReading) => !reading.isExample && reading.id),
@@ -383,12 +387,8 @@ function AppContent() {
         }
       }
       
-      // Clear local storage after successful migration
-      localStorage.removeItem('tarot_readings');
-      localStorage.removeItem('tarot_spreads');
-      
       setShowMigrationPrompt(false);
-      setSnackbar({ isOpen: true, message: `✨ 成功迁移 ${migratedCount} 条记录至云端。` });
+      setSnackbar({ isOpen: true, message: `✨ 已合并 ${migratedCount} 条本机记录，云端同步成功前会保留本地备份。` });
     } catch (error) {
       console.error('Migration failed:', error);
       setSnackbar({ isOpen: true, message: '❌ 迁移失败，请稍后再试。' });
@@ -488,20 +488,20 @@ function AppContent() {
         version: '1.2.0'
       };
       
-      const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
+      const blob = createTarotExportPdfBlob(exportData);
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
-      link.download = `tarot_pavilion_export_${new Date().toISOString().split('T')[0]}.json`;
+      link.download = `tarot_pavilion_export_${new Date().toISOString().split('T')[0]}.pdf`;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
       URL.revokeObjectURL(url);
       
-      setSnackbar({ isOpen: true, message: '✨ 典籍已撰录成册，请妥善保存。' });
+      setSnackbar({ isOpen: true, message: '✨ 典籍 PDF 已撰录成册，请妥善保存。' });
     } catch (error) {
       console.error('Export failed:', error);
-      setSnackbar({ isOpen: true, message: '❌ 撰录失败，请稍后再试。' });
+      setSnackbar({ isOpen: true, message: '❌ PDF 撰录失败，请稍后再试。' });
     }
   };
 
@@ -861,7 +861,7 @@ function AppContent() {
         >
           <div className="flex items-center gap-3">
             <Database size={18} className="text-forest-accent" />
-            <span className="text-sm font-medium">撰录成册 (Beta)</span>
+            <span className="text-sm font-medium">下载典籍 PDF (Beta)</span>
           </div>
           <ChevronRight size={14} className="text-forest-muted group-hover:translate-x-1 transition-transform" />
         </button>
@@ -877,11 +877,11 @@ function AppContent() {
         </button>
       </div>
 
-      <div className="pt-4">
-        <p className="text-[10px] text-forest-muted font-bold px-2 uppercase tracking-widest mb-2">阁主管理</p>
-        {session ? (
+      {session && (
+        <div className="pt-4">
+          <p className="text-[10px] text-forest-muted font-bold px-2 uppercase tracking-widest mb-2">阁主管理</p>
           <div className="space-y-1">
-            <button 
+            <button
               onClick={() => {
                 setSelectedAuthor(profile?.display_name || profile?.nickname || session.email?.split('@')[0]);
                 setActiveTab('profile');
@@ -897,14 +897,14 @@ function AppContent() {
               </div>
               <ChevronRight size={14} className="text-forest-muted group-hover:translate-x-1 transition-transform" />
             </button>
-            <button 
+            <button
               onClick={() => { setShowLogoutConfirm(true); closeSidebar(); }}
               className="w-full flex items-center gap-3 p-3 rounded-xl hover:bg-forest-accent/5 text-forest-accent transition-all"
             >
               <LogOut size={18} />
               <span className="text-sm font-medium">封印离阁</span>
             </button>
-            <button 
+            <button
               onClick={() => { setIsSecurityModalOpen(true); closeSidebar(); }}
               className="w-full flex items-center gap-3 p-3 rounded-xl hover:bg-forest-accent/5 text-forest-text transition-all"
             >
@@ -912,16 +912,8 @@ function AppContent() {
               <span className="text-sm font-medium">账号安全</span>
             </button>
           </div>
-        ) : (
-          <button 
-            onClick={() => { setShowAuthPage(true); closeSidebar(); }}
-            className="w-full flex items-center gap-3 p-3 rounded-xl hover:bg-forest-pink/10 text-forest-pink transition-all"
-          >
-            <LogIn size={18} />
-            <span className="text-sm font-medium">执印入阁</span>
-          </button>
-        )}
-      </div>
+        </div>
+      )}
 
       <div className="pt-4">
         <p className="text-[10px] text-forest-muted font-bold px-2 uppercase tracking-widest mb-2">系统设置</p>
@@ -1175,23 +1167,6 @@ function AppContent() {
             </button>
           )}
 
-          <div className="p-4 bg-forest-bg/30 rounded-xl">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-forest-accent/10 flex items-center justify-center">
-                <Moon size={18} className="text-forest-accent" />
-              </div>
-              <div className="flex-1">
-                <p className="text-sm font-bold text-forest-ink">主题设置</p>
-                <p className="text-xs text-forest-muted">{isDarkMode ? '深色模式' : '浅色模式'}</p>
-              </div>
-              <button 
-                onClick={toggleDarkMode}
-                className={`relative w-14 h-7 rounded-full transition-colors ${isDarkMode ? 'bg-forest-accent' : 'bg-forest-border'}`}
-              >
-                <span className={`absolute top-1 w-5 h-5 rounded-full bg-white shadow transition-transform ${isDarkMode ? 'left-8' : 'left-1'}`} />
-              </button>
-            </div>
-          </div>
         </div>
       </Modal>
 
@@ -1445,6 +1420,7 @@ function AppContent() {
               onExtractKeywordCandidates={handleExtractKeywordCandidates}
               onConfirmKeywordCandidates={handleConfirmKeywordCandidates}
               cardMetadata={cardMetadata}
+              onAddReading={handleAddReadingWithSnackbar}
             />
           </Suspense>
         )}

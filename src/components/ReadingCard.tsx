@@ -106,6 +106,7 @@ export const ReadingCard: React.FC<ReadingCardProps> = ({
   const canReviewKeywords = !isPublicView && !reading.isExample && !!onExtractKeywordCandidates && !!onConfirmKeywordCandidates;
   const hasFeedback = !!reading.userFeedback?.trim();
   const displayAuthorName = reading.isAnonymous ? '匿名研习者' : reading.authorName;
+  const clientDisplayName = reading.clientName?.trim() || '未命名客户';
   const cardInterpretationRows = (reading.cards || [])
     .map((card, index) => ({
       card,
@@ -443,6 +444,11 @@ export const ReadingCard: React.FC<ReadingCardProps> = ({
                   AI解读
                 </span>
               )}
+              {reading.isForClient && (
+                <span className="px-1.5 py-0.5 bg-amber-100 text-amber-700 text-[10px] rounded-full font-bold">
+                  客户记录
+                </span>
+              )}
               {hasFeedback && (
                 <span className="px-1.5 py-0.5 bg-forest-accent/10 text-forest-accent text-[10px] rounded-full font-bold inline-flex items-center gap-1 shrink-0">
                   <CheckCircle2 size={10} strokeWidth={2.5} />
@@ -455,6 +461,12 @@ export const ReadingCard: React.FC<ReadingCardProps> = ({
               <span className="text-xs text-forest-muted">{reading.spread}</span>
               <span className="text-forest-accent/30">|</span>
               <span className="text-xs text-forest-muted">{reading.cards.length}张牌</span>
+              {reading.isForClient && (
+                <>
+                  <span className="text-forest-accent/30">|</span>
+                  <span className="text-xs font-bold text-amber-700">{clientDisplayName}</span>
+                </>
+              )}
             </div>
           </div>
           {!isPublicView && (onTogglePublic || onEdit || onDelete) && (
@@ -622,6 +634,9 @@ export const ReadingCard: React.FC<ReadingCardProps> = ({
                         <Sparkles size={13} />
                         个人关键词
                       </h4>
+                      <p className="mt-1 text-[10px] leading-relaxed text-forest-muted">
+                        AI 整理会从这条手记中提取候选关键词，确认后才会写入你的个人牌义记忆。
+                      </p>
                       {keywordNotice && (
                         <p className="mt-1 text-[10px] text-forest-muted">{keywordNotice}</p>
                       )}

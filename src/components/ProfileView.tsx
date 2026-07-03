@@ -1,5 +1,5 @@
 import React, { useMemo, useState, useRef } from 'react';
-import { User, Sparkles, Edit3, Save, X, Calendar, BookOpen, Award, Check, Lock, ShieldCheck, Copy, LogOut, Camera, HelpCircle } from 'lucide-react';
+import { Sparkles, Edit3, X, Calendar, BookOpen, Award, Lock, Copy, LogOut, Camera, HelpCircle } from 'lucide-react';
 import { FeatureGuide } from './FeatureGuide';
 import { TarotReading, TarotCardMetadata, UserProfile } from '../types';
 import { AvatarCropModal } from './AvatarCropModal';
@@ -18,6 +18,34 @@ interface ProfileViewProps {
   onViewAll?: () => void;
   onLogout?: () => void;
 }
+
+const DefaultTarotAvatar = () => (
+  <div
+    role="img"
+    aria-label="默认塔罗花纹头像"
+    className="relative h-full w-full overflow-hidden bg-gradient-to-br from-forest-bg via-white to-forest-accent/12"
+  >
+    <div className="absolute -inset-6 rounded-full bg-[radial-gradient(circle_at_35%_25%,rgba(220,190,120,0.28),transparent_34%),radial-gradient(circle_at_70%_72%,rgba(68,111,82,0.18),transparent_38%)]" />
+    <div className="absolute inset-5 rounded-full border border-forest-accent/20" />
+    <div className="absolute inset-8 rounded-full border border-dashed border-forest-accent/18" />
+    <svg className="absolute inset-0 h-full w-full text-forest-accent/50" viewBox="0 0 160 160" aria-hidden="true">
+      <path d="M52 116c-14-20-14-52 0-72" fill="none" stroke="currentColor" strokeWidth="4" strokeLinecap="round" />
+      <path d="M108 116c14-20 14-52 0-72" fill="none" stroke="currentColor" strokeWidth="4" strokeLinecap="round" />
+      <path d="M80 38l7.5 22 22 7.5-22 7.5L80 97l-7.5-22-22-7.5 22-7.5L80 38z" fill="none" stroke="currentColor" strokeWidth="4" strokeLinejoin="round" />
+      <path d="M103 35a20 20 0 1 1-18 29 22 22 0 0 0 26-26 19 19 0 0 1-8-3z" fill="currentColor" opacity="0.18" />
+      <circle cx="47" cy="42" r="3" fill="currentColor" opacity="0.45" />
+      <circle cx="116" cy="112" r="3" fill="currentColor" opacity="0.4" />
+      <path d="M42 111c12-9 24-14 38-14s26 5 38 14" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" opacity="0.55" />
+    </svg>
+    <div className="absolute left-1/2 top-7 flex -translate-x-1/2 items-center gap-1.5">
+      <span className="h-1.5 w-1.5 rounded-full bg-forest-accent/25" />
+      <span className="h-2 w-2 rounded-full bg-forest-accent/40" />
+      <span className="h-3 w-3 rounded-full border border-forest-accent/45 bg-white/50" />
+      <span className="h-2 w-2 rounded-full bg-forest-accent/40" />
+      <span className="h-1.5 w-1.5 rounded-full bg-forest-accent/25" />
+    </div>
+  </div>
+);
 
 export function ProfileView({ 
   authorName, 
@@ -129,9 +157,7 @@ export function ProfileView({
             {profile?.avatar_url ? (
               <img src={profile.avatar_url} alt="Avatar" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
             ) : (
-              <div className="w-full h-full flex items-center justify-center bg-forest-accent/5">
-                <User size={64} className="text-forest-accent/20" />
-              </div>
+              <DefaultTarotAvatar />
             )}
             
             {canEditProfile && (

@@ -1,11 +1,12 @@
 import React, { useMemo, useState } from 'react';
 import { motion } from 'motion/react';
-import { Archive, Search, X, BookOpen, CheckCircle2, Circle, ChevronDown, Filter } from 'lucide-react';
-import { ReadingKeywordCandidate, TarotReading, TarotCardMetadata } from '../../types';
+import { Archive, Search, X, BookOpen, CheckCircle2, Circle, ChevronDown, Filter, UserRound, UsersRound, Plus } from 'lucide-react';
+import { DailyFortune, ReadingKeywordCandidate, ReadingFormData, TarotReading, TarotCardMetadata } from '../../types';
 import { ReadingCard } from '../ReadingCard';
 import { useProgressiveList } from '../../hooks/useProgressiveList';
 import { useDailyFortune } from '../../hooks/useDailyFortune';
 import { DailyFortuneArchiveModal } from '../DailyFortuneArchiveModal';
+import { TAROT_CARDS } from '../../constants';
 
 interface PrivateTabProps {
   readings: TarotReading[];
@@ -23,6 +24,7 @@ interface PrivateTabProps {
   onExtractKeywordCandidates: (id: string) => Promise<ReadingKeywordCandidate[]>;
   onConfirmKeywordCandidates: (id: string, candidates: ReadingKeywordCandidate[]) => void;
   cardMetadata: TarotCardMetadata[];
+  onAddReading?: (data: Partial<ReadingFormData>) => void;
 }
 
 export const PrivateTab: React.FC<PrivateTabProps> = ({
@@ -40,21 +42,72 @@ export const PrivateTab: React.FC<PrivateTabProps> = ({
   onProcessAi,
   onExtractKeywordCandidates,
   onConfirmKeywordCandidates,
-  cardMetadata
+  cardMetadata,
+  onAddReading
 }) => {
   const [reviewFilter, setReviewFilter] = useState<'all' | 'reviewed' | 'unreviewed'>('all');
+  const [audienceFilter, setAudienceFilter] = useState<'all' | 'self' | 'client'>('all');
+  const [clientFilter, setClientFilter] = useState('');
   const [isReviewFilterOpen, setIsReviewFilterOpen] = useState(false);
   const [isDailyArchiveOpen, setIsDailyArchiveOpen] = useState(false);
   const {
     getArchivedFortunes,
+    getToday,
     updateDailyFortuneReflection,
   } = useDailyFortune();
   const archivedDailyFortunes = getArchivedFortunes();
+  const todayFortune = getToday();
+  const todayFortuneSaved = !!todayFortune && readings.some(reading => (
+    reading.category === '日运'
+    && reading.readingDate?.slice(0, 10) === todayFortune.date
+    && reading.cards?.some(card => card.name === todayFortune.cardName)
+  ));
+
+  const saveDailyFortuneToReading = (fortune: DailyFortune) => {
+    if (!onAddReading) return;
+
+    onAddReading({
+      question: `日运 · ${fortune.date}`,
+      spread: '单牌阵',
+      layoutType: 'horizontal',
+      readingDate: fortune.date,
+      category: '日运',
+      cards: [{
+        name: fortune.cardName,
+        isReversed: fortune.isReversed,
+        label: '日运',
+      }],
+      slotLabels: ['日运'],
+      cardInterpretations: [fortune.interpretation],
+      interpretation: {
+        singleCard: fortune.interpretation,
+        combination: '',
+      },
+      isPublic: false,
+      isAnonymous: false,
+      isForClient: false,
+      userFeedback: fortune.reflection || '',
+    });
+  };
+
+  const clientNames = useMemo(() => (
+    Array.from(new Set(
+      readings
+        .filter(reading => reading.isForClient)
+        .map(reading => reading.clientName?.trim() || '未命名客户')
+    )).sort((a, b) => a.localeCompare(b, 'zh-CN'))
+  ), [readings]);
 
   const filteredReadings = useMemo(() => readings.filter(r => {
     const hasFeedback = !!r.userFeedback?.trim();
     if (reviewFilter === 'reviewed' && !hasFeedback) return false;
     if (reviewFilter === 'unreviewed' && hasFeedback) return false;
+    if (audienceFilter === 'self' && r.isForClient) return false;
+    if (audienceFilter === 'client' && !r.isForClient) return false;
+    if (clientFilter) {
+      const name = r.clientName?.trim() || '未命名客户';
+      if (!r.isForClient || name !== clientFilter) return false;
+    }
 
     if (!searchQuery && searchTags.length === 0) return true;
     
@@ -63,13 +116,14 @@ export const PrivateTab: React.FC<PrivateTabProps> = ({
       r.id.toLowerCase().includes(q) ||
       r.question.toLowerCase().includes(q) ||
       r.keywords.some(k => k.toLowerCase().includes(q)) ||
-      r.authorName.toLowerCase().includes(q);
+      r.authorName.toLowerCase().includes(q) ||
+      (r.clientName || '').toLowerCase().includes(q);
     
     const matchesTags = searchTags.length === 0 || 
       searchTags.every(tag => r.keywords.includes(tag));
     
     return matchesQuery && matchesTags;
-  }), [readings, reviewFilter, searchQuery, searchTags]);
+  }), [readings, reviewFilter, audienceFilter, clientFilter, searchQuery, searchTags]);
 
   const {
     hasMore,
@@ -80,6 +134,8 @@ export const PrivateTab: React.FC<PrivateTabProps> = ({
   const handleClearFilters = () => {
     setSearchQuery('');
     setReviewFilter('all');
+    setAudienceFilter('all');
+    setClientFilter('');
     setIsReviewFilterOpen(false);
     searchTags.forEach(onToggleTag);
   };
@@ -130,6 +186,27 @@ export const PrivateTab: React.FC<PrivateTabProps> = ({
             查看
           </button>
         </div>
+        {todayFortune && (
+          <div className="mt-3 rounded-2xl border border-forest-accent/10 bg-forest-bg/60 p-3">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div className="min-w-0">
+                <p className="text-[10px] font-bold uppercase tracking-widest text-forest-muted">今日日运</p>
+                <p className="mt-1 text-sm font-bold text-forest-ink">
+                  {todayFortune.cardName} · {todayFortune.isReversed ? '逆位' : '正位'}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => saveDailyFortuneToReading(todayFortune)}
+                disabled={todayFortuneSaved}
+                className="flex min-h-10 shrink-0 items-center justify-center gap-1.5 rounded-full bg-forest-ink px-4 text-xs font-bold text-white transition-all hover:bg-forest-accent disabled:bg-forest-accent/20 disabled:text-forest-muted"
+              >
+                {todayFortuneSaved ? <CheckCircle2 size={14} /> : <Plus size={14} />}
+                {todayFortuneSaved ? '已存入典籍' : '存入典籍'}
+              </button>
+            </div>
+          </div>
+        )}
         <div className="mt-3 grid grid-cols-2 gap-2 text-xs sm:grid-cols-3">
           <div className="rounded-xl bg-forest-bg/70 px-3 py-2">
             <p className="text-[10px] text-forest-muted">已归档</p>
@@ -213,8 +290,62 @@ export const PrivateTab: React.FC<PrivateTabProps> = ({
           )}
         </div>
       </div>
+
+      <section className="rounded-2xl border border-forest-accent/10 bg-white/80 p-3 shadow-sm">
+        <div className="flex flex-wrap items-center gap-2">
+          {[
+            { id: 'all' as const, label: '全部记录', icon: BookOpen },
+            { id: 'self' as const, label: '给自己', icon: UserRound },
+            { id: 'client' as const, label: '客户记录', icon: UsersRound },
+          ].map(option => {
+            const Icon = option.icon;
+            const active = audienceFilter === option.id;
+
+            return (
+              <button
+                key={option.id}
+                type="button"
+                onClick={() => {
+                  setAudienceFilter(option.id);
+                  if (option.id !== 'client') setClientFilter('');
+                }}
+                className={`min-h-10 rounded-full px-3 text-xs font-bold transition-all flex items-center gap-1.5 ${
+                  active
+                    ? 'bg-forest-accent text-white shadow-sm'
+                    : 'bg-forest-accent/5 text-forest-accent hover:bg-forest-accent/10'
+                }`}
+              >
+                <Icon size={13} />
+                {option.label}
+              </button>
+            );
+          })}
+        </div>
+
+        {clientNames.length > 0 && (
+          <div className="mt-3 flex gap-2 overflow-x-auto pb-1 no-scrollbar">
+            {clientNames.map(name => (
+              <button
+                key={name}
+                type="button"
+                onClick={() => {
+                  setAudienceFilter('client');
+                  setClientFilter(name === clientFilter ? '' : name);
+                }}
+                className={`min-h-9 shrink-0 rounded-full border px-3 text-[10px] font-bold transition-all ${
+                  clientFilter === name
+                    ? 'border-forest-accent bg-forest-accent text-white'
+                    : 'border-forest-accent/10 bg-white text-forest-muted hover:text-forest-accent'
+                }`}
+              >
+                {name}
+              </button>
+            ))}
+          </div>
+        )}
+      </section>
       
-      {(searchQuery || searchTags.length > 0 || reviewFilter !== 'all') && (
+      {(searchQuery || searchTags.length > 0 || reviewFilter !== 'all' || audienceFilter !== 'all' || clientFilter) && (
         <div className="flex flex-wrap items-center gap-2 px-2">
           <span className="text-[10px] text-forest-muted">正在筛选:</span>
           {searchQuery && (
@@ -233,6 +364,21 @@ export const PrivateTab: React.FC<PrivateTabProps> = ({
             <span className="px-2 py-0.5 bg-forest-accent/10 text-forest-accent rounded-full text-[10px] font-medium flex items-center gap-1">
               复盘: {reviewFilter === 'reviewed' ? '已复盘' : '未复盘'}
               <X size={10} className="cursor-pointer" onClick={() => setReviewFilter('all')} />
+            </span>
+          )}
+          {audienceFilter !== 'all' && (
+            <span className="px-2 py-0.5 bg-forest-accent/10 text-forest-accent rounded-full text-[10px] font-medium flex items-center gap-1">
+              类型: {audienceFilter === 'self' ? '给自己' : '客户记录'}
+              <X size={10} className="cursor-pointer" onClick={() => {
+                setAudienceFilter('all');
+                setClientFilter('');
+              }} />
+            </span>
+          )}
+          {clientFilter && (
+            <span className="px-2 py-0.5 bg-forest-accent/10 text-forest-accent rounded-full text-[10px] font-medium flex items-center gap-1">
+              客户: {clientFilter}
+              <X size={10} className="cursor-pointer" onClick={() => setClientFilter('')} />
             </span>
           )}
           <button 

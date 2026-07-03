@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { Mail, Lock, Send, Sparkles, ArrowRight, CloudOff, Home, Clock, CheckCircle, X, AlertCircle } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { checkIfMagicLink, confirmPasswordReset } from '../lib/firebase';
+import { normalizeEmailInput } from '../lib/emailInput';
 
 interface AuthProps {
   onClose?: () => void;
@@ -55,7 +56,7 @@ export const Auth: React.FC<AuthProps> = ({ onClose, onSignedOut }) => {
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    const normalizedEmail = email.trim();
+    const normalizedEmail = normalizeEmailInput(email);
     if (!normalizedEmail || !password || loading) return;
 
     setLoading(true);
@@ -102,7 +103,7 @@ export const Auth: React.FC<AuthProps> = ({ onClose, onSignedOut }) => {
 
   const handleSignUp = async (e: React.FormEvent) => {
     e.preventDefault();
-    const normalizedEmail = email.trim();
+    const normalizedEmail = normalizeEmailInput(email);
     if (!normalizedEmail || !password || loading) return;
 
     setLoading(true);
@@ -124,7 +125,7 @@ export const Auth: React.FC<AuthProps> = ({ onClose, onSignedOut }) => {
           break;
         case 'auth/email-already-in-use':
           errorMessage = "该邮箱已被注册，请尝试找回密码。";
-          setResetEmail(email);
+          setResetEmail(normalizeEmailInput(email));
           setShowResetPassword(true);
           break;
         case 'auth/network-request-failed':
@@ -195,7 +196,7 @@ export const Auth: React.FC<AuthProps> = ({ onClose, onSignedOut }) => {
     setResetError('');
 
     try {
-      await resetPassword(resetEmail);
+      await resetPassword(normalizeEmailInput(resetEmail));
       setResetMessage('密码重置邮件已发送，请查收您的邮箱。');
       setResetEmail('');
     } catch (err: any) {
@@ -424,12 +425,19 @@ export const Auth: React.FC<AuthProps> = ({ onClose, onSignedOut }) => {
                     <div className="relative">
                       <input
                         type="email"
+                        name="email"
+                        inputMode="email"
+                        lang="en"
+                        autoComplete="email"
+                        autoCapitalize="none"
+                        autoCorrect="off"
+                        spellCheck={false}
                         required
                         disabled={loading}
                         className="w-full pl-10 pr-4 py-3.5 bg-forest-bg/30 border border-forest-accent/10 rounded-xl focus:ring-2 focus:ring-forest-accent/20 transition-all outline-none text-sm"
                         placeholder="example@email.com"
                         value={email}
-                        onChange={(e) => setEmail(e.target.value)}
+                        onChange={(e) => setEmail(normalizeEmailInput(e.target.value))}
                       />
                       <Mail className="absolute left-3 top-1/2 -translate-y-1/2 text-forest-muted" size={16} />
                     </div>
@@ -475,7 +483,7 @@ export const Auth: React.FC<AuthProps> = ({ onClose, onSignedOut }) => {
                           animate={{ opacity: 1 }}
                           onClick={() => {
                             setShowResetPassword(true);
-                            setResetEmail(email);
+                            setResetEmail(normalizeEmailInput(email));
                           }}
                           className="block w-full mt-2 py-1.5 text-xs text-forest-accent hover:underline transition-colors"
                         >
@@ -608,12 +616,19 @@ export const Auth: React.FC<AuthProps> = ({ onClose, onSignedOut }) => {
                   <div className="relative">
                     <input
                       type="email"
+                      name="reset-email"
+                      inputMode="email"
+                      lang="en"
+                      autoComplete="email"
+                      autoCapitalize="none"
+                      autoCorrect="off"
+                      spellCheck={false}
                       required
                       disabled={loading}
                       className="w-full pl-10 pr-4 py-3.5 bg-forest-bg/30 border border-forest-accent/10 rounded-xl focus:ring-2 focus:ring-forest-accent/20 transition-all outline-none text-sm"
                       placeholder="example@email.com"
                       value={resetEmail}
-                      onChange={(e) => setResetEmail(e.target.value)}
+                      onChange={(e) => setResetEmail(normalizeEmailInput(e.target.value))}
                     />
                     <Mail className="absolute left-3 top-1/2 -translate-y-1/2 text-forest-muted" size={16} />
                   </div>

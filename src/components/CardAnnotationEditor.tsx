@@ -250,6 +250,30 @@ export const CardAnnotationEditor: React.FC<CardAnnotationEditorProps> = ({
                 ))}
               </div>
 
+              {filter === 'modified' && modifiedCardIds.size > 0 && (
+                <div className="rounded-2xl border border-forest-accent/10 bg-white/70 p-3">
+                  <p className="mb-2 text-[10px] font-bold uppercase tracking-widest text-forest-muted">
+                    已修改牌义
+                  </p>
+                  <div className="flex max-h-28 flex-wrap gap-1.5 overflow-y-auto pr-1">
+                    {TAROT_CARDS.filter(card => modifiedCardIds.has(card.id)).map(card => (
+                      <button
+                        key={card.id}
+                        type="button"
+                        onClick={() => handleCardSelect(card.id)}
+                        className={`min-h-8 rounded-full px-2.5 text-[10px] font-bold transition-colors ${
+                          selectedCardId === card.id
+                            ? 'bg-forest-accent text-white'
+                            : 'bg-forest-accent/10 text-forest-accent hover:bg-forest-accent/15'
+                        }`}
+                      >
+                        {card.name}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               <div className="flex flex-wrap gap-2">
                 {[
                   { key: 'wands', label: '权杖', color: 'rose' },
@@ -374,7 +398,7 @@ export const CardAnnotationEditor: React.FC<CardAnnotationEditorProps> = ({
                 </div>
 
                 {/* Editor Form */}
-                <div className="flex-1 overflow-y-auto p-4 space-y-4">
+                <div className="flex-1 overflow-y-auto p-4 space-y-4 pb-28 md:pb-6">
                   {/* Basic Info Grid */}
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
@@ -475,8 +499,8 @@ export const CardAnnotationEditor: React.FC<CardAnnotationEditorProps> = ({
                   </div>
                 </div>
 
-                {/* Action Buttons */}
-                <div className="p-4 border-t border-forest-accent/20 bg-forest-bg/50 shrink-0">
+                  {/* Action Buttons */}
+                  <div className="rounded-2xl border border-forest-accent/15 bg-forest-bg/70 p-4">
                   {/* Success Message */}
                   <AnimatePresence>
                     {showSaveSuccess && (
@@ -522,7 +546,7 @@ export const CardAnnotationEditor: React.FC<CardAnnotationEditorProps> = ({
                     </div>
                   </div>
                 </div>
-              </>
+                </>
             ) : (
               <div className="flex-1 flex items-center justify-center text-forest-muted">
                 <div className="text-center">

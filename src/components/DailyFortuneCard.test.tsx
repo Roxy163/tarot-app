@@ -45,13 +45,13 @@ describe('DailyFortuneCard', () => {
     });
   });
 
-  it('offers system daily draw controls and physical card entry before a fortune exists', async () => {
+  it('offers physical card entry before a fortune exists', async () => {
     const user = userEvent.setup();
     const props = renderCard();
 
     expect(screen.getByText('系统抽牌')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '洗牌' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: '随机一张' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '从洗好的牌组随机一张' })).not.toBeInTheDocument();
     expect(screen.getByText('录入现实牌')).toBeInTheDocument();
     expect(screen.getByText('不抽日运时，也可以把这里当作单牌抽查：先说出关键词，再看牌义。')).toBeInTheDocument();
 
@@ -60,6 +60,18 @@ describe('DailyFortuneCard', () => {
 
     await user.click(screen.getByText('愚者'));
     expect(props.onCreateFromCard).toHaveBeenCalledWith('ar00', false, 'physical-draw');
+  });
+
+  it('shows random draw only after shuffling the daily deck', async () => {
+    const user = userEvent.setup();
+    renderCard();
+
+    expect(screen.getByRole('button', { name: '洗牌' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '从洗好的牌组随机一张' })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: '洗牌' }));
+    expect(await screen.findByRole('heading', { name: '选择今日日运牌' }, { timeout: 3000 })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '从洗好的牌组随机一张' })).toBeInTheDocument();
   });
 
   it('archives a revealed daily fortune with one reflection dialog', async () => {
@@ -99,8 +111,9 @@ describe('DailyFortuneCard', () => {
     const user = userEvent.setup();
     const props = renderCard({ fortune: baseFortune, fortunes: [baseFortune] });
 
-    await user.click(screen.getByRole('button', { name: '重新抽牌并输入数字' }));
-    expect(screen.getByRole('heading', { name: '重新选择今日日运牌' })).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: '重新洗牌抽日运' }));
+    await user.click(screen.getByRole('button', { name: '重新洗牌' }));
+    expect(await screen.findByRole('heading', { name: '重新选择今日日运牌' }, { timeout: 3000 })).toBeInTheDocument();
 
     await user.type(screen.getByPlaceholderText('输入你心中的数字...'), '7');
     await user.click(screen.getByRole('button', { name: '确认选择' }));

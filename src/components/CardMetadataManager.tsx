@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Search, Save, RotateCcw, Info, ChevronRight, Filter, Book, Sparkles, MessageSquare, History, Calendar, Pencil, Hash, Sun, Plus, ChevronDown, ChevronUp, Edit3 } from 'lucide-react';
-import { CardKeywordMemory, TarotCardMetadata, TarotReading, DailyFortune } from '../types';
+import { Search, Save, RotateCcw, Info, ChevronRight, Filter, Book, Sparkles, MessageSquare, History, Calendar, Pencil, Hash, Plus, Edit3 } from 'lucide-react';
+import { CardKeywordMemory, TarotCardMetadata, TarotReading } from '../types';
 import { getCardImageUrl, TAROT_CARDS } from '../constants';
 import { useCardNumerology } from '../hooks/useCardNumerology';
 import { getCardAnnotations, saveCardAnnotation } from '../lib/firebaseData';
@@ -224,7 +224,6 @@ export function CardMetadataManager({ metadata, onUpdate, readings, cardKeywordM
   const [filterType, setFilterType] = useState<'all' | 'major' | 'wands' | 'cups' | 'swords' | 'pentacles'>('all');
   const [personalMeanings, setPersonalMeanings] = useState<Record<string, string>>({});
   const [isSaving, setIsSaving] = useState(false);
-  const [showFortuneSection, setShowFortuneSection] = useState(false);
   const [showAnnotationEditor, setShowAnnotationEditor] = useState(false);
   const [annotationEditorCardId, setAnnotationEditorCardId] = useState<string | undefined>(undefined);
   const [modifiedCount, setModifiedCount] = useState(0);
@@ -238,61 +237,6 @@ export function CardMetadataManager({ metadata, onUpdate, readings, cardKeywordM
     setModifiedCount(cardAnnotationService.getModifiedCardIds().length);
   }, [showAnnotationEditor]);
   
-  const todayFortune = useMemo(() => {
-    const STORAGE_KEY = 'tarot_daily_fortunes';
-    const saved = localStorage.getItem(STORAGE_KEY);
-    if (saved) {
-      try {
-        const fortunes: DailyFortune[] = JSON.parse(saved);
-        const today = new Date().toISOString().split('T')[0];
-        return fortunes.find(f => f.date === today) || null;
-      } catch {
-        return null;
-      }
-    }
-    return null;
-  }, []);
-  
-  const handleSaveFortuneToReading = () => {
-    if (!todayFortune || !onAddReading) return;
-    
-    const cardData = TAROT_CARDS.find(c => c.name === todayFortune.cardName);
-    if (!cardData) return;
-    
-    const newReading = {
-      id: `reading-${Date.now()}`,
-      date: new Date().toISOString(),
-      readingDate: todayFortune.date,
-      question: `日运 · ${todayFortune.date}`,
-      cards: [{
-        name: todayFortune.cardName,
-        isReversed: todayFortune.isReversed,
-        position: 0,
-        label: '日运',
-        image: getCardImageUrl(cardData.id),
-        interpretation: todayFortune.interpretation
-      }],
-      keywords: ['日运', '每日运势', todayFortune.date.replace(/-/g, '/')],
-      spread: '单牌牌阵',
-      interpretation: {
-        singleCard: todayFortune.interpretation,
-        combination: ''
-      },
-      cardInterpretations: [todayFortune.interpretation],
-      reflection: todayFortune.reflection || '',
-      isPublic: false,
-      isExample: false
-    };
-    
-    onAddReading(newReading);
-    
-    if (onShowSnackbar) {
-      onShowSnackbar('✨ 日运已保存至典籍，可随时回顾！');
-    }
-    
-    setShowFortuneSection(false);
-  };
-
   // Load personal meanings
   useEffect(() => {
     const loadMeanings = async () => {
@@ -429,84 +373,6 @@ export function CardMetadataManager({ metadata, onUpdate, readings, cardKeywordM
         onClose={() => setShowResetConfirm(false)}
       />
 
-      {todayFortune && (
-        <motion.div 
-          initial={{ opacity: 0, y: -10 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="bg-gradient-to-br from-amber-50 to-orange-50 rounded-[2rem] border border-amber-200/50 p-5 shadow-lg"
-        >
-          <button
-            onClick={() => setShowFortuneSection(!showFortuneSection)}
-            className="w-full flex items-center justify-between"
-          >
-            <div className="flex items-center gap-3">
-              <div className="p-2 bg-amber-100 rounded-xl">
-                <Sun className="text-amber-600" size={20} />
-              </div>
-              <div className="text-left">
-                <p className="text-xs font-bold text-amber-600 uppercase tracking-wider">日运记录</p>
-                <p className="text-sm text-forest-ink">{todayFortune.date}</p>
-              </div>
-            </div>
-            {showFortuneSection ? <ChevronUp size={20} className="text-forest-muted" /> : <ChevronDown size={20} className="text-forest-muted" />}
-          </button>
-          
-          <AnimatePresence>
-            {showFortuneSection && (
-              <motion.div
-                initial={{ opacity: 0, height: 0 }}
-                animate={{ opacity: 1, height: 'auto' }}
-                exit={{ opacity: 0, height: 0 }}
-                className="mt-4 pt-4 border-t border-amber-200/50 space-y-4"
-              >
-                <div className="flex gap-4">
-                  <div className={`w-16 h-24 rounded-xl overflow-hidden border-2 border-amber-200/30 ${todayFortune.isReversed ? 'rotate-180' : ''}`}>
-                    <img
-                      src={getCardImageUrl(TAROT_CARDS.find(c => c.name === todayFortune.cardName)?.id || 'ar00')}
-                      alt={todayFortune.cardName}
-                      className="w-full h-full object-contain bg-amber-50"
-                      referrerPolicy="no-referrer"
-                    />
-                  </div>
-                  <div className="flex-1">
-                    <h4 className="font-serif font-bold text-forest-ink">{todayFortune.cardName}</h4>
-                    <p className="text-xs text-forest-muted mt-1">{todayFortune.isReversed ? '逆位' : '正位'}</p>
-                    <p className="text-sm text-forest-text/80 mt-2 line-clamp-2">{todayFortune.interpretation}</p>
-                  </div>
-                </div>
-                
-                {todayFortune.reflection && (
-                  <div className="p-3 bg-amber-50 rounded-xl">
-                    <p className="text-xs text-amber-600 font-medium">今日感悟</p>
-                    <p className="text-sm text-forest-ink mt-1">{todayFortune.reflection}</p>
-                  </div>
-                )}
-                
-                <div className="flex gap-3">
-                  <button
-                    onClick={handleSaveFortuneToReading}
-                    className="flex-1 min-h-11 px-4 py-2.5 bg-amber-500 text-white rounded-xl text-sm font-bold hover:bg-amber-600 transition-all shadow-lg shadow-amber-500/20 flex items-center justify-center gap-2"
-                  >
-                    <Plus size={16} />
-                    保存至典籍
-                  </button>
-                  <button
-                    onClick={() => setShowFortuneSection(false)}
-                    className="min-h-11 px-4 py-2.5 bg-white/50 text-forest-muted rounded-xl text-sm hover:text-forest-ink transition-colors"
-                  >
-                    收起
-                  </button>
-                </div>
-                
-                <p className="text-[10px] text-amber-500/70 text-center">
-                  保存后将以「日运」标签分类，方便后续数据汇总分析
-                </p>
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </motion.div>
-      )}
-      
       <div className="ancient-book-bg p-4 sm:p-8 rounded-[2rem] border border-forest-accent/10 shadow-xl space-y-6">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
           <div className="flex items-center gap-4">

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { CardKeywordMemory, ReadingKeywordCandidate, TarotReading, SpreadDefinition, TarotCardMetadata } from '../types';
 import { INITIAL_READINGS, OFFICIAL_SPREADS } from '../constants';
 import { extractKeywords, recognizeCards, suggestReadingKeywords } from '../services/geminiService';
@@ -14,9 +14,13 @@ import {
 } from '../lib/firebaseData';
 import {
   getLegacyCustomSpreadNameMap,
-  mergeOfficialSpreadsWithCustom,
   normalizeLegacyReadingSpreadNames,
 } from '../lib/spreadPersistence';
+import {
+  getPersistableReadings,
+  mergeReadingsForSignedInUser,
+  mergeSpreadSources,
+} from '../lib/readingSessionMerge';
 
 const CLOUD_SAVE_DEBOUNCE_MS = 1200;
 
@@ -114,6 +118,7 @@ export const useReadings = (session: { uid?: string; email?: string | null } | n
   const [loadedDataKey, setLoadedDataKey] = useState<string | null>(null);
   const [isCloudSyncPaused, setIsCloudSyncPaused] = useState(false);
   const [syncNotice, setSyncNotice] = useState<string | null>(null);
+  const pendingGuestReadingsSyncRef = useRef(false);
 
   const parseSavedArray = <T,>(key: string): T[] | null => {
     const saved = localStorage.getItem(key);
@@ -135,16 +140,19 @@ export const useReadings = (session: { uid?: string; email?: string | null } | n
       setLoadedDataKey(null);
       setIsCloudSyncPaused(false);
       setSyncNotice(null);
-      const savedLocalReadings = parseSavedArray<TarotReading>(session?.uid ? 'tarot_readings' : 'tarot_guest_data') || [];
+      const savedUserReadings = parseSavedArray<TarotReading>('tarot_readings') || [];
+      const savedGuestReadings = parseSavedArray<TarotReading>('tarot_guest_data') || [];
       const savedSpreads = parseSavedArray<SpreadDefinition>('tarot_spreads') || [];
       const localSpreadNameMap = getLegacyCustomSpreadNameMap(savedSpreads, OFFICIAL_SPREADS);
-      const localReadings = normalizeLegacyReadingSpreadNames(savedLocalReadings, localSpreadNameMap);
-      const localSpreads = mergeOfficialSpreadsWithCustom(savedSpreads, OFFICIAL_SPREADS);
+      const localGuestReadings = normalizeLegacyReadingSpreadNames(savedGuestReadings, localSpreadNameMap);
+      const localUserReadings = normalizeLegacyReadingSpreadNames(savedUserReadings, localSpreadNameMap);
+      const localSpreads = mergeSpreadSources([savedSpreads], OFFICIAL_SPREADS);
       const localMetadata = parseSavedArray<TarotCardMetadata>('tarot_card_metadata') || [];
       const localKeywordMemory = parseSavedArray<CardKeywordMemory>('tarot_card_keyword_memory') || [];
       
       if (!session?.uid) {
-        setReadings([...exampleReadings, ...localReadings]);
+        pendingGuestReadingsSyncRef.current = false;
+        setReadings([...exampleReadings, ...localGuestReadings]);
         setSpreads(localSpreads);
         setCardMetadata(localMetadata);
         setCardKeywordMemory(localKeywordMemory);
@@ -163,11 +171,17 @@ export const useReadings = (session: { uid?: string; email?: string | null } | n
 
         if (cancelled) return;
 
-        const sourceSpreads = cloudSpreads && cloudSpreads.length > 0 ? cloudSpreads : savedSpreads;
-        const sourceReadings = cloudReadings.length > 0 ? cloudReadings : savedLocalReadings;
-        const sourceSpreadNameMap = getLegacyCustomSpreadNameMap(sourceSpreads, OFFICIAL_SPREADS);
-        const mergedSpreads = mergeOfficialSpreadsWithCustom(sourceSpreads, OFFICIAL_SPREADS);
-        setReadings([...exampleReadings, ...normalizeLegacyReadingSpreadNames(sourceReadings, sourceSpreadNameMap)]);
+        const cloudSpreadNameMap = getLegacyCustomSpreadNameMap(cloudSpreads, OFFICIAL_SPREADS);
+        const cloudReadingsNormalized = normalizeLegacyReadingSpreadNames(cloudReadings, cloudSpreadNameMap);
+        const mergedReadings = mergeReadingsForSignedInUser(session.uid, [
+          cloudReadingsNormalized,
+          localUserReadings,
+          localGuestReadings,
+        ]);
+        const mergedSpreads = mergeSpreadSources([cloudSpreads || [], savedSpreads], OFFICIAL_SPREADS);
+
+        pendingGuestReadingsSyncRef.current = getPersistableReadings(localGuestReadings).length > 0;
+        setReadings([...exampleReadings, ...mergedReadings]);
         setSpreads(mergedSpreads);
         setCardMetadata(cloudMetadata && cloudMetadata.length > 0 ? cloudMetadata : localMetadata);
         setCardKeywordMemory(cloudKeywordMemory && cloudKeywordMemory.length > 0 ? cloudKeywordMemory : localKeywordMemory);
@@ -175,7 +189,13 @@ export const useReadings = (session: { uid?: string; email?: string | null } | n
         console.error('Failed to load data:', error);
         if (cancelled) return;
 
-        setReadings([...exampleReadings, ...localReadings]);
+        pendingGuestReadingsSyncRef.current = false;
+        const fallbackReadings = mergeReadingsForSignedInUser(session.uid, [
+          localUserReadings,
+          localGuestReadings,
+        ]);
+
+        setReadings([...exampleReadings, ...fallbackReadings]);
         setSpreads(localSpreads);
         setCardMetadata(localMetadata);
         setCardKeywordMemory(localKeywordMemory);
@@ -203,11 +223,19 @@ export const useReadings = (session: { uid?: string; email?: string | null } | n
       if (isCloudSyncPaused) return;
 
       const timer = window.setTimeout(() => {
-        replaceUserReadings(session.uid, userReadings).catch(error => {
-          console.error('Failed to save readings:', error);
-          setIsCloudSyncPaused(true);
-          setSyncNotice('云端保存失败，后续修改已先写入本地，避免误覆盖云端。');
-        });
+        replaceUserReadings(session.uid, userReadings)
+          .then(() => {
+            if (pendingGuestReadingsSyncRef.current) {
+              localStorage.removeItem('tarot_guest_data');
+              pendingGuestReadingsSyncRef.current = false;
+              setSyncNotice('已将本机手记合并到云端典籍。');
+            }
+          })
+          .catch(error => {
+            console.error('Failed to save readings:', error);
+            setIsCloudSyncPaused(true);
+            setSyncNotice('云端保存失败，后续修改已先写入本地，避免误覆盖云端。');
+          });
       }, CLOUD_SAVE_DEBOUNCE_MS);
 
       return () => window.clearTimeout(timer);

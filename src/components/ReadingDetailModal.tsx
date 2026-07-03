@@ -24,6 +24,7 @@ export const ReadingDetailModal: React.FC<ReadingDetailModalProps> = ({
     ''
   );
   const feedbackText = reading.userFeedback?.trim();
+  const clientDisplayName = reading.clientName?.trim() || '未命名客户';
   const cardRows = (reading.cards || []).map((card, index) => {
     const cardData = TAROT_CARDS.find(item => (
       item.name === card.name ||
@@ -75,10 +76,16 @@ export const ReadingDetailModal: React.FC<ReadingDetailModalProps> = ({
                     已复盘
                   </span>
                 )}
+                {reading.isForClient && (
+                  <span className="px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 text-[10px] font-bold">
+                    客户记录
+                  </span>
+                )}
               </div>
               <h2 className="text-lg sm:text-xl font-bold text-forest-ink line-clamp-2">{reading.question}</h2>
               <p className="text-xs text-forest-muted">
                 {reading.date} · {reading.spread} · {reading.cards.length}张牌
+                {reading.isForClient ? ` · 客户：${clientDisplayName}` : ' · 给自己记录'}
               </p>
             </div>
             <div className="flex items-center gap-1 shrink-0">
@@ -103,6 +110,20 @@ export const ReadingDetailModal: React.FC<ReadingDetailModalProps> = ({
           </div>
 
           <div className="overflow-y-auto max-h-[calc(92vh-88px)] p-4 sm:p-6 space-y-5">
+            {reading.isForClient && (
+              <section className="rounded-2xl bg-amber-50 border border-amber-100 p-4 space-y-2">
+                <h3 className="text-xs font-bold text-amber-700 uppercase tracking-wider">客户档案</h3>
+                <p className="text-sm text-forest-ink">
+                  这是一条给 <span className="font-bold text-amber-700">{clientDisplayName}</span> 的记录，可在典籍中按客户昵称筛选回看。
+                </p>
+                {reading.clientFeedback?.trim() && (
+                  <p className="text-sm text-forest-ink/80 leading-relaxed whitespace-pre-wrap">
+                    客户反馈：{reading.clientFeedback}
+                  </p>
+                )}
+              </section>
+            )}
+
             {overviewText && (
               <section className="rounded-2xl bg-forest-accent/5 border border-forest-accent/10 p-4 space-y-2">
                 <h3 className="text-xs font-bold text-forest-accent uppercase tracking-wider">综合解读</h3>

@@ -159,7 +159,6 @@ export const DailyFortuneCard: React.FC<DailyFortuneCardProps> = ({
 
   const handleShuffle = async () => {
     clearShuffleTimers();
-    setIsRedrawing(false);
     setShufflePhase('shuffling');
     setShuffleCount(0);
     setFortuneChoice(null);
@@ -201,10 +200,10 @@ export const DailyFortuneCard: React.FC<DailyFortuneCardProps> = ({
 
   const handleRandomDraw = () => {
     clearShuffleTimers();
-    setIsRedrawing(false);
     const randomNum = Math.floor(Math.random() * 78) + 1;
     selectFortuneCard(randomNum);
     setShufflePhase('selected');
+    setShowNumberInput(false);
   };
 
   const handleStartRedraw = () => {
@@ -212,8 +211,8 @@ export const DailyFortuneCard: React.FC<DailyFortuneCardProps> = ({
     setIsRedrawing(true);
     setFortuneChoice(null);
     setCardNumber('');
-    setShufflePhase('selected');
-    setShowNumberInput(true);
+    setShufflePhase('idle');
+    setShowNumberInput(false);
   };
 
   const handlePhysicalCardSelect = (card: typeof TAROT_CARDS[0], isReversed: boolean) => {
@@ -365,7 +364,7 @@ export const DailyFortuneCard: React.FC<DailyFortuneCardProps> = ({
                 className="mt-4 flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-white/50 px-3 text-xs text-forest-ink transition-all hover:bg-white"
               >
                 <RefreshCw size={14} />
-                <span>重新抽牌并输入数字</span>
+                <span>重新洗牌抽日运</span>
               </button>
             )}
           </div>
@@ -448,33 +447,21 @@ export const DailyFortuneCard: React.FC<DailyFortuneCardProps> = ({
                           <div className="min-w-0">
                             <p className="text-xs font-bold text-forest-ink">系统抽牌</p>
                             <p className="mt-0.5 text-[11px] leading-relaxed text-forest-muted">
-                              先洗牌再输入数字；也可以让系统随机选一张。
+                              先完成洗牌，再选择输入数字或让系统随机选一张。
                             </p>
                           </div>
                           <Shuffle size={16} className="mt-0.5 shrink-0 text-forest-accent" />
                         </div>
 
-                        <div className="grid grid-cols-2 gap-2">
-                          <button
-                            onClick={handleShuffle}
-                            className="min-h-11 rounded-full bg-forest-accent px-4 text-sm font-bold text-white shadow-xl shadow-forest-accent/20 transition-all hover:scale-[1.02] hover:bg-forest-accent/90 active:scale-[0.98] sm:min-h-12"
-                          >
-                            <span className="flex items-center justify-center gap-2">
-                              <Shuffle size={17} />
-                              洗牌
-                            </span>
-                          </button>
-
-                          <button
-                            onClick={handleRandomDraw}
-                            className="min-h-11 rounded-full border border-forest-accent/15 bg-white/80 px-4 text-sm font-bold text-forest-accent transition-all hover:bg-white sm:min-h-12"
-                          >
-                            <span className="flex items-center justify-center gap-2">
-                              <Sparkles size={15} />
-                              随机一张
-                            </span>
-                          </button>
-                        </div>
+                        <button
+                          onClick={handleShuffle}
+                          className="min-h-11 w-full rounded-full bg-forest-accent px-4 text-sm font-bold text-white shadow-xl shadow-forest-accent/20 transition-all hover:scale-[1.02] hover:bg-forest-accent/90 active:scale-[0.98] sm:min-h-12"
+                        >
+                          <span className="flex items-center justify-center gap-2">
+                            <Shuffle size={17} />
+                            {isRedrawing ? '重新洗牌' : '洗牌'}
+                          </span>
+                        </button>
                       </div>
 
                       <button
@@ -558,8 +545,7 @@ export const DailyFortuneCard: React.FC<DailyFortuneCardProps> = ({
                   <div className="space-y-4 rounded-2xl bg-forest-bg/50 p-4">
                     <div className="space-y-2">
                       <p className="text-xs leading-relaxed text-forest-muted">
-                        在心里想一想今天最需要提醒的事。<br />
-                        默念一个数字（1-78），输入后会定位到今天的日运牌。
+                        洗牌完成。你可以默念一个数字（1-78），也可以让系统从洗好的牌组里随机选一张。
                       </p>
                       <div className="flex items-center justify-center gap-2 py-2">
                         <motion.div animate={{ opacity: [1, 0.3, 1] }} transition={{ duration: 2, repeat: Infinity }} className="h-2 w-2 rounded-full bg-forest-accent" />
@@ -600,6 +586,16 @@ export const DailyFortuneCard: React.FC<DailyFortuneCardProps> = ({
                         </button>
                       </div>
                     </form>
+                    <button
+                      type="button"
+                      onClick={handleRandomDraw}
+                      className="min-h-11 w-full rounded-xl border border-forest-accent/15 bg-white/80 px-4 text-xs font-bold text-forest-accent transition-all hover:bg-white"
+                    >
+                      <span className="flex items-center justify-center gap-2">
+                        <Sparkles size={14} />
+                        从洗好的牌组随机一张
+                      </span>
+                    </button>
                   </div>
                 </motion.div>
               )}

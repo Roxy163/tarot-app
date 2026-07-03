@@ -290,6 +290,9 @@ export const ReadingDetailView: React.FC<ReadingDetailViewProps> = ({
               </div>
 
               <div className="rounded-2xl bg-white/70 border border-forest-accent/10 p-3 space-y-3">
+                <p className="text-[10px] leading-relaxed text-forest-muted">
+                  AI 灵感只提供解读角度、追问和阴影面提示，不会替你保存结论；可把有用的部分写进上方注疏。
+                </p>
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                   <div className="flex flex-wrap gap-1.5">
                     {inspirationModes.map(mode => {

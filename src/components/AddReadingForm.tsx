@@ -1,6 +1,6 @@
 import React, { useState, useEffect, FormEvent } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Sparkles, Layers, User, MessageSquare, RotateCcw, BookOpen, X, Settings, Save, Hash, Orbit, Home, Wind } from 'lucide-react';
+import { Sparkles, Layers, User, MessageSquare, RotateCcw, BookOpen, X, Settings, Save, Hash, Orbit, Home, Wind, Info } from 'lucide-react';
 import { CardKeywordMemory, SpreadDefinition, TarotCardMetadata, ReadingSlotData, TarotReading, ReadingFormData } from '../types';
 import { DEFAULT_CUSTOM_SPREAD_NAME, LAYOUT_TEMPLATES, TAROT_CARDS, getCardImageUrl, OFFICIAL_SPREADS } from '../constants';
 import { CardPicker } from './CardPicker';
@@ -11,7 +11,6 @@ import { FoldableSection } from './FoldableSection';
 import { ReadingDetailView } from './ReadingDetailView';
 import { ReadingSpreadDisplay } from './ReadingSpreadDisplay';
 import { BasicInfoSection } from './BasicInfoSection';
-import { EmailShareModal } from './EmailShareModal';
 import { ConfirmDialog } from './ConfirmDialog';
 import { useLongPressClear } from '../hooks/useLongPressClear';
 import { mapSlotsToSpread, normalizeInterpretationsForSlots } from '../lib/readingSlotSync';
@@ -135,7 +134,6 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
   const [showUpdatePrompt, setShowUpdatePrompt] = useState<{ name: string, oldSlots: string[] } | null>(null);
   const [showRestoreConfirm, setShowRestoreConfirm] = useState<{ name?: string } | null>(null);
   const [spreadSaveConflict, setSpreadSaveConflict] = useState<SpreadSaveConflict | null>(null);
-  const [showEmailModal, setShowEmailModal] = useState(false);
   const [submitNotice, setSubmitNotice] = useState('');
   const [pendingDeleteSpreadName, setPendingDeleteSpreadName] = useState<string | null>(null);
 
@@ -672,7 +670,6 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
         onToggleClientMode={() => setFormData({...formData, isForClient: !formData.isForClient})}
         initialData={initialData}
         onCancel={onCancel}
-        onOpenEmailModal={() => setShowEmailModal(true)}
       />
 
 
@@ -780,15 +777,6 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
           </motion.div>
         )}
       </AnimatePresence>
-
-      {/* Email Share Modal */}
-      <EmailShareModal 
-        isOpen={showEmailModal}
-        onClose={() => setShowEmailModal(false)}
-        question={formData.question}
-        cardSlots={cardSlots}
-        interpretation={cardInterpretations.filter(id => id).join('\n') + (formData.combination ? `\n\n组合解读:\n${formData.combination}` : '')}
-      />
 
       <ConfirmDialog
         isOpen={Boolean(pendingDeleteSpreadName)}
@@ -985,6 +973,14 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
               }} /> 
               <span className="group-hover:scale-105 transition-transform">参与AI深度解析</span>
             </label>
+          </div>
+          <div className="mt-4 rounded-2xl border border-forest-accent/10 bg-forest-accent/5 px-4 py-3 text-xs leading-relaxed text-forest-muted">
+            <p className="flex items-start gap-2">
+              <Info size={14} className="mt-0.5 shrink-0 text-forest-accent" />
+              <span>
+                参与 AI 深度解析后，系统会尝试识别牌名、整理关键词和提供灵感线索，帮助你复盘；它不会替你发布内容，也不会代替你的最终判断。
+              </span>
+            </p>
           </div>
         </FoldableSection>
       </div>
