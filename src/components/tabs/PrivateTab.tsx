@@ -1,9 +1,11 @@
 import React, { useMemo, useState } from 'react';
 import { motion } from 'motion/react';
-import { Search, X, BookOpen, CheckCircle2, Circle, ChevronDown, Filter } from 'lucide-react';
+import { Archive, Search, X, BookOpen, CheckCircle2, Circle, ChevronDown, Filter } from 'lucide-react';
 import { ReadingKeywordCandidate, TarotReading, TarotCardMetadata } from '../../types';
 import { ReadingCard } from '../ReadingCard';
 import { useProgressiveList } from '../../hooks/useProgressiveList';
+import { useDailyFortune } from '../../hooks/useDailyFortune';
+import { DailyFortuneArchiveModal } from '../DailyFortuneArchiveModal';
 
 interface PrivateTabProps {
   readings: TarotReading[];
@@ -42,6 +44,12 @@ export const PrivateTab: React.FC<PrivateTabProps> = ({
 }) => {
   const [reviewFilter, setReviewFilter] = useState<'all' | 'reviewed' | 'unreviewed'>('all');
   const [isReviewFilterOpen, setIsReviewFilterOpen] = useState(false);
+  const [isDailyArchiveOpen, setIsDailyArchiveOpen] = useState(false);
+  const {
+    getArchivedFortunes,
+    updateDailyFortuneReflection,
+  } = useDailyFortune();
+  const archivedDailyFortunes = getArchivedFortunes();
 
   const filteredReadings = useMemo(() => readings.filter(r => {
     const hasFeedback = !!r.userFeedback?.trim();
@@ -99,6 +107,46 @@ export const PrivateTab: React.FC<PrivateTabProps> = ({
           </h2>
         </div>
       </div>
+
+      <section className="rounded-2xl border border-forest-accent/10 bg-white/90 p-4 shadow-sm">
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex min-w-0 items-center gap-3">
+            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-forest-accent/10 text-forest-accent">
+              <Archive size={18} />
+            </div>
+            <div className="min-w-0">
+              <h3 className="text-sm font-bold text-forest-ink">日运复盘</h3>
+              <p className="mt-0.5 line-clamp-2 text-xs leading-relaxed text-forest-muted">
+                回看每天的一张牌，把牌义和真实事件对应起来。
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => setIsDailyArchiveOpen(true)}
+            className="flex min-h-11 shrink-0 items-center justify-center gap-1.5 rounded-full bg-forest-accent px-4 text-xs font-bold text-white shadow-sm hover:bg-forest-accent/90"
+          >
+            <BookOpen size={14} />
+            查看
+          </button>
+        </div>
+        <div className="mt-3 grid grid-cols-2 gap-2 text-xs sm:grid-cols-3">
+          <div className="rounded-xl bg-forest-bg/70 px-3 py-2">
+            <p className="text-[10px] text-forest-muted">已归档</p>
+            <p className="mt-0.5 font-serif text-lg font-bold text-forest-accent">{archivedDailyFortunes.length} 天</p>
+          </div>
+          <div className="rounded-xl bg-forest-bg/70 px-3 py-2">
+            <p className="text-[10px] text-forest-muted">复盘状态</p>
+            <p className="mt-0.5 font-serif text-lg font-bold text-forest-accent">
+              {archivedDailyFortunes.filter(item => item.reflection?.trim()).length} 条
+            </p>
+          </div>
+          <div className="col-span-2 rounded-xl bg-forest-bg/70 px-3 py-2 sm:col-span-1">
+            <p className="text-[10px] text-forest-muted">入口位置</p>
+            <p className="mt-1 text-xs font-bold text-forest-ink">典籍内长期复盘</p>
+          </div>
+        </div>
+      </section>
 
       <div className="flex items-center gap-2">
         <div className="relative group shadow-sm bg-white rounded-full flex-1 min-w-0">
@@ -209,7 +257,7 @@ export const PrivateTab: React.FC<PrivateTabProps> = ({
             onClick={() => { onNavigate('add'); handleClearFilters(); }}
             className="px-6 py-2 bg-forest-accent text-white rounded-full text-xs font-bold hover:bg-forest-accent/90 transition-all shadow-md"
           >
-            开始抽牌
+            写第一条手记
           </button>
         </div>
       ) : (
@@ -239,6 +287,13 @@ export const PrivateTab: React.FC<PrivateTabProps> = ({
           正在继续展开典籍...
         </div>
       )}
+
+      <DailyFortuneArchiveModal
+        fortunes={archivedDailyFortunes}
+        isOpen={isDailyArchiveOpen}
+        onClose={() => setIsDailyArchiveOpen(false)}
+        onUpdateReflection={updateDailyFortuneReflection}
+      />
     </motion.div>
   );
 };

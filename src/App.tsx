@@ -202,6 +202,9 @@ function AppContent() {
       setActiveTab('add');
     }
   };
+  const isHomeTipDuplicate = activeTab === 'home' && (
+    currentTip?.id === 'no-readings' || currentTip?.id === 'daily-reading'
+  );
 
   const closeSidebar = useCallback(() => {
     setIsSidebarOpen(false);
@@ -730,7 +733,7 @@ function AppContent() {
             <div>
               <p className="text-[10px] text-forest-muted font-bold uppercase tracking-widest">今日研习</p>
               <p className="text-sm text-forest-ink font-bold mt-1">
-                {sidebarInsights.todayCount > 0 ? `今日已记 ${sidebarInsights.todayCount} 则` : '今天还未抽牌'}
+                {sidebarInsights.todayCount > 0 ? `今日已记 ${sidebarInsights.todayCount} 则` : '今天还未记录'}
               </p>
             </div>
             <div className="w-10 h-10 rounded-xl bg-forest-accent/10 text-forest-accent flex items-center justify-center">
@@ -757,7 +760,7 @@ function AppContent() {
             onClick={() => navigateFromSidebar(sidebarInsights.latestReading ? 'private' : 'add')}
             className="w-full min-h-11 px-4 rounded-xl bg-forest-accent text-white text-sm font-bold hover:bg-forest-accent/90 transition-colors flex items-center justify-center gap-2"
           >
-            {sidebarInsights.latestReading ? '查看最近手记' : '开始第一次抽牌'}
+            {sidebarInsights.latestReading ? '查看最近手记' : '写第一条手记'}
             <ChevronRight size={16} />
           </button>
         </section>
@@ -782,7 +785,7 @@ function AppContent() {
                 />
               </div>
               <p className="mt-2 text-[10px] text-forest-muted">
-                {sidebarInsights.topCard ? `最常出现：${sidebarInsights.topCard[0]} ×${sidebarInsights.topCard[1]}` : '抽牌后会在这里形成你的牌库轨迹'}
+                {sidebarInsights.topCard ? `最常出现：${sidebarInsights.topCard[0]} ×${sidebarInsights.topCard[1]}` : '记录后会在这里形成你的牌库轨迹'}
               </p>
             </div>
 
@@ -1330,7 +1333,7 @@ function AppContent() {
       </AnimatePresence>
 
       {/* Smart Tips Banner */}
-      {currentTip && (
+      {currentTip && !isHomeTipDuplicate && (
         <SmartTipBanner
           tip={currentTip}
           isVisible={isTipVisible}

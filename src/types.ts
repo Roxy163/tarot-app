@@ -221,6 +221,8 @@ export interface DailyFortune {
   interpretation: string;
   keywords: string[];
   reflection?: string;
+  archivedAt?: string;
+  source?: 'app-draw' | 'physical-draw';
   createdAt: string;
   isRevealed?: boolean;
   isLocked?: boolean;

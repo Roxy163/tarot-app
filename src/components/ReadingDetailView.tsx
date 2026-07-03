@@ -283,7 +283,7 @@ export const ReadingDetailView: React.FC<ReadingDetailViewProps> = ({
                   required
                   rows={4} 
                   className="w-full px-4 py-3 bg-white border border-forest-accent/10 rounded-xl focus:ring-2 focus:ring-forest-accent/20 transition-all text-sm shadow-inner" 
-                  placeholder={isDailyMode ? "记录今日运势感悟..." : `记录关于“${currentSlot.label || `位置 ${activeSlotIndex + 1}`}”的直觉与洞察...`} 
+                  placeholder={isDailyMode ? "记录今天这张牌与你生活的对应..." : `记录关于“${currentSlot.label || `位置 ${activeSlotIndex + 1}`}”的直觉与洞察...`}
                   value={cardInterpretations[activeSlotIndex] || ''} 
                   onChange={e => updateActiveInterpretation(e.target.value)}
                 />

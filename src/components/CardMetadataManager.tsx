@@ -444,7 +444,7 @@ export function CardMetadataManager({ metadata, onUpdate, readings, cardKeywordM
                 <Sun className="text-amber-600" size={20} />
               </div>
               <div className="text-left">
-                <p className="text-xs font-bold text-amber-600 uppercase tracking-wider">今日运势</p>
+                <p className="text-xs font-bold text-amber-600 uppercase tracking-wider">日运记录</p>
                 <p className="text-sm text-forest-ink">{todayFortune.date}</p>
               </div>
             </div>

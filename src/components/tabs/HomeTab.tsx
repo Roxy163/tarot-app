@@ -1,6 +1,6 @@
 import React from 'react';
 import { motion } from 'motion/react';
-import { BookOpen, PenLine } from 'lucide-react';
+import { BookOpen, PenLine, Sparkles } from 'lucide-react';
 import { TarotReading, TarotCardMetadata } from '../../types';
 import { StudyPavilionModules } from '../StudyPavilionModules';
 import { DailyFortuneCard } from '../DailyFortuneCard';
@@ -28,10 +28,18 @@ export const HomeTab: React.FC<HomeTabProps> = ({
   onSearch,
   onSelectSpread
 }) => {
-  const { getToday, generateDailyFortune, generateDailyFortuneWithNumber, reshuffleDailyFortune, addReflection } = useDailyFortune();
+  const {
+    fortunes,
+    getToday,
+    generateDailyFortuneWithNumber,
+    createDailyFortuneFromCard,
+    archiveDailyFortune,
+    updateDailyFortuneReflection,
+  } = useDailyFortune();
   
+  const name = profile?.display_name || profile?.nickname || session?.email?.split('@')[0] || '阁主';
   const displayName = session
-    ? `${profile?.display_name || profile?.nickname || session.email?.split('@')[0]}阁主`
+    ? `${name}阁主`
     : '访客 · 观阁中';
 
   const todayFortune = getToday();
@@ -44,42 +52,50 @@ export const HomeTab: React.FC<HomeTabProps> = ({
       exit={{ opacity: 0, y: -20 }}
       className="space-y-6"
     >
-      <section className="flex flex-col items-center gap-4 pt-1">
-        <div className="text-center space-y-3">
-          <h2 className="text-2xl font-serif text-forest-ink">{displayName}</h2>
-          <div className="flex flex-col items-center gap-3 max-w-sm px-5">
-            <p className="text-base text-forest-ink/60 font-serif italic tracking-wide text-center leading-relaxed">
+      <section className="relative overflow-hidden rounded-[2rem] border border-forest-accent/15 bg-gradient-to-br from-white via-forest-bg/90 to-forest-accent/10 p-4 shadow-lg shadow-forest-accent/5 sm:p-5">
+        <div className="pointer-events-none absolute inset-x-6 top-0 h-px bg-gradient-to-r from-transparent via-forest-accent/30 to-transparent" />
+        <div className="pointer-events-none absolute inset-x-8 bottom-0 h-px bg-gradient-to-r from-transparent via-white to-transparent" />
+
+        <div className="relative space-y-3">
+          <div className="flex items-center justify-between gap-3">
+            <div className="inline-flex items-center gap-2 rounded-full bg-forest-accent/10 px-3 py-1 text-[10px] font-bold uppercase tracking-[0.18em] text-forest-accent">
+              <Sparkles size={12} />
+              今日一问
+            </div>
+
+            <button
+              onClick={() => onNavigate('add')}
+              className="flex min-h-11 shrink-0 items-center justify-center gap-2 rounded-full bg-forest-ink px-4 text-xs font-bold text-white shadow-lg shadow-forest-ink/10 transition-all hover:scale-[1.01] hover:bg-forest-accent active:scale-[0.99] sm:text-sm"
+            >
+              <PenLine size={16} />
+              <span className="hidden sm:inline">写完整手记</span>
+              <span className="sm:hidden">写手记</span>
+            </button>
+          </div>
+
+          <div className="space-y-1.5">
+            <h2 className="text-2xl font-serif text-forest-ink">{displayName}</h2>
+            <p className="text-sm leading-relaxed text-forest-muted">
+              把今天真正想问的事放进心里。抽到的牌，会成为今日手记的开端。
+            </p>
+          </div>
+
+          <div className="flex items-start gap-2.5 rounded-2xl border border-forest-accent/10 bg-white/55 px-3 py-2">
+            <BookOpen size={14} className="mt-0.5 shrink-0 text-forest-accent/60" />
+            <p className="min-w-0 text-xs font-serif italic leading-relaxed text-forest-ink/65 sm:text-sm">
               “{dailyProverb}”
             </p>
-            <div className="flex items-center gap-2 text-forest-accent/20">
-              <BookOpen size={12} />
-            </div>
           </div>
         </div>
       </section>
 
-      <button
-        onClick={() => onNavigate('add')}
-        className="w-full group relative overflow-hidden rounded-[2rem] bg-forest-accent text-white px-6 py-6 text-left transition-all shadow-xl shadow-forest-accent/15 hover:scale-[1.01] active:scale-[0.99]"
-      >
-        <div className="relative flex items-center justify-between gap-4">
-          <div className="min-w-0">
-            <p className="text-[11px] font-bold tracking-[0.18em] uppercase opacity-75">Daily Reading</p>
-            <h3 className="mt-1 text-2xl font-serif font-bold tracking-wide">开启今日手记</h3>
-            <p className="mt-1 text-xs opacity-85">随缘抽牌 · 记录此刻</p>
-          </div>
-          <span className="w-14 h-14 shrink-0 rounded-2xl bg-white/15 flex items-center justify-center border border-white/20">
-            <PenLine size={24} />
-          </span>
-        </div>
-      </button>
-
       <DailyFortuneCard
         fortune={todayFortune}
-        onGenerate={generateDailyFortune}
+        fortunes={fortunes}
         onGenerateWithNumber={generateDailyFortuneWithNumber}
-        onReshuffle={reshuffleDailyFortune}
-        onAddReflection={addReflection}
+        onCreateFromCard={createDailyFortuneFromCard}
+        onArchive={archiveDailyFortune}
+        onUpdateReflection={updateDailyFortuneReflection}
       />
 
       <QuickSpreadButtons onSelectSpread={onSelectSpread} />

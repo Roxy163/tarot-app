@@ -8,11 +8,11 @@ const EMAILJS_USER_ID = 'YOUR_USER_ID';
 
 /**
  * 邮件发送服务
- * 使用 EmailJS 发送占卜报告邮件
+ * 使用 EmailJS 发送塔罗手记邮件
  */
 export const emailService = {
   /**
-   * 格式化占卜报告内容
+   * 格式化塔罗手记报告内容
    */
   generateReadingReport: (
     question: string,
@@ -25,16 +25,16 @@ export const emailService = {
     ).join('\n');
 
     return `
-🔮 塔罗研习阁 - 占卜手记汇报
+🔮 塔罗研习阁 - 塔罗手记报告
 
 尊敬的 ${userName}：
 
-这是您于 ${new Date().toLocaleString()} 进行的占卜记录：
+这是您于 ${new Date().toLocaleString()} 记录的塔罗手记：
 
 【您的问题】
 ${question}
 
-【抽牌阵列】
+【抽牌记录】
 ${cardLines}
 
 【深度解读】
@@ -67,7 +67,7 @@ ${interpretation || '暂无解读记录'}
       const templateParams = {
         to_email: email,
         message: content,
-        subject: '🔮 塔罗研习阁 - 占卜报告',
+        subject: '🔮 塔罗研习阁 - 塔罗手记报告',
         from_name: '塔罗研习阁',
       };
 

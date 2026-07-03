@@ -11,8 +11,8 @@ export interface SmartTip {
 const SMART_TIPS: SmartTip[] = [
   {
     id: 'no-readings',
-    message: '🌙 还没有研习记录？点击下方"手记"开始您的第一次抽牌吧！',
-    actionLabel: '开始抽牌',
+    message: '🌙 还没有研习记录？点击下方"手记"写下第一条抽牌手记吧！',
+    actionLabel: '写第一条手记',
   },
   {
     id: 'empty-question',
@@ -30,8 +30,8 @@ const SMART_TIPS: SmartTip[] = [
   },
   {
     id: 'daily-reading',
-    message: '🌅 开启今日运势，为新的一天指引方向。',
-    actionLabel: '今日运势',
+    message: '🌅 记录今日一张牌，把牌义和真实生活对应起来。',
+    actionLabel: '日运记录',
   },
 ];
 

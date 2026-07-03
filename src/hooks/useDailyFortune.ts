@@ -38,7 +38,11 @@ export const useDailyFortune = () => {
     return fortunes.find(f => f.date === today);
   };
 
-  const createFortuneFromCard = (card: typeof TAROT_CARDS[0], isReversed: boolean) => {
+  const createFortuneFromCard = (
+    card: typeof TAROT_CARDS[0],
+    isReversed: boolean,
+    source: DailyFortune['source'] = 'app-draw'
+  ) => {
     const today = new Date().toISOString().split('T')[0];
     
     const interpretations: Record<string, { reversed: string; upright: string }> = {
@@ -80,6 +84,7 @@ export const useDailyFortune = () => {
       isReversed,
       interpretation: isReversed ? cardInterpretation.reversed : cardInterpretation.upright,
       keywords: [card.name, isReversed ? '逆位' : '正位'],
+      source,
       createdAt: new Date().toISOString(),
       isRevealed: true
     };
@@ -106,11 +111,15 @@ export const useDailyFortune = () => {
     return createFortuneFromCard(card, isReversed);
   }, []);
 
-  const generateDailyFortuneWithNumber = useCallback((cardNumber: number, selectedCardIndex?: number) => {
+  const generateDailyFortuneWithNumber = useCallback((
+    cardNumber: number,
+    selectedCardIndex?: number,
+    replaceExisting = false
+  ) => {
     const today = new Date().toISOString().split('T')[0];
     
     const existing = getToday();
-    if (existing) {
+    if (existing && !replaceExisting) {
       return existing;
     }
 
@@ -129,7 +138,7 @@ export const useDailyFortune = () => {
     const card = TAROT_CARDS[cardIndex];
     const isReversed = Math.random() > 0.7;
 
-    return createFortuneFromCard(card, isReversed);
+    return createFortuneFromCard(card, isReversed, 'app-draw');
   }, [shuffledDeck]);
 
   const reshuffleDailyFortune = useCallback(() => {
@@ -137,7 +146,18 @@ export const useDailyFortune = () => {
     const card = TAROT_CARDS[randomIndex];
     const isReversed = Math.random() > 0.7;
 
-    return createFortuneFromCard(card, isReversed);
+    return createFortuneFromCard(card, isReversed, 'app-draw');
+  }, []);
+
+  const createDailyFortuneFromCard = useCallback((
+    cardId: string,
+    isReversed: boolean,
+    source: NonNullable<DailyFortune['source']> = 'physical-draw'
+  ) => {
+    const card = TAROT_CARDS.find(item => item.id === cardId || item.name === cardId);
+    if (!card) return null;
+
+    return createFortuneFromCard(card, isReversed, source);
   }, []);
 
   const addReflection = useCallback((fortuneId: string, reflection: string) => {
@@ -145,6 +165,32 @@ export const useDailyFortune = () => {
       f.id === fortuneId ? { ...f, reflection } : f
     ));
   }, []);
+
+  const archiveDailyFortune = useCallback((fortuneId: string, reflection?: string) => {
+    const archivedAt = new Date().toISOString();
+
+    setFortunes(prev => prev.map(f => (
+      f.id === fortuneId
+        ? {
+            ...f,
+            archivedAt: f.archivedAt || archivedAt,
+            ...(reflection !== undefined ? { reflection } : {})
+          }
+        : f
+    )));
+  }, []);
+
+  const updateDailyFortuneReflection = useCallback((fortuneId: string, reflection: string) => {
+    setFortunes(prev => prev.map(f => (
+      f.id === fortuneId ? { ...f, reflection } : f
+    )));
+  }, []);
+
+  const getArchivedFortunes = useCallback(() => (
+    fortunes
+      .filter(f => Boolean(f.archivedAt))
+      .sort((a, b) => b.date.localeCompare(a.date) || b.createdAt.localeCompare(a.createdAt))
+  ), [fortunes]);
 
   const getMonthlySummary = useCallback((year: number, month: number): FortuneSummary | null => {
     const startDate = new Date(year, month, 1).toISOString().split('T')[0];
@@ -321,7 +367,11 @@ export const useDailyFortune = () => {
     generateDailyFortune,
     generateDailyFortuneWithNumber,
     reshuffleDailyFortune,
+    createDailyFortuneFromCard,
     addReflection,
+    archiveDailyFortune,
+    updateDailyFortuneReflection,
+    getArchivedFortunes,
     getMonthlySummary,
     getSeasonalSummary,
     getYearlySummary
@@ -329,9 +379,9 @@ export const useDailyFortune = () => {
 };
 
 export const QUICK_SPREADS = [
-  { id: 'daily', name: '日运', icon: 'Sun', spread: '单牌阵', category: '日运', description: '今日运势指引' },
-  { id: 'weekly', name: '周运', icon: 'Calendar', spread: '无牌阵三张', category: '周运', description: '本周趋势预测' },
-  { id: 'monthly', name: '月运', icon: 'Moon', spread: '时间流牌阵', category: '月运', description: '本月能量解读' },
-  { id: 'yearly', name: '年运', icon: 'Star', spread: '年运十二宫牌阵', category: '年运', description: '年度运势展望' },
-  { id: 'seasonal', name: '四季', icon: 'Leaf', spread: '四季牌阵', category: '四季', description: '季度能量分析' },
+  { id: 'daily', name: '日运', icon: 'Sun', spread: '单牌阵', category: '日运', description: '记录今天这一张牌' },
+  { id: 'weekly', name: '周运', icon: 'Calendar', spread: '无牌阵三张', category: '周运', description: '记录本周三张牌' },
+  { id: 'monthly', name: '月运', icon: 'Moon', spread: '时间流牌阵', category: '月运', description: '记录本月时间流' },
+  { id: 'yearly', name: '年运', icon: 'Star', spread: '年运十二宫牌阵', category: '年运', description: '记录年度十二宫' },
+  { id: 'seasonal', name: '四季', icon: 'Leaf', spread: '四季牌阵', category: '四季', description: '记录四季节律' },
 ];

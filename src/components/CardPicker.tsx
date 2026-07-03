@@ -7,9 +7,17 @@ interface CardPickerProps {
   onSelect: (card: typeof TAROT_CARDS[0], isReversed: boolean) => void;
   onClose: () => void;
   excludeCards?: string[];
+  title?: string;
+  description?: string;
 }
 
-export function CardPicker({ onSelect, onClose, excludeCards = [] }: CardPickerProps) {
+export function CardPicker({
+  onSelect,
+  onClose,
+  excludeCards = [],
+  title = '选择塔罗牌',
+  description
+}: CardPickerProps) {
   const [search, setSearch] = useState('');
   const [isReversed, setIsReversed] = useState(false);
 
@@ -38,7 +46,12 @@ export function CardPicker({ onSelect, onClose, excludeCards = [] }: CardPickerP
         className="bg-white w-full max-w-2xl max-h-[80vh] rounded-2xl shadow-2xl overflow-hidden flex flex-col"
       >
         <div className="p-4 border-b border-forest-accent/10 flex items-center justify-between bg-forest-bg/30">
-          <h3 className="font-serif text-lg text-forest-accent">选择塔罗牌</h3>
+          <div className="min-w-0">
+            <h3 className="font-serif text-lg text-forest-accent">{title}</h3>
+            {description && (
+              <p className="mt-1 text-xs text-forest-muted leading-relaxed">{description}</p>
+            )}
+          </div>
           <div className="flex items-center gap-4">
             <label className="flex items-center gap-2 cursor-pointer text-sm">
               <input 

@@ -23,8 +23,8 @@ export const QuickSpreadButtons: React.FC<QuickSpreadButtonsProps> = ({ onSelect
       className="space-y-3"
     >
       <div className="flex items-center justify-between">
-        <h3 className="text-sm font-bold text-forest-ink">快速占卜</h3>
-        <span className="text-[10px] text-forest-muted">运势剖析</span>
+        <h3 className="text-sm font-bold text-forest-ink">快捷手记</h3>
+        <span className="text-[10px] text-forest-muted">先选主题，再记录抽牌</span>
       </div>
       
       <div className="grid grid-cols-5 gap-2">
@@ -46,6 +46,9 @@ export const QuickSpreadButtons: React.FC<QuickSpreadButtonsProps> = ({ onSelect
           </motion.button>
         ))}
       </div>
+      <p className="rounded-2xl bg-white/55 px-3 py-2 text-[11px] leading-relaxed text-forest-muted">
+        选择一种主题后，会进入抽牌手记并预设牌阵；卡牌仍由你在记录页抽取或填写。
+      </p>
     </motion.div>
   );
 };

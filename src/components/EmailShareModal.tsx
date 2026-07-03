@@ -53,7 +53,7 @@ export const EmailShareModal: React.FC<EmailShareModalProps> = ({
   };
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title="发送占卜报告至邮箱">
+    <Modal isOpen={isOpen} onClose={onClose} title="发送塔罗手记至邮箱">
       <div className="p-1 space-y-4">
         <AnimatePresence mode="wait">
           {status === 'success' ? (
@@ -118,7 +118,7 @@ export const EmailShareModal: React.FC<EmailShareModalProps> = ({
 
               <div className="p-3 bg-amber-50 border border-amber-100 rounded-xl">
                 <p className="text-[10px] text-amber-700 leading-relaxed italic">
-                  提示：我们将把当前占卜的问题、阵列以及您的灵见注疏整理成精美的报告发送给您。
+                  提示：我们将把当前问题、抽牌记录以及你的灵见注疏整理成手记报告发送给你。
                 </p>
               </div>
 

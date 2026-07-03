@@ -194,7 +194,7 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
         category: '日运',
         layoutType: 'horizontal'
       }));
-      setCardSlots([{ name: '', isReversed: false, label: '今日运势' }]);
+      setCardSlots([{ name: '', isReversed: false, label: '今日日运' }]);
     } else if (!isDailyMode && formData.spread === '单牌阵' && !initialData) {
       setCardSlots([{ name: '', isReversed: false, label: '单牌解读' }]);
     }
