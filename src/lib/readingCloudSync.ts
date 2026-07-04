@@ -23,6 +23,17 @@ export const hasReadingChanged = (incoming: TarotReading, previous?: TarotReadin
   !previous || normalizeForComparison(incoming) !== normalizeForComparison(previous)
 );
 
+export const canWritePrivateReading = (reading: TarotReading) => (
+  typeof reading.question === 'string'
+  && reading.question.trim().length > 0
+  && typeof reading.date === 'string'
+  && reading.date.trim().length > 0
+  && Array.isArray(reading.cards)
+  && reading.cards.length > 0
+);
+
+export const canMirrorPublicReading = canWritePrivateReading;
+
 export const createUserReadingSyncPlan = (
   uid: string,
   incomingReadings: TarotReading[],
@@ -40,7 +51,10 @@ export const createUserReadingSyncPlan = (
   const readingsToDelete = previousReadings.filter(reading => !incomingIds.has(reading.id));
   const publicReadingIdsToDelete = Array.from(new Set([
     ...mergedReadings
-      .filter(reading => !reading.isPublic && previousReadingsById.get(reading.id)?.isPublic === true)
+      .filter(reading => (
+        (!reading.isPublic || !canMirrorPublicReading(reading))
+        && previousReadingsById.get(reading.id)?.isPublic === true
+      ))
       .map(reading => reading.id),
     ...readingsToDelete
       .filter(reading => reading.isPublic)
@@ -54,7 +68,7 @@ export const createUserReadingSyncPlan = (
     )),
     readingsToDelete,
     // Keep public saves idempotent so a missing public mirror can self-heal on the next sync.
-    publicReadingsToSave: mergedReadings.filter(reading => reading.isPublic),
+    publicReadingsToSave: mergedReadings.filter(reading => reading.isPublic && canMirrorPublicReading(reading)),
     publicReadingIdsToDelete,
   };
 };

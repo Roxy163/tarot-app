@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { TarotReading } from '../types';
-import { createUserReadingSyncPlan, getReadingVersionTime, pickNewestReading } from './readingCloudSync';
+import { canWritePrivateReading, createUserReadingSyncPlan, getReadingVersionTime, pickNewestReading } from './readingCloudSync';
 
 const createReading = (overrides: Partial<TarotReading>): TarotReading => ({
   id: 'reading-1',
@@ -23,6 +23,11 @@ const createReading = (overrides: Partial<TarotReading>): TarotReading => ({
 });
 
 describe('readingCloudSync', () => {
+  it('requires a real card list before writing a private reading to current cloud rules', () => {
+    expect(canWritePrivateReading(createReading({ cards: [{ name: '愚者', isReversed: false }] }))).toBe(true);
+    expect(canWritePrivateReading(createReading({ cards: [] }))).toBe(false);
+  });
+
   it('uses updatedAt before date and readingDate for version comparison', () => {
     expect(getReadingVersionTime(createReading({
       date: '2026-06-20T00:00:00.000Z',
@@ -107,5 +112,25 @@ describe('readingCloudSync', () => {
 
     expect(plan.publicReadingsToSave.map(reading => reading.id)).toEqual(['public']);
     expect(plan.publicReadingIdsToDelete).toEqual(['private-now']);
+  });
+
+  it('does not mirror incomplete public readings while still writing them privately', () => {
+    const incompletePublic = createReading({
+      id: 'legacy-empty',
+      isPublic: true,
+      cards: [],
+      updatedAt: '2026-06-21T00:00:00.000Z',
+    });
+    const previousPublic = createReading({
+      id: 'legacy-empty',
+      isPublic: true,
+      updatedAt: '2026-06-20T00:00:00.000Z',
+    });
+
+    const plan = createUserReadingSyncPlan('uid-1', [incompletePublic], [previousPublic]);
+
+    expect(plan.readingsToWrite.map(reading => reading.id)).toEqual(['legacy-empty']);
+    expect(plan.publicReadingsToSave).toEqual([]);
+    expect(plan.publicReadingIdsToDelete).toEqual(['legacy-empty']);
   });
 });

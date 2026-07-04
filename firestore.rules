@@ -56,8 +56,9 @@ function isValidProfileUpdate(data) {
 
 function isValidReading(data) {
   return data.hasAll(['question', 'cards', 'date']) &&
-         data.cards is list &&
-         data.cards.size() > 0;
+         data.question is string &&
+         data.date is string &&
+         data.cards is list;
 }
 
 function canReadPublicAnnotation(data) {

@@ -1,7 +1,7 @@
 import type { User } from 'firebase/auth';
 import type { CardKeywordMemory, SpreadDefinition, TarotCardMetadata, TarotReading, UserProfile } from '../types';
 import { getFirebaseApp } from './firebase';
-import { createUserReadingSyncPlan } from './readingCloudSync';
+import { canWritePrivateReading, createUserReadingSyncPlan } from './readingCloudSync';
 
 type FirestoreApi = typeof import('firebase/firestore');
 type StorageApi = typeof import('firebase/storage');
@@ -292,6 +292,26 @@ const toPublicReadingData = (reading: TarotReading) => withoutUndefined({
   updatedAt: new Date().toISOString(),
 });
 
+const toUserReadingData = (uid: string, reading: TarotReading) => withoutUndefined({
+  ...reading,
+  userId: uid,
+  question: typeof reading.question === 'string' && reading.question.trim() ? reading.question : '未命名手记',
+  date: typeof reading.date === 'string' && reading.date.trim()
+    ? reading.date
+    : (reading.readingDate || reading.updatedAt || new Date().toISOString()),
+  spread: reading.spread || '未指定牌阵',
+  cards: Array.isArray(reading.cards) ? reading.cards : [],
+  interpretation: reading.interpretation || {
+    singleCard: '',
+    combination: '',
+    summary: '',
+  },
+  keywords: Array.isArray(reading.keywords) ? reading.keywords : [],
+  isPublic: !!reading.isPublic,
+  isAnonymous: !!reading.isAnonymous,
+  authorName: reading.authorName || '研习阁主',
+});
+
 export const savePublicReading = async (reading: TarotReading): Promise<void> => {
   const { doc, setDoc } = await loadFirestore();
   const firebaseDb = await getFirebaseDb();
@@ -320,11 +340,22 @@ export const replaceUserReadings = async (uid: string, readings: TarotReading[])
   const snapshot = await getDocs(readingsRef);
   const previousReadings = snapshot.docs.map(item => ({ id: item.id, ...item.data() }) as TarotReading);
   const syncPlan = createUserReadingSyncPlan(uid, readings, previousReadings);
+  const cloudWritableReadings = syncPlan.readingsToWrite.filter(canWritePrivateReading);
+  const localOnlyReadings = syncPlan.readingsToWrite.filter(reading => !canWritePrivateReading(reading));
+
+  if (localOnlyReadings.length > 0) {
+    console.warn('Skipped cloud sync for readings that are missing cards, question, or date:', localOnlyReadings.map(reading => ({
+      id: reading.id,
+      hasQuestion: typeof reading.question === 'string' && reading.question.trim().length > 0,
+      hasDate: typeof reading.date === 'string' && reading.date.trim().length > 0,
+      cardsLength: Array.isArray(reading.cards) ? reading.cards.length : null,
+    })));
+  }
 
   await Promise.all(
-    syncPlan.readingsToWrite.map(reading => setDoc(
+    cloudWritableReadings.map(reading => setDoc(
       doc(firebaseDb, 'users', uid, 'readings', reading.id),
-      withoutUndefined(reading),
+      toUserReadingData(uid, reading),
     )),
   );
 
