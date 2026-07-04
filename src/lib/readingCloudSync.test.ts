@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { TarotReading } from '../types';
-import { canWritePrivateReading, createUserReadingSyncPlan, getReadingVersionTime, pickNewestReading } from './readingCloudSync';
+import { canMirrorPublicReading, createUserReadingSyncPlan, getReadingVersionTime, pickNewestReading } from './readingCloudSync';
 
 const createReading = (overrides: Partial<TarotReading>): TarotReading => ({
   id: 'reading-1',
@@ -23,9 +23,9 @@ const createReading = (overrides: Partial<TarotReading>): TarotReading => ({
 });
 
 describe('readingCloudSync', () => {
-  it('requires a real card list before writing a private reading to current cloud rules', () => {
-    expect(canWritePrivateReading(createReading({ cards: [{ name: '愚者', isReversed: false }] }))).toBe(true);
-    expect(canWritePrivateReading(createReading({ cards: [] }))).toBe(false);
+  it('requires a real card list before mirroring a reading publicly', () => {
+    expect(canMirrorPublicReading(createReading({ cards: [{ name: '愚者', isReversed: false }] }))).toBe(true);
+    expect(canMirrorPublicReading(createReading({ cards: [] }))).toBe(false);
   });
 
   it('uses updatedAt before date and readingDate for version comparison', () => {

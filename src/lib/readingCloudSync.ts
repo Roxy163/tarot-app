@@ -23,7 +23,7 @@ export const hasReadingChanged = (incoming: TarotReading, previous?: TarotReadin
   !previous || normalizeForComparison(incoming) !== normalizeForComparison(previous)
 );
 
-export const canWritePrivateReading = (reading: TarotReading) => (
+export const canMirrorPublicReading = (reading: TarotReading) => (
   typeof reading.question === 'string'
   && reading.question.trim().length > 0
   && typeof reading.date === 'string'
@@ -31,8 +31,6 @@ export const canWritePrivateReading = (reading: TarotReading) => (
   && Array.isArray(reading.cards)
   && reading.cards.length > 0
 );
-
-export const canMirrorPublicReading = canWritePrivateReading;
 
 export const createUserReadingSyncPlan = (
   uid: string,
