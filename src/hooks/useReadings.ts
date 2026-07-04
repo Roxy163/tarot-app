@@ -17,6 +17,8 @@ import {
   normalizeLegacyReadingSpreadNames,
 } from '../lib/spreadPersistence';
 import {
+  mergeCardMetadataSources,
+  mergeKeywordMemorySources,
   getPersistableReadings,
   mergeReadingsForSignedInUser,
   mergeSpreadSources,
@@ -179,12 +181,14 @@ export const useReadings = (session: { uid?: string; email?: string | null } | n
           localGuestReadings,
         ]);
         const mergedSpreads = mergeSpreadSources([cloudSpreads || [], savedSpreads], OFFICIAL_SPREADS);
+        const mergedMetadata = mergeCardMetadataSources([cloudMetadata || [], localMetadata]);
+        const mergedKeywordMemory = mergeKeywordMemorySources([cloudKeywordMemory || [], localKeywordMemory]);
 
         pendingGuestReadingsSyncRef.current = getPersistableReadings(localGuestReadings).length > 0;
         setReadings([...exampleReadings, ...mergedReadings]);
         setSpreads(mergedSpreads);
-        setCardMetadata(cloudMetadata && cloudMetadata.length > 0 ? cloudMetadata : localMetadata);
-        setCardKeywordMemory(cloudKeywordMemory && cloudKeywordMemory.length > 0 ? cloudKeywordMemory : localKeywordMemory);
+        setCardMetadata(mergedMetadata);
+        setCardKeywordMemory(mergedKeywordMemory);
       } catch (error) {
         console.error('Failed to load data:', error);
         if (cancelled) return;
