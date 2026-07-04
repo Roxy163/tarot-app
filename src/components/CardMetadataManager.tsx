@@ -236,6 +236,10 @@ export function CardMetadataManager({ metadata, onUpdate, readings, cardKeywordM
   useEffect(() => {
     setModifiedCount(cardAnnotationService.getModifiedCardIds().length);
   }, [showAnnotationEditor]);
+
+  const refreshModifiedCount = () => {
+    setModifiedCount(cardAnnotationService.getModifiedCardIds().length);
+  };
   
   // Load personal meanings
   useEffect(() => {
@@ -677,9 +681,10 @@ export function CardMetadataManager({ metadata, onUpdate, readings, cardKeywordM
         isOpen={showAnnotationEditor}
         onClose={() => {
           setShowAnnotationEditor(false);
-          setModifiedCount(cardAnnotationService.getModifiedCardIds().length);
+          refreshModifiedCount();
         }}
         initialCardId={annotationEditorCardId}
+        onAnnotationsUpdated={refreshModifiedCount}
       />
     </div>
   );

@@ -10,6 +10,7 @@ interface CardAnnotationEditorProps {
   isOpen: boolean;
   onClose: () => void;
   initialCardId?: string;
+  onAnnotationsUpdated?: () => void;
 }
 
 type FilterType = 'all' | 'major' | 'wands' | 'cups' | 'swords' | 'pentacles' | 'modified';
@@ -33,11 +34,13 @@ const getAnnotationForm = (cardId: string) => {
 export const CardAnnotationEditor: React.FC<CardAnnotationEditorProps> = ({
   isOpen,
   onClose,
-  initialCardId
+  initialCardId,
+  onAnnotationsUpdated
 }) => {
   const [selectedCardId, setSelectedCardId] = useState<string | null>(initialCardId || null);
   const [filter, setFilter] = useState<FilterType>('all');
   const [searchQuery, setSearchQuery] = useState('');
+  const [refreshTick, setRefreshTick] = useState(0);
   const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({
     major: true,
     wands: true,
@@ -77,7 +80,7 @@ export const CardAnnotationEditor: React.FC<CardAnnotationEditorProps> = ({
 
   const modifiedCardIds = useMemo(() => {
     return new Set(cardAnnotationService.getModifiedCardIds());
-  }, [selectedCardId]);
+  }, [refreshTick]);
 
   const filteredCards = useMemo(() => {
     let cards = TAROT_CARDS;
@@ -146,6 +149,8 @@ export const CardAnnotationEditor: React.FC<CardAnnotationEditorProps> = ({
       setSaveSuccessMessage(`《${cardName}》的注解已保存`);
       setShowSaveSuccess(true);
       setShowUnsavedWarning(false);
+      setRefreshTick(prev => prev + 1);
+      onAnnotationsUpdated?.();
       
       setTimeout(() => {
         setShowSaveSuccess(false);
@@ -163,6 +168,8 @@ export const CardAnnotationEditor: React.FC<CardAnnotationEditorProps> = ({
     
     cardAnnotationService.resetAnnotationToOfficial(selectedCardId);
     setEditForm(getAnnotationForm(selectedCardId));
+    setRefreshTick(prev => prev + 1);
+    onAnnotationsUpdated?.();
     
     setSaveSuccessMessage(`《${cardName}》已恢复官方注解`);
     setShowSaveSuccess(true);
