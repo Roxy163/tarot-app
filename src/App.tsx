@@ -861,7 +861,7 @@ function AppContent() {
         >
           <div className="flex items-center gap-3">
             <Database size={18} className="text-forest-accent" />
-            <span className="text-sm font-medium">下载典籍 PDF (Beta)</span>
+            <span className="text-sm font-medium">下载典籍 PDF</span>
           </div>
           <ChevronRight size={14} className="text-forest-muted group-hover:translate-x-1 transition-transform" />
         </button>
@@ -871,7 +871,7 @@ function AppContent() {
         >
           <div className="flex items-center gap-3">
             <Upload size={18} className="text-forest-accent" />
-            <span className="text-sm font-medium">载入典籍 (Beta)</span>
+            <span className="text-sm font-medium">载入 JSON 备份</span>
           </div>
           <ChevronRight size={14} className="text-forest-muted group-hover:translate-x-1 transition-transform" />
         </button>
