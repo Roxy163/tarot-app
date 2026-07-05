@@ -54,7 +54,7 @@ describe('CardMetadataManager', () => {
 
     expect(screen.queryByText(/已自定义 \d+ 张牌的注解/)).not.toBeInTheDocument();
 
-    await user.click(screen.getByRole('button', { name: '批量编辑牌义' }));
+    await user.click(screen.getByRole('button', { name: '批量编辑单牌牌义' }));
     await user.click(screen.getByRole('button', { name: '模拟保存' }));
 
     expect(screen.getByText('已自定义 1 张牌的注解')).toBeInTheDocument();

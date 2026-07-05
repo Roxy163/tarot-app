@@ -1,7 +1,8 @@
-import { render, screen, within } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { DailyFortune, TarotReading } from '../../types';
+import type React from 'react';
+import { TarotReading } from '../../types';
 import { PrivateTab } from './PrivateTab';
 
 const createReading = (overrides: Partial<TarotReading>): TarotReading => ({
@@ -20,7 +21,10 @@ const createReading = (overrides: Partial<TarotReading>): TarotReading => ({
   ...overrides,
 });
 
-const renderPrivateTab = (readings: TarotReading[] = []) => {
+const renderPrivateTab = (
+  readings: TarotReading[] = [],
+  overrides: Partial<React.ComponentProps<typeof PrivateTab>> = {},
+) => {
   const props = {
     readings,
     searchQuery: '',
@@ -37,7 +41,8 @@ const renderPrivateTab = (readings: TarotReading[] = []) => {
     onExtractKeywordCandidates: vi.fn(),
     onConfirmKeywordCandidates: vi.fn(),
     cardMetadata: [],
-    onAddReading: vi.fn(),
+    highlightedReadingId: null as string | null,
+    ...overrides,
   };
 
   render(<PrivateTab {...props} />);
@@ -71,33 +76,17 @@ describe('PrivateTab', () => {
     expect(screen.getByText('客户: 小林')).toBeInTheDocument();
   });
 
-  it('saves today daily fortune into readings from the archive header', async () => {
-    const user = userEvent.setup();
-    const today = new Date().toISOString().split('T')[0];
-    const fortune: DailyFortune = {
-      id: 'fortune-1',
-      userId: 'local',
-      date: today,
-      cardName: '女祭司',
-      isReversed: false,
-      interpretation: '信任直觉。',
-      keywords: ['女祭司', '正位'],
-      source: 'app-draw',
-      createdAt: `${today}T08:00:00.000Z`,
-      isRevealed: true,
-    };
-    localStorage.setItem('tarot_daily_fortunes', JSON.stringify([fortune]));
-    const props = renderPrivateTab([]);
+  it('keeps daily review out of the private archive header', () => {
+    renderPrivateTab([]);
 
-    const dailySection = screen.getByText('日运复盘').closest('section');
-    expect(dailySection).toBeTruthy();
+    expect(screen.queryByText('日运复盘')).not.toBeInTheDocument();
+    expect(screen.getByPlaceholderText('🔍 搜索记录...')).toBeInTheDocument();
+  });
 
-    await user.click(within(dailySection as HTMLElement).getByRole('button', { name: '存入典籍' }));
+  it('marks the saved reading as highlighted when opening the private archive', () => {
+    const reading = createReading({ id: 'new-reading', question: '刚刚保存的记录' });
+    renderPrivateTab([reading], { highlightedReadingId: 'new-reading' });
 
-    expect(props.onAddReading).toHaveBeenCalledWith(expect.objectContaining({
-      question: `日运 · ${today}`,
-      category: '日运',
-      cards: [expect.objectContaining({ name: '女祭司', label: '日运' })],
-    }));
+    expect(screen.getByText('刚刚保存的记录').closest('[data-highlighted-reading="true"]')).toBeInTheDocument();
   });
 });

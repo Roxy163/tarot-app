@@ -145,10 +145,9 @@ const OverviewPreview = () => (
       <div className="space-y-2">
         <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-forest-accent">导览路线</p>
         {[
-          ['每日抽牌', '从一个问题开始'],
-          ['抽牌手记', '写下直觉和复盘'],
-          ['自由牌阵', '保存自己的结构'],
-          ['个人典籍', '沉淀长期理解'],
+          ['今天的一张牌', '先从最小行动开始'],
+          ['完整抽牌手记', '有具体问题时再记录'],
+          ['复盘和牌义注疏', '慢慢形成自己的理解'],
         ].map(([title, subtitle], index) => (
           <div key={title} className="flex items-center gap-3 rounded-lg border border-forest-accent/10 bg-white/70 p-2.5">
             <span className="flex h-7 w-7 items-center justify-center rounded-full bg-forest-accent/10 text-[10px] font-bold text-forest-accent">
@@ -173,7 +172,7 @@ const HomePreview = () => (
           <div>
             <p className="text-[10px] font-bold uppercase tracking-widest text-forest-accent">Daily Reading</p>
             <p className="text-xs font-bold text-forest-muted">日运练习</p>
-            <p className="text-base font-serif font-bold text-forest-ink">开启今日手记</p>
+            <p className="text-base font-serif font-bold text-forest-ink">先记录今天的一张牌</p>
           </div>
           <Sparkles size={22} className="text-forest-accent" />
         </div>
@@ -187,9 +186,9 @@ const HomePreview = () => (
         </div>
       </div>
       <div className="grid grid-cols-3 gap-2">
-        <MiniCard title="本周手记" subtitle="0 条" icon={<PenLine size={14} />} />
-        <MiniCard title="连续记录" subtitle="0 天" icon={<Sun size={14} />} />
-        <MiniCard title="牌意小考" subtitle="练习牌义" icon={<BookOpen size={14} />} />
+        <MiniCard title="日运复盘" subtitle="回看每天" icon={<Sun size={14} />} />
+        <MiniCard title="典籍复盘" subtitle="回看手记" icon={<BookOpen size={14} />} />
+        <MiniCard title="牌义注疏" subtitle="批量修改" icon={<PenLine size={14} />} />
       </div>
     </div>
   </PreviewShell>
@@ -463,7 +462,7 @@ export const FirstEntryGuide: React.FC = () => {
                 transition={{ delay: 0.5 }}
                 className="text-[11px] sm:text-xs text-forest-muted leading-relaxed"
               >
-                只需点击下一步，就能依次看完核心功能；之后可在个人页的功能介绍中回看。
+                不知道从哪里开始时，完成导览后先试「日运抽牌」；熟悉后再进入手记、牌阵和牌义注疏。
               </motion.p>
             </div>
 

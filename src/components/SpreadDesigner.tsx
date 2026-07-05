@@ -121,11 +121,11 @@ export const SpreadDesigner: React.FC<SpreadDesignerProps> = ({
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: 20 }}
-      className="fixed inset-0 z-50 bg-forest-ink/40 backdrop-blur-sm flex items-center justify-center p-4"
+      className="fixed inset-0 z-[520] bg-forest-ink/40 backdrop-blur-sm flex items-center justify-center p-4"
       onClick={(e) => { if (e.target === e.currentTarget && onClose) onClose(); }}
     >
       <motion.div 
-        className="w-full max-w-3xl max-h-[90vh] overflow-y-auto bg-white rounded-[2rem] shadow-2xl"
+        className="w-full max-w-3xl max-h-[90dvh] overflow-y-auto bg-white rounded-[2rem] shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="sticky top-0 z-10 flex items-center justify-between gap-3 border-b border-forest-accent/10 bg-white px-4 py-4 sm:px-6">

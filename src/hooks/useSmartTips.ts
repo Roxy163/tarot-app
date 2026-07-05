@@ -11,7 +11,7 @@ export interface SmartTip {
 const SMART_TIPS: SmartTip[] = [
   {
     id: 'no-readings',
-    message: '🌙 还没有研习记录？点击下方"手记"写下第一条抽牌手记吧！',
+    message: '🌙 还没有研习记录？点击底部“记录”写下第一条抽牌手记吧！',
     actionLabel: '写第一条手记',
   },
   {

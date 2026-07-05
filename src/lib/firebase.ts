@@ -1,6 +1,6 @@
 import { initializeApp, getApps, getApp } from 'firebase/app';
 import type { FirebaseApp } from 'firebase/app';
-import { getAuth, signInWithPhoneNumber, RecaptchaVerifier, signOut, onAuthStateChanged, User, ConfirmationResult, createUserWithEmailAndPassword, signInWithEmailAndPassword, linkWithCredential, PhoneAuthProvider, EmailAuthProvider, sendPasswordResetEmail, sendEmailVerification, applyActionCode, verifyPasswordResetCode, confirmPasswordReset as firebaseConfirmPasswordReset, reauthenticateWithCredential, updatePassword, reload, deleteUser } from 'firebase/auth';
+import { getAuth, signInWithPhoneNumber, RecaptchaVerifier, signOut, onAuthStateChanged, User, ConfirmationResult, createUserWithEmailAndPassword, signInWithEmailAndPassword, linkWithCredential, PhoneAuthProvider, EmailAuthProvider, sendPasswordResetEmail, sendEmailVerification, applyActionCode, verifyPasswordResetCode, confirmPasswordReset as firebaseConfirmPasswordReset, reauthenticateWithCredential, updatePassword, reload, deleteUser, setPersistence, browserLocalPersistence } from 'firebase/auth';
 
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY || '',
@@ -184,11 +184,13 @@ export const verifySmsCode = async (confirmationResult: ConfirmationResult, code
 
 export const signInWithPassword = async (email: string, password: string) => {
   ensureFirebase();
+  await setPersistence(auth!, browserLocalPersistence);
   return signInWithEmailAndPassword(auth!, email, password);
 };
 
 export const signUpWithEmail = async (email: string, password: string) => {
   ensureFirebase();
+  await setPersistence(auth!, browserLocalPersistence);
   return createUserWithEmailAndPassword(auth!, email, password);
 };
 

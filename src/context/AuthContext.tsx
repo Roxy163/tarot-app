@@ -56,13 +56,12 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     });
 
     const user = getCurrentUser();
-    setSession(user);
-    setIsEmailVerified(!!user?.emailVerified);
     if (user) {
+      setSession(user);
+      setIsEmailVerified(!!user.emailVerified);
       const info = getLastLoginInfo(user.uid);
       setLastLogin(info);
     }
-    setIsLoading(false);
 
     return () => unsubscribe();
   }, []);

@@ -27,6 +27,7 @@ interface ReadingCardProps {
   isPublicView?: boolean;
   onDelete?: () => void;
   onViewDetails?: () => void;
+  isHighlighted?: boolean;
 }
 
 export const ReadingCard: React.FC<ReadingCardProps> = ({
@@ -43,7 +44,8 @@ export const ReadingCard: React.FC<ReadingCardProps> = ({
   onTogglePublic,
   isPublicView = false,
   onDelete,
-  onViewDetails
+  onViewDetails,
+  isHighlighted = false,
 }) => {
   const [selectedCardIdx, setSelectedCardIdx] = useState<number | null>(null);
   const [isExpanded, setIsExpanded] = useState(false);
@@ -420,9 +422,19 @@ export const ReadingCard: React.FC<ReadingCardProps> = ({
 
   return (
     <motion.div
+      data-highlighted-reading={isHighlighted ? 'true' : undefined}
       initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      className="bg-white rounded-2xl border border-forest-accent/10 shadow-lg overflow-hidden"
+      animate={{
+        opacity: 1,
+        y: 0,
+        scale: isHighlighted ? [1, 1.015, 1] : 1,
+      }}
+      transition={{ duration: isHighlighted ? 0.7 : 0.25 }}
+      className={`bg-white rounded-2xl border shadow-lg overflow-hidden transition-all duration-500 ${
+        isHighlighted
+          ? 'border-forest-accent/60 ring-4 ring-forest-accent/15 shadow-forest-accent/20'
+          : 'border-forest-accent/10'
+      }`}
     >
       <div className="p-4 border-b border-forest-accent/5">
         <div className="flex items-start justify-between gap-4">

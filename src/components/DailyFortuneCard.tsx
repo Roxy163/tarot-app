@@ -253,11 +253,11 @@ export const DailyFortuneCard: React.FC<DailyFortuneCardProps> = ({
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
-        className="w-full overflow-hidden rounded-[2rem] border border-forest-accent/20 bg-gradient-to-br from-white via-forest-bg/80 to-forest-accent/10 shadow-lg shadow-forest-accent/5"
+        className="w-full overflow-hidden rounded-[1.5rem] border border-forest-accent/15 bg-gradient-to-br from-white via-forest-bg/80 to-forest-accent/10 shadow-sm shadow-forest-accent/5"
       >
         {fortune && !isRedrawing ? (
-          <div className="p-5">
-            <div className="mb-4 flex items-center justify-between gap-3">
+          <div className="p-4">
+            <div className="mb-3 flex items-center justify-between gap-3">
               <div className="flex items-center gap-2">
                 <Sun className="text-forest-accent" size={16} />
                 <span className="text-xs font-bold uppercase tracking-[0.15em] text-forest-accent">日运抽牌</span>
@@ -272,16 +272,16 @@ export const DailyFortuneCard: React.FC<DailyFortuneCardProps> = ({
                   <BookOpen size={13} />
                   日运复盘
                 </button>
-                <span className="text-[10px] text-forest-muted">{fortune.date}</span>
+                <span className="hidden text-[10px] text-forest-muted sm:inline">{fortune.date}</span>
               </div>
             </div>
 
-            <div className="flex gap-4">
+            <div className="flex gap-3">
               <motion.div
                 initial={{ rotateY: 180, opacity: 0 }}
                 animate={{ rotateY: 0, opacity: 1 }}
                 transition={{ duration: 0.8, type: 'spring' }}
-                className={`relative h-30 w-20 shrink-0 overflow-hidden rounded-xl border-2 border-forest-accent/20 shadow-lg ${fortune.isReversed ? 'rotate-180' : ''}`}
+                className={`relative h-24 w-16 shrink-0 overflow-hidden rounded-xl border border-forest-accent/20 shadow-md sm:h-28 sm:w-[4.7rem] ${fortune.isReversed ? 'rotate-180' : ''}`}
               >
                 <img
                   src={getCardImageUrl(cardData?.id || 'ar00')}
@@ -296,14 +296,14 @@ export const DailyFortuneCard: React.FC<DailyFortuneCardProps> = ({
                 </div>
               </motion.div>
 
-              <div className="min-w-0 flex-1 space-y-2">
+              <div className="min-w-0 flex-1 space-y-1.5">
                 <div className="flex flex-wrap items-center gap-2">
-                  <h3 className="font-serif text-xl font-bold text-forest-ink">{fortune.cardName}</h3>
+                  <h3 className="font-serif text-lg font-bold text-forest-ink">{fortune.cardName}</h3>
                   <span className="rounded-full bg-forest-accent/10 px-2 py-0.5 text-[10px] font-bold text-forest-accent">
                     {getSourceLabel(fortune.source)}
                   </span>
                 </div>
-                <p className="text-sm leading-relaxed text-forest-text/80">{fortune.interpretation}</p>
+                <p className="line-clamp-2 text-xs leading-relaxed text-forest-text/80 sm:text-sm">{fortune.interpretation}</p>
                 <div className="flex flex-wrap gap-1.5">
                   {fortune.keywords.map((kw, idx) => (
                     <span key={idx} className="rounded-full bg-forest-accent/10 px-2 py-0.5 text-[10px] font-medium text-forest-accent">
@@ -317,9 +317,9 @@ export const DailyFortuneCard: React.FC<DailyFortuneCardProps> = ({
               </div>
             </div>
 
-            <div className="mt-5 rounded-3xl border border-forest-accent/10 bg-white/65 p-4">
+            <div className="mt-3 rounded-2xl border border-forest-accent/10 bg-white/65 p-3">
               <div className="flex items-start gap-3">
-                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-forest-accent/10 text-forest-accent">
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl bg-forest-accent/10 text-forest-accent">
                   {fortune.archivedAt ? <CheckCircle2 size={18} /> : <PenLine size={18} />}
                 </div>
                 <div className="min-w-0 flex-1">
@@ -342,11 +342,11 @@ export const DailyFortuneCard: React.FC<DailyFortuneCardProps> = ({
                 </div>
               </div>
 
-              <div className="mt-4">
+              <div className="mt-3">
                 <button
                   type="button"
                   onClick={() => openArchiveDialog(fortune)}
-                  className={`flex min-h-12 w-full items-center justify-center gap-2 rounded-full px-4 text-sm font-bold transition-all ${
+                  className={`flex min-h-10 w-full items-center justify-center gap-2 rounded-full px-4 text-xs font-bold transition-all ${
                     fortune.archivedAt
                       ? 'bg-forest-accent/10 text-forest-accent hover:bg-forest-accent/15'
                       : 'bg-forest-accent text-white shadow-lg shadow-forest-accent/15 hover:bg-forest-accent/90'
@@ -361,7 +361,7 @@ export const DailyFortuneCard: React.FC<DailyFortuneCardProps> = ({
             {!fortune.archivedAt && (
               <button
                 onClick={handleStartRedraw}
-                className="mt-4 flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-white/50 px-3 text-xs text-forest-ink transition-all hover:bg-white"
+                className="mt-3 flex min-h-10 w-full items-center justify-center gap-2 rounded-xl bg-white/50 px-3 text-xs text-forest-ink transition-all hover:bg-white"
               >
                 <RefreshCw size={14} />
                 <span>重新洗牌抽日运</span>
@@ -415,7 +415,7 @@ export const DailyFortuneCard: React.FC<DailyFortuneCardProps> = ({
             </motion.div>
           </div>
         ) : (
-          <div className="p-4 text-center sm:p-6">
+          <div className="p-3 text-center sm:p-4">
             <AnimatePresence mode="wait">
               {shufflePhase === 'idle' && (
                 <motion.div
@@ -423,27 +423,27 @@ export const DailyFortuneCard: React.FC<DailyFortuneCardProps> = ({
                   initial={{ opacity: 0, scale: 0.9 }}
                   animate={{ opacity: 1, scale: 1 }}
                   exit={{ opacity: 0, scale: 0.9 }}
-                  className="grid grid-cols-[5.75rem_1fr] items-center gap-4 text-left sm:grid-cols-[7.5rem_1fr] sm:gap-5"
+                  className="grid grid-cols-[4.75rem_1fr] items-center gap-3 text-left sm:grid-cols-[6rem_1fr] sm:gap-4"
                 >
-                  <div className="relative mx-auto h-32 w-24 sm:h-44 sm:w-32">
-                    <FortuneCardBack className="absolute left-1 top-3 w-20 -rotate-6 opacity-70 sm:w-24" />
-                    <FortuneCardBack className="absolute right-1 top-0 w-20 rotate-3 sm:w-24" />
+                  <div className="relative mx-auto h-24 w-[4.5rem] sm:h-32 sm:w-24">
+                    <FortuneCardBack className="absolute left-0 top-3 w-14 -rotate-6 opacity-70 sm:w-[4.5rem]" />
+                    <FortuneCardBack className="absolute right-0 top-0 w-14 rotate-3 sm:w-[4.5rem]" />
                   </div>
-                  <div className="min-w-0 space-y-3 sm:space-y-4">
-                    <div className="space-y-1.5 sm:space-y-2">
+                  <div className="min-w-0 space-y-2.5 sm:space-y-3">
+                    <div className="space-y-1.5">
                       <div className="inline-flex items-center gap-2 rounded-full bg-forest-accent/10 px-3 py-1 text-[10px] font-bold uppercase tracking-[0.18em] text-forest-accent">
                         <Sparkles size={12} />
                         日运抽牌
                       </div>
-                      <h3 className="font-serif text-xl font-bold text-forest-ink">抽一张今天的日运牌</h3>
-                      <p className="text-sm leading-relaxed text-forest-muted">
+                      <h3 className="font-serif text-lg font-bold text-forest-ink">抽一张今天的日运牌</h3>
+                      <p className="text-xs leading-relaxed text-forest-muted sm:text-sm">
                         看今天的提醒，也顺手记住一张牌的关键词和牌义。
                       </p>
                     </div>
 
-                    <div className="space-y-2.5 sm:space-y-3">
-                      <div className="rounded-3xl border border-forest-accent/10 bg-white/60 p-3 shadow-sm">
-                        <div className="mb-3 flex items-start justify-between gap-3">
+                    <div className="space-y-2">
+                      <div className="rounded-2xl border border-forest-accent/10 bg-white/60 p-3 shadow-sm">
+                        <div className="mb-2 flex items-start justify-between gap-3">
                           <div className="min-w-0">
                             <p className="text-xs font-bold text-forest-ink">系统抽牌</p>
                             <p className="mt-0.5 text-[11px] leading-relaxed text-forest-muted">
@@ -455,7 +455,7 @@ export const DailyFortuneCard: React.FC<DailyFortuneCardProps> = ({
 
                         <button
                           onClick={handleShuffle}
-                          className="min-h-11 w-full rounded-full bg-forest-accent px-4 text-sm font-bold text-white shadow-xl shadow-forest-accent/20 transition-all hover:scale-[1.02] hover:bg-forest-accent/90 active:scale-[0.98] sm:min-h-12"
+                          className="min-h-10 w-full rounded-full bg-forest-accent px-4 text-xs font-bold text-white shadow-sm shadow-forest-accent/15 transition-all hover:scale-[1.02] hover:bg-forest-accent/90 active:scale-[0.98]"
                         >
                           <span className="flex items-center justify-center gap-2">
                             <Shuffle size={17} />
@@ -466,7 +466,7 @@ export const DailyFortuneCard: React.FC<DailyFortuneCardProps> = ({
 
                       <button
                         onClick={() => setShowCardPicker(true)}
-                        className="min-h-11 w-full rounded-xl border border-forest-accent/10 bg-white/70 px-5 text-sm text-forest-ink transition-all hover:bg-white sm:min-h-12 sm:px-6"
+                        className="min-h-10 w-full rounded-xl border border-forest-accent/10 bg-white/70 px-4 text-xs font-bold text-forest-ink transition-all hover:bg-white"
                       >
                         <span className="flex items-center justify-center gap-2">
                           <PenLine size={16} />

@@ -399,9 +399,9 @@ export function CardMetadataManager({ metadata, onUpdate, readings, cardKeywordM
                 setAnnotationEditorCardId(undefined);
                 setShowAnnotationEditor(true);
               }}
-              className="min-h-12 px-4 bg-forest-accent/10 text-forest-accent hover:bg-forest-accent/20 rounded-xl text-sm font-bold transition-colors flex items-center justify-center gap-2"
+              className="min-h-12 px-5 bg-forest-accent text-white hover:bg-forest-accent/90 rounded-xl text-sm font-bold transition-colors flex items-center justify-center gap-2 shadow-lg shadow-forest-accent/15"
             >
-              <Edit3 size={16} /> 批量编辑牌义
+              <Edit3 size={16} /> 批量编辑单牌牌义
             </button>
             <button 
               onClick={resetAll}

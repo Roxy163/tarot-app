@@ -6,6 +6,17 @@ import { createUserReadingSyncPlan } from './readingCloudSync';
 type FirestoreApi = typeof import('firebase/firestore');
 type StorageApi = typeof import('firebase/storage');
 
+export interface UserReadingSyncResult {
+  totalReadings: number;
+  previousReadings: number;
+  privateReadingsWritten: number;
+  privateReadingsDeleted: number;
+  publicReadingsSaved: number;
+  publicReadingsDeleted: number;
+  publicMirrorWarning?: string;
+  publicMirrorDeleteWarning?: string;
+}
+
 let firestoreApiPromise: Promise<FirestoreApi> | null = null;
 let storageApiPromise: Promise<StorageApi> | null = null;
 
@@ -332,7 +343,7 @@ export const deletePublicReading = async (readingId: string): Promise<void> => {
   }
 };
 
-export const replaceUserReadings = async (uid: string, readings: TarotReading[]): Promise<void> => {
+export const replaceUserReadings = async (uid: string, readings: TarotReading[]): Promise<UserReadingSyncResult> => {
   const { collection, deleteDoc, doc, getDocs, setDoc } = await loadFirestore();
   const firebaseDb = await getFirebaseDb();
 
@@ -348,13 +359,43 @@ export const replaceUserReadings = async (uid: string, readings: TarotReading[])
     )),
   );
 
-  await Promise.all([
-    ...syncPlan.publicReadingsToSave.map(reading => savePublicReading(reading)),
-    ...syncPlan.publicReadingIdsToDelete.map(readingId => deletePublicReading(readingId)),
-    ...syncPlan.readingsToDelete.map(reading => (
+  let publicMirrorWarning: string | undefined;
+  let publicMirrorDeleteWarning: string | undefined;
+  let publicReadingsSaved = syncPlan.publicReadingsToSave.length;
+  let publicReadingsDeleted = syncPlan.publicReadingIdsToDelete.length;
+
+  try {
+    await Promise.all(syncPlan.publicReadingsToSave.map(reading => savePublicReading(reading)));
+  } catch (error) {
+    publicReadingsSaved = 0;
+    publicMirrorWarning = error instanceof Error ? error.message : String(error);
+    console.warn('Public reading mirror failed, private readings were still saved:', error);
+  }
+
+  try {
+    await Promise.all(syncPlan.publicReadingIdsToDelete.map(readingId => deletePublicReading(readingId)));
+  } catch (error) {
+    publicReadingsDeleted = 0;
+    publicMirrorDeleteWarning = error instanceof Error ? error.message : String(error);
+    console.warn('Public reading mirror cleanup failed, private readings were still saved:', error);
+  }
+
+  await Promise.all(
+    syncPlan.readingsToDelete.map(reading => (
       deleteDoc(doc(firebaseDb, 'users', uid, 'readings', reading.id))
     )),
-  ]);
+  );
+
+  return {
+    totalReadings: syncPlan.mergedReadings.length,
+    previousReadings: previousReadings.length,
+    privateReadingsWritten: syncPlan.readingsToWrite.length,
+    privateReadingsDeleted: syncPlan.readingsToDelete.length,
+    publicReadingsSaved,
+    publicReadingsDeleted,
+    publicMirrorWarning,
+    publicMirrorDeleteWarning,
+  };
 };
 
 const getUserSetting = async <T,>(uid: string, key: string): Promise<T[] | null> => {

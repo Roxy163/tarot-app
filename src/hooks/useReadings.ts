@@ -106,8 +106,11 @@ const mergeKeywordMemory = (
   return Array.from(memoryByCard.values()).sort((a, b) => a.cardName.localeCompare(b.cardName));
 };
 
-export const useReadings = (session: { uid?: string; email?: string | null } | null) => {
-  const activeDataKey = session?.uid || 'guest';
+export const useReadings = (
+  session: { uid?: string; email?: string | null } | null,
+  isAuthLoading = false,
+) => {
+  const activeDataKey = isAuthLoading ? 'auth-loading' : (session?.uid || 'guest');
   const exampleReadings = useMemo(() => INITIAL_READINGS.map(r => ({ ...r, isExample: true })), []);
   const [readings, setReadings] = useState<TarotReading[]>(INITIAL_READINGS.map(r => ({ ...r, isExample: true })));
   const [spreads, setSpreads] = useState<SpreadDefinition[]>(OFFICIAL_SPREADS);
@@ -139,6 +142,11 @@ export const useReadings = (session: { uid?: string; email?: string | null } | n
     let cancelled = false;
 
     const loadData = async () => {
+      if (isAuthLoading) {
+        setLoadedDataKey(null);
+        return;
+      }
+
       setLoadedDataKey(null);
       setIsCloudSyncPaused(false);
       setSyncNotice(null);
@@ -214,10 +222,11 @@ export const useReadings = (session: { uid?: string; email?: string | null } | n
     return () => {
       cancelled = true;
     };
-  }, [activeDataKey, exampleReadings, session?.uid]);
+  }, [activeDataKey, exampleReadings, isAuthLoading, session?.uid]);
 
   // 保存数据：登录用户写入 Firebase，访客写入本地。
   useEffect(() => {
+    if (isAuthLoading) return;
     if (loadedDataKey !== activeDataKey) return;
 
     const userReadings = readings.filter(r => !r.isExample);
@@ -228,17 +237,28 @@ export const useReadings = (session: { uid?: string; email?: string | null } | n
 
       const timer = window.setTimeout(() => {
         replaceUserReadings(session.uid, userReadings)
-          .then(() => {
+          .then(result => {
+            const privateChangeCount = result.privateReadingsWritten + result.privateReadingsDeleted;
+
             if (pendingGuestReadingsSyncRef.current) {
               localStorage.removeItem('tarot_guest_data');
               pendingGuestReadingsSyncRef.current = false;
-              setSyncNotice('已将本机手记合并到云端典籍。');
+              setSyncNotice(`已将本机手记合并到云端典籍，共 ${result.totalReadings} 条。`);
+              return;
+            }
+
+            if (result.publicMirrorWarning || result.publicMirrorDeleteWarning) {
+              setSyncNotice('云端典籍已保存；公开到广场暂未成功，稍后会随下次修改重试。');
+              return;
+            }
+
+            if (privateChangeCount > 0) {
+              setSyncNotice(`云端典籍已同步 ${result.totalReadings} 条记录。`);
             }
           })
           .catch(error => {
             console.error('Failed to save readings:', error);
-            setIsCloudSyncPaused(true);
-            setSyncNotice('云端保存失败，后续修改已先写入本地，避免误覆盖云端。');
+            setSyncNotice('云端典籍保存失败，本机记录已保留；刷新或重新登录后会再次尝试同步。');
           });
       }, CLOUD_SAVE_DEBOUNCE_MS);
 
@@ -246,9 +266,10 @@ export const useReadings = (session: { uid?: string; email?: string | null } | n
     } else {
       localStorage.setItem('tarot_guest_data', JSON.stringify(userReadings));
     }
-  }, [activeDataKey, isCloudSyncPaused, loadedDataKey, readings, session?.uid]);
+  }, [activeDataKey, isAuthLoading, isCloudSyncPaused, loadedDataKey, readings, session?.uid]);
 
   useEffect(() => {
+    if (isAuthLoading) return;
     if (loadedDataKey !== activeDataKey) return;
 
     if (session?.uid) {
@@ -267,9 +288,10 @@ export const useReadings = (session: { uid?: string; email?: string | null } | n
     }
 
     localStorage.setItem('tarot_spreads', JSON.stringify(spreads));
-  }, [activeDataKey, isCloudSyncPaused, loadedDataKey, session?.uid, spreads]);
+  }, [activeDataKey, isAuthLoading, isCloudSyncPaused, loadedDataKey, session?.uid, spreads]);
 
   useEffect(() => {
+    if (isAuthLoading) return;
     if (loadedDataKey !== activeDataKey) return;
 
     if (session?.uid) {
@@ -288,9 +310,10 @@ export const useReadings = (session: { uid?: string; email?: string | null } | n
     }
 
     localStorage.setItem('tarot_card_metadata', JSON.stringify(cardMetadata));
-  }, [activeDataKey, cardMetadata, isCloudSyncPaused, loadedDataKey, session?.uid]);
+  }, [activeDataKey, cardMetadata, isAuthLoading, isCloudSyncPaused, loadedDataKey, session?.uid]);
 
   useEffect(() => {
+    if (isAuthLoading) return;
     if (loadedDataKey !== activeDataKey) return;
 
     if (session?.uid) {
@@ -309,7 +332,7 @@ export const useReadings = (session: { uid?: string; email?: string | null } | n
     }
 
     localStorage.setItem('tarot_card_keyword_memory', JSON.stringify(cardKeywordMemory));
-  }, [activeDataKey, cardKeywordMemory, isCloudSyncPaused, loadedDataKey, session?.uid]);
+  }, [activeDataKey, cardKeywordMemory, isAuthLoading, isCloudSyncPaused, loadedDataKey, session?.uid]);
   // 添加阅读记录
   const handleAddReading = useCallback(async (newReading: any, profile?: { display_name?: string; nickname?: string }, onShowSnackbar?: (msg: string) => void) => {
     setIsProcessing(true);
@@ -326,9 +349,13 @@ export const useReadings = (session: { uid?: string; email?: string | null } | n
         updatedAt: new Date().toISOString(),
       };
 
-      if (editingReading) {
-        setReadings(readings.map(r => r.id === editingReading.id ? stampReadingUpdate({ ...editingReading, ...readingData }) : r));
+      let savedReading: TarotReading | null = null;
+
+      if (editingReading?.id) {
+        const updatedReading = stampReadingUpdate({ ...editingReading, ...readingData });
+        setReadings(readings.map(r => r.id === editingReading.id ? updatedReading : r));
         onShowSnackbar?.('✨ 灵见手帖已更新。');
+        savedReading = updatedReading;
       } else {
         const reading: TarotReading = {
           id: crypto.randomUUID(),
@@ -339,9 +366,9 @@ export const useReadings = (session: { uid?: string; email?: string | null } | n
         };
         const updatedReadings = [reading, ...readings];
         setReadings(updatedReadings);
-        setEditingReading(reading);
 
         onShowSnackbar?.('✨ 灵见手帖已添入《阁中典籍》。');
+        savedReading = reading;
       }
 
       // Trigger Smart Prompts for Guests
@@ -365,8 +392,11 @@ export const useReadings = (session: { uid?: string; email?: string | null } | n
           localStorage.setItem('last_reminder_timestamp', now.toString());
         }
       }
+
+      return savedReading;
     } catch (error) {
       console.error("Error adding/editing reading:", error);
+      return null;
     } finally {
       setIsProcessing(false);
     }

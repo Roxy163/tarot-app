@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { X, Sparkles } from 'lucide-react';
 import { SmartTip } from '../../hooks/useSmartTips';
@@ -16,6 +16,13 @@ export const SmartTipBanner: React.FC<SmartTipBannerProps> = ({
   onDismiss,
   onAction,
 }) => {
+  useEffect(() => {
+    if (!isVisible) return;
+
+    const timer = window.setTimeout(onDismiss, tip.actionLabel ? 8000 : 5000);
+    return () => window.clearTimeout(timer);
+  }, [isVisible, onDismiss, tip.actionLabel, tip.id]);
+
   return (
     <AnimatePresence>
       {isVisible && (

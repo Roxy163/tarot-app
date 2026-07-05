@@ -1,4 +1,4 @@
-import React, { Suspense, lazy, useCallback, useMemo, useState, useEffect } from 'react';
+import React, { Suspense, lazy, useCallback, useMemo, useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Plus, Globe, Sparkles, X, User, ChevronRight, Info, LogOut, Database, ShieldCheck, ArrowRight, LogIn, Book, Upload, Moon, CheckCircle, AlertTriangle, Mail } from 'lucide-react';
 import { TarotReading, SpreadDefinition, TarotCardMetadata, UserProfile } from './types';
@@ -14,6 +14,7 @@ import { useReadings } from './hooks/useReadings';
 import { useOnboarding } from './context/OnboardingContext';
 import { FirstEntryGuide } from './components/onboarding/FirstEntryGuide';
 import { SmartTipBanner } from './components/onboarding/SmartTipBanner';
+import { FeatureSpotlightGuide, FeatureSpotlightStep } from './components/onboarding/FeatureSpotlightGuide';
 import { useSmartTips } from './hooks/useSmartTips';
 import { usePersistentTab } from './hooks/usePersistentTab';
 import {
@@ -59,8 +60,34 @@ const APP_TABS: AppTab[] = ['home', 'add', 'private', 'public', 'metadata', 'pro
 const isAppTab = (value: string | null): value is AppTab => (
   !!value && APP_TABS.includes(value as AppTab)
 );
+
+const FEATURE_SPOTLIGHT_STORAGE_KEY = 'tarot_feature_spotlight_seen_v2';
+
+const FEATURE_SPOTLIGHT_STEPS: FeatureSpotlightStep[] = [
+  {
+    target: '[data-tour="daily-draw"]',
+    title: '第一步，先抽今天的一张牌',
+    description: '你可以先洗牌再输入数字，也可以录入现实中抽到的牌；这里适合做单牌牌义记忆练习。',
+  },
+  {
+    target: '[data-tour="daily-review"]',
+    title: '这里回看每天的一张牌',
+    description: '日运复盘会把你每天抽到或现实录入的牌整理起来，适合晚上回看：这张牌和今天发生的事哪里对应？',
+  },
+  {
+    target: '[data-tour="library-review"]',
+    title: '这里进入全部典籍复盘',
+    description: '典籍复盘会带你回到所有抽牌手记，可以按给自己、客户记录、已复盘状态来筛选长期记录。',
+  },
+  {
+    target: '[data-tour="card-annotations"]',
+    title: '这里整理自己的牌义',
+    description: '当你对某张牌有新的理解，可以进入牌义注疏批量修改单牌释义，慢慢沉淀成自己的牌义体系。',
+  },
+];
+
 function AppContent() {
-  const { session, isEmailVerified, signOut, updatePassword, sendVerificationEmail, refreshUser } = useAuth();
+  const { session, isLoading: isAuthLoading, isEmailVerified, signOut, updatePassword, sendVerificationEmail, refreshUser } = useAuth();
   const { state: onboardingState, checkAndUnlockAchievements } = useOnboarding();
   
   const [activeTab, setActiveTab] = usePersistentTab<AppTab>('tarot_active_tab', 'home', isAppTab);
@@ -100,6 +127,10 @@ function AppContent() {
   const [dailyProverb, setDailyProverb] = useState('');
   const [formQuestion, setFormQuestion] = useState('');
   const [hasCards, setHasCards] = useState(false);
+  const [highlightedReadingId, setHighlightedReadingId] = useState<string | null>(null);
+  const [isFeatureSpotlightOpen, setIsFeatureSpotlightOpen] = useState(false);
+  const highlightTimerRef = useRef<number | null>(null);
+  const snackbarTimerRef = useRef<number | null>(null);
 
   // Use custom hook for readings state
   const {
@@ -127,16 +158,37 @@ function AppContent() {
     toggleTag,
     syncNotice,
     clearSyncNotice,
-  } = useReadings(session);
+  } = useReadings(session, isAuthLoading);
 
   const [publicReadingsCache, setPublicReadingsCache] = useState<TarotReading[]>([]);
+
+  useEffect(() => {
+    if (snackbarTimerRef.current !== null) {
+      window.clearTimeout(snackbarTimerRef.current);
+      snackbarTimerRef.current = null;
+    }
+
+    if (!snackbar.isOpen) return;
+
+    const duration = snackbar.showLoginAction || snackbar.message.startsWith('❌') ? 6500 : 4200;
+    snackbarTimerRef.current = window.setTimeout(() => {
+      setSnackbar(prev => ({ ...prev, isOpen: false }));
+      snackbarTimerRef.current = null;
+    }, duration);
+
+    return () => {
+      if (snackbarTimerRef.current !== null) {
+        window.clearTimeout(snackbarTimerRef.current);
+        snackbarTimerRef.current = null;
+      }
+    };
+  }, [snackbar.isOpen, snackbar.message, snackbar.showLoginAction]);
 
   useEffect(() => {
     if (!syncNotice) return;
 
     setSnackbar({ isOpen: true, message: syncNotice });
     const timer = window.setTimeout(() => {
-      setSnackbar(prev => ({ ...prev, isOpen: false }));
       clearSyncNotice();
     }, 4200);
 
@@ -187,6 +239,28 @@ function AppContent() {
   useEffect(() => {
     checkAndUnlockAchievements(readingCount, hasPublicReading, aiUsageCount, 0);
   }, [readingCount, hasPublicReading, aiUsageCount, checkAndUnlockAchievements]);
+
+  useEffect(() => () => {
+    if (highlightTimerRef.current !== null) {
+      window.clearTimeout(highlightTimerRef.current);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!onboardingState.hasCompletedFirstEntry || activeTab !== 'home') return;
+    if (localStorage.getItem(FEATURE_SPOTLIGHT_STORAGE_KEY) === 'true') return;
+
+    const timer = window.setTimeout(() => {
+      setIsFeatureSpotlightOpen(true);
+    }, 800);
+
+    return () => window.clearTimeout(timer);
+  }, [activeTab, onboardingState.hasCompletedFirstEntry]);
+
+  const finishFeatureSpotlight = useCallback(() => {
+    localStorage.setItem(FEATURE_SPOTLIGHT_STORAGE_KEY, 'true');
+    setIsFeatureSpotlightOpen(false);
+  }, []);
 
   const { currentTip, isVisible: isTipVisible, dismissTip } = useSmartTips(
     readingCount,
@@ -241,6 +315,8 @@ function AppContent() {
   }, [dismissTip, isTipVisible]);
 
   useEffect(() => {
+    if (isAuthLoading) return;
+
     if (!session) {
       resetSignedOutView();
       setHasNavigatedOnLogin(false);
@@ -250,7 +326,7 @@ function AppContent() {
       localStorage.setItem('has_navigated_on_login', 'true');
       setActiveTab('profile');
     }
-  }, [resetSignedOutView, session, hasNavigatedOnLogin]);
+  }, [resetSignedOutView, session, hasNavigatedOnLogin, isAuthLoading]);
 
   // Daily Proverb & First Entry Scroll
   useEffect(() => {
@@ -270,6 +346,8 @@ function AppContent() {
 
   // Security check for restricted pages
   useEffect(() => {
+    if (isAuthLoading) return;
+
     if (!session && activeTab === 'profile') {
       setActiveTab('home');
       setLoginPrompt({
@@ -278,7 +356,7 @@ function AppContent() {
         content: '“阁主印鉴”记录着您的位阶晋升与私人注疏。请执印入阁后查看您的专属成就。'
       });
     }
-  }, [activeTab, session]);
+  }, [activeTab, session, isAuthLoading]);
 
   // Profile loading
   useEffect(() => {
@@ -605,15 +683,29 @@ function AppContent() {
 
   // Handle add reading with snackbar
   const handleAddReadingWithSnackbar = async (newReading: any) => {
-    const wasEditing = !!editingReading;
-    await handleAddReading(newReading, profile, (msg: string) => {
+    const savedReading = await handleAddReading(newReading, profile, (msg: string) => {
       setSnackbar({ isOpen: true, message: msg });
-      setTimeout(() => setSnackbar(prev => ({ ...prev, isOpen: false })), 3000);
     });
-    if (wasEditing) {
-      setEditingReading(null);
-      setActiveTab('private');
+
+    if (savedReading?.id) {
+      if (highlightTimerRef.current !== null) {
+        window.clearTimeout(highlightTimerRef.current);
+      }
+      setHighlightedReadingId(savedReading.id);
+      highlightTimerRef.current = window.setTimeout(() => {
+        setHighlightedReadingId(null);
+        highlightTimerRef.current = null;
+      }, 5200);
     }
+
+    setEditingReading(null);
+    setSearchQuery('');
+    setSearchTags([]);
+    setSelectedReadingDetail(null);
+    setActiveTab('private');
+    window.requestAnimationFrame(() => {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    });
   };
 
   // Handle edit reading navigation
@@ -917,9 +1009,21 @@ function AppContent() {
 
       <div className="pt-4">
         <p className="text-[10px] text-forest-muted font-bold px-2 uppercase tracking-widest mb-2">系统设置</p>
-        <button className="w-full flex items-center gap-3 p-3 rounded-xl hover:bg-forest-accent/5 text-forest-text transition-all opacity-50 cursor-not-allowed">
+        <button
+          onClick={() => {
+            setEditingReading(null);
+            dismissTip();
+            setActiveTab('home');
+            setIsFeatureSpotlightOpen(true);
+            closeSidebar();
+          }}
+          className="w-full flex items-center justify-between p-3 rounded-xl hover:bg-forest-accent/5 text-forest-text transition-all group"
+        >
+          <div className="flex items-center gap-3">
           <Info size={18} className="text-forest-accent" />
-          <span className="text-sm font-medium">关于研习阁</span>
+            <span className="text-sm font-medium">重新查看功能导览</span>
+          </div>
+          <ChevronRight size={14} className="text-forest-muted group-hover:translate-x-1 transition-transform" />
         </button>
       </div>
 
@@ -1420,7 +1524,7 @@ function AppContent() {
               onExtractKeywordCandidates={handleExtractKeywordCandidates}
               onConfirmKeywordCandidates={handleConfirmKeywordCandidates}
               cardMetadata={cardMetadata}
-              onAddReading={handleAddReadingWithSnackbar}
+              highlightedReadingId={highlightedReadingId}
             />
           </Suspense>
         )}
@@ -1509,7 +1613,6 @@ function AppContent() {
                 onAddReading={handleAddReadingWithSnackbar}
                 onShowSnackbar={(msg) => {
                   setSnackbar({ isOpen: true, message: msg });
-                  setTimeout(() => setSnackbar(prev => ({ ...prev, isOpen: false })), 3000);
                 }}
               />
             </Suspense>
@@ -1529,6 +1632,11 @@ function AppContent() {
     <AnimatePresence>
       {onboardingState.showFirstEntry && <FirstEntryGuide />}
     </AnimatePresence>
+    <FeatureSpotlightGuide
+      isOpen={isFeatureSpotlightOpen && !onboardingState.showFirstEntry && activeTab === 'home'}
+      steps={FEATURE_SPOTLIGHT_STEPS}
+      onFinish={finishFeatureSpotlight}
+    />
     </>
   );
 }

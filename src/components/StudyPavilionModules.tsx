@@ -7,8 +7,8 @@ import {
   CalendarDays,
   Clock3,
   Eye,
+  Edit3,
   Flame,
-  Library,
   RefreshCw,
   Sparkles,
 } from 'lucide-react';
@@ -355,8 +355,8 @@ export const StudyPavilionModules: React.FC<StudyPavilionModulesProps> = ({
               onClick={() => setActiveTab('metadata')}
               className="min-h-11 py-2.5 rounded-xl bg-white border border-forest-accent/20 text-forest-accent text-xs font-bold flex items-center justify-center gap-2 hover:bg-forest-accent/5 transition-colors"
             >
-              <Library size={14} />
-              写牌义
+              <Edit3 size={14} />
+              批量编辑牌义
             </button>
           </div>
         </div>

@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useRef } from 'react';
+import React, { useEffect, useMemo, useState, useRef } from 'react';
 import { Sparkles, Edit3, X, Calendar, BookOpen, Award, Lock, Copy, LogOut, Camera, HelpCircle } from 'lucide-react';
 import { FeatureGuide } from './FeatureGuide';
 import { TarotReading, TarotCardMetadata, UserProfile } from '../types';
@@ -68,6 +68,7 @@ export function ProfileView({
   const [isGuideOpen, setIsGuideOpen] = useState(false);
   const [notice, setNotice] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const noticeTimerRef = useRef<number | null>(null);
   const canEditProfile = !!profile;
   
   const [editName, setEditName] = useState(profile?.display_name || profile?.nickname || authorName);
@@ -95,10 +96,26 @@ export function ProfileView({
 
   const tarotId = profile?.user_public_id || 'TAROT-PENDING';
 
+  useEffect(() => () => {
+    if (noticeTimerRef.current !== null) {
+      window.clearTimeout(noticeTimerRef.current);
+    }
+  }, []);
+
+  const showNotice = (message: string, duration = 2600) => {
+    setNotice(message);
+    if (noticeTimerRef.current !== null) {
+      window.clearTimeout(noticeTimerRef.current);
+    }
+    noticeTimerRef.current = window.setTimeout(() => {
+      setNotice('');
+      noticeTimerRef.current = null;
+    }, duration);
+  };
+
   const handleCopyId = () => {
     navigator.clipboard.writeText(tarotId);
-    setNotice('阁主编号已复制到指尖');
-    window.setTimeout(() => setNotice(''), 2000);
+    showNotice('阁主编号已复制到指尖');
   };
 
   const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -106,7 +123,7 @@ export function ProfileView({
     if (!file) return;
 
     if (file.size > 5 * 1024 * 1024) {
-      setNotice('图片文件请保持在 5MB 以内');
+      showNotice('图片文件请保持在 5MB 以内');
       return;
     }
 
@@ -130,7 +147,7 @@ export function ProfileView({
       await onUpdateProfile({ avatar_url: publicUrlWithCacheBust });
     } catch (error: any) {
       console.error('Upload error:', error);
-      setNotice(error.message || '上传头像失败，请稍后再试');
+      showNotice(error.message || '上传头像失败，请稍后再试', 4200);
     } finally {
       setIsUploading(false);
     }
@@ -152,16 +169,26 @@ export function ProfileView({
         <div className="relative">
           <div 
             onClick={() => canEditProfile && !isUploading && fileInputRef.current?.click()}
+            onKeyDown={(event) => {
+              if (!canEditProfile || isUploading) return;
+              if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault();
+                fileInputRef.current?.click();
+              }
+            }}
+            role={canEditProfile ? 'button' : undefined}
+            tabIndex={canEditProfile ? 0 : undefined}
+            aria-label={canEditProfile ? '头像区域，点击更换头像' : undefined}
             className={`w-40 h-40 rounded-full bg-forest-bg border-8 border-white shadow-[0_20px_50px_rgba(44,54,44,0.15)] overflow-hidden transition-all duration-500 relative group ${canEditProfile ? 'cursor-pointer hover:scale-105' : ''}`}
           >
             {profile?.avatar_url ? (
-              <img src={profile.avatar_url} alt="Avatar" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+              <img src={profile.avatar_url} alt="阁主头像" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
             ) : (
               <DefaultTarotAvatar />
             )}
             
             {canEditProfile && (
-              <div className="absolute inset-0 bg-forest-ink/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+              <div className="absolute inset-0 hidden bg-forest-ink/40 sm:flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-300">
                 <Camera className="text-white" size={32} />
               </div>
             )}
@@ -180,6 +207,17 @@ export function ProfileView({
               accept="image/*" 
               className="hidden" 
             />
+          )}
+
+          {canEditProfile && (
+            <button
+              type="button"
+              onClick={() => !isUploading && fileInputRef.current?.click()}
+              className="absolute bottom-5 right-2 flex h-10 w-10 items-center justify-center rounded-full border-2 border-white bg-forest-accent text-white shadow-xl transition-transform active:scale-95 sm:hidden"
+              aria-label="更换头像"
+            >
+              <Camera size={16} />
+            </button>
           )}
           
           <div className="absolute -bottom-2 left-1/2 -translate-x-1/2 bg-forest-accent text-white px-5 py-1.5 rounded-full text-xs font-bold shadow-xl border-2 border-white whitespace-nowrap">
@@ -213,7 +251,8 @@ export function ProfileView({
               {canEditProfile && (
                 <button 
                   onClick={() => setIsEditingName(true)}
-                  className="p-2 text-forest-muted opacity-0 group-hover:opacity-100 hover:text-forest-accent hover:bg-forest-accent/5 rounded-xl transition-all"
+                  aria-label="编辑昵称"
+                  className="p-2 text-forest-muted opacity-100 sm:opacity-0 sm:group-hover:opacity-100 hover:text-forest-accent hover:bg-forest-accent/5 rounded-xl transition-all"
                 >
                   <Edit3 size={20} />
                 </button>
@@ -243,7 +282,8 @@ export function ProfileView({
                 {canEditProfile && (
                   <button 
                     onClick={() => setIsEditingBio(true)}
-                    className="p-2 text-forest-muted opacity-0 group-hover:opacity-100 hover:text-forest-accent hover:bg-forest-accent/5 rounded-xl transition-all absolute right-0 top-0"
+                    aria-label="编辑签名"
+                    className="p-2 text-forest-muted opacity-100 sm:opacity-0 sm:group-hover:opacity-100 hover:text-forest-accent hover:bg-forest-accent/5 rounded-xl transition-all absolute right-0 top-0"
                   >
                     <Edit3 size={18} />
                   </button>
