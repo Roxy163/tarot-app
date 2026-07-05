@@ -9,3 +9,6 @@ backups/
 !.env.example
 .env
 .env.local
+
+# Local Netlify folder
+.netlify

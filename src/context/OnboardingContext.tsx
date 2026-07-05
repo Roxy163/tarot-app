@@ -123,38 +123,29 @@ export function OnboardingProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     const saved = localStorage.getItem('tarot_onboarding_state');
-    const hasSeen = localStorage.getItem('has_seen_first_entry_scroll') === 'true';
 
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
-        const parsedHasCompleted = Boolean(parsed.hasCompletedFirstEntry || hasSeen);
 
         dispatch({
           type: 'LOAD_STATE',
           payload: {
             ...parsed,
-            hasCompletedFirstEntry: parsedHasCompleted,
+            showFirstEntry: false,
+            currentStep: 0,
+            hasCompletedFirstEntry: true,
           },
         });
-
-        if (!parsedHasCompleted) {
-          dispatch({ type: 'START_FIRST_ENTRY' });
-        }
       } catch (e) {
         console.error('Failed to load onboarding state:', e);
-        if (!hasSeen) {
-          dispatch({ type: 'START_FIRST_ENTRY' });
-        }
+        dispatch({ type: 'LOAD_STATE', payload: { showFirstEntry: false, currentStep: 0, hasCompletedFirstEntry: true } });
       }
     } else {
-      if (!hasSeen) {
-        dispatch({ type: 'START_FIRST_ENTRY' });
-      } else {
-        dispatch({ type: 'LOAD_STATE', payload: { hasCompletedFirstEntry: true } });
-      }
+      dispatch({ type: 'LOAD_STATE', payload: { showFirstEntry: false, currentStep: 0, hasCompletedFirstEntry: true } });
     }
 
+    localStorage.setItem('has_seen_first_entry_scroll', 'true');
     setHasLoadedStoredState(true);
   }, []);
 

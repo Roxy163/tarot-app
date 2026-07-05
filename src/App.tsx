@@ -12,7 +12,6 @@ import { HomeTab } from './components/tabs/HomeTab';
 import { MainLayout } from './components/layouts/MainLayout';
 import { useReadings } from './hooks/useReadings';
 import { useOnboarding } from './context/OnboardingContext';
-import { FirstEntryGuide } from './components/onboarding/FirstEntryGuide';
 import { SmartTipBanner } from './components/onboarding/SmartTipBanner';
 import { FeatureSpotlightGuide, FeatureSpotlightStep } from './components/onboarding/FeatureSpotlightGuide';
 import { useSmartTips } from './hooks/useSmartTips';
@@ -61,7 +60,7 @@ const isAppTab = (value: string | null): value is AppTab => (
   !!value && APP_TABS.includes(value as AppTab)
 );
 
-const FEATURE_SPOTLIGHT_STORAGE_KEY = 'tarot_feature_spotlight_seen_v2';
+const FEATURE_SPOTLIGHT_STORAGE_KEY = 'tarot_feature_spotlight_seen_v3';
 
 const FEATURE_SPOTLIGHT_STEPS: FeatureSpotlightStep[] = [
   {
@@ -1052,7 +1051,7 @@ function AppContent() {
 
   return (
     <>
-    <div aria-hidden={onboardingState.showFirstEntry} inert={onboardingState.showFirstEntry}>
+    <div>
       <MainLayout
         activeTab={activeTab}
         setActiveTab={(tab: 'home' | 'add' | 'private' | 'public' | 'metadata' | 'profile') => {
@@ -1629,11 +1628,8 @@ function AppContent() {
       </Suspense>
       </MainLayout>
     </div>
-    <AnimatePresence>
-      {onboardingState.showFirstEntry && <FirstEntryGuide />}
-    </AnimatePresence>
     <FeatureSpotlightGuide
-      isOpen={isFeatureSpotlightOpen && !onboardingState.showFirstEntry && activeTab === 'home'}
+      isOpen={isFeatureSpotlightOpen && activeTab === 'home'}
       steps={FEATURE_SPOTLIGHT_STEPS}
       onFinish={finishFeatureSpotlight}
     />
