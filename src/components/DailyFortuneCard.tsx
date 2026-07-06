@@ -120,6 +120,10 @@ export const DailyFortuneCard: React.FC<DailyFortuneCardProps> = ({
       .sort((a, b) => b.date.localeCompare(a.date) || b.createdAt.localeCompare(a.createdAt)),
     [fortunes]
   );
+  const reviewedFortuneCount = useMemo(
+    () => archivedFortunes.filter(item => item.reflection?.trim()).length,
+    [archivedFortunes]
+  );
   const cardData = fortune ? getCardData(fortune.cardName) : null;
   const editingFortune = (
     editingFortuneId
@@ -253,7 +257,7 @@ export const DailyFortuneCard: React.FC<DailyFortuneCardProps> = ({
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
-        className="w-full overflow-hidden rounded-[1.5rem] border border-forest-accent/15 bg-gradient-to-br from-white via-forest-bg/80 to-forest-accent/10 shadow-sm shadow-forest-accent/5"
+        className="w-full overflow-hidden rounded-[1.25rem] border border-forest-accent/15 bg-gradient-to-br from-white via-forest-bg/75 to-forest-accent/10 shadow-sm shadow-forest-accent/5"
       >
         {fortune && !isRedrawing ? (
           <div className="p-4">
@@ -415,7 +419,7 @@ export const DailyFortuneCard: React.FC<DailyFortuneCardProps> = ({
             </motion.div>
           </div>
         ) : (
-          <div className="p-3 text-center sm:p-4">
+          <div className="p-2.5 text-center sm:p-3">
             <AnimatePresence mode="wait">
               {shufflePhase === 'idle' && (
                 <motion.div
@@ -423,73 +427,72 @@ export const DailyFortuneCard: React.FC<DailyFortuneCardProps> = ({
                   initial={{ opacity: 0, scale: 0.9 }}
                   animate={{ opacity: 1, scale: 1 }}
                   exit={{ opacity: 0, scale: 0.9 }}
-                  className="grid grid-cols-[4.75rem_1fr] items-center gap-3 text-left sm:grid-cols-[6rem_1fr] sm:gap-4"
+                  className="grid gap-3 text-left sm:grid-cols-[minmax(0,1fr)_15rem] sm:items-center"
                 >
-                  <div className="relative mx-auto h-24 w-[4.5rem] sm:h-32 sm:w-24">
-                    <FortuneCardBack className="absolute left-0 top-3 w-14 -rotate-6 opacity-70 sm:w-[4.5rem]" />
-                    <FortuneCardBack className="absolute right-0 top-0 w-14 rotate-3 sm:w-[4.5rem]" />
-                  </div>
-                  <div className="min-w-0 space-y-2.5 sm:space-y-3">
-                    <div className="space-y-1.5">
-                      <div className="inline-flex items-center gap-2 rounded-full bg-forest-accent/10 px-3 py-1 text-[10px] font-bold uppercase tracking-[0.18em] text-forest-accent">
-                        <Sparkles size={12} />
+                  <div className="min-w-0 space-y-2.5">
+                    <div className="min-w-0 space-y-1">
+                      <div className="inline-flex items-center gap-1 rounded-full bg-forest-accent/10 px-2 py-0.5 text-[8px] font-bold uppercase tracking-[0.12em] text-forest-accent">
+                        <Sparkles size={10} />
                         日运抽牌
                       </div>
-                      <h3 className="font-serif text-lg font-bold text-forest-ink">抽一张今天的日运牌</h3>
-                      <p className="text-xs leading-relaxed text-forest-muted sm:text-sm">
-                        看今天的提醒，也顺手记住一张牌的关键词和牌义。
+                      <h3 className="font-serif text-[15px] font-bold text-forest-ink sm:text-base">今日单牌练习</h3>
+                      <p className="text-[11px] leading-relaxed text-forest-muted sm:text-xs">
+                        洗牌抽一张，或录入现实抽到的牌；晚上再回来看它和今天哪里对应。
                       </p>
                     </div>
 
-                    <div className="space-y-2">
-                      <div className="rounded-2xl border border-forest-accent/10 bg-white/60 p-3 shadow-sm">
-                        <div className="mb-2 flex items-start justify-between gap-3">
-                          <div className="min-w-0">
-                            <p className="text-xs font-bold text-forest-ink">系统抽牌</p>
-                            <p className="mt-0.5 text-[11px] leading-relaxed text-forest-muted">
-                              先完成洗牌，再选择输入数字或让系统随机选一张。
-                            </p>
-                          </div>
-                          <Shuffle size={16} className="mt-0.5 shrink-0 text-forest-accent" />
-                        </div>
-
-                        <button
-                          onClick={handleShuffle}
-                          className="min-h-10 w-full rounded-full bg-forest-accent px-4 text-xs font-bold text-white shadow-sm shadow-forest-accent/15 transition-all hover:scale-[1.02] hover:bg-forest-accent/90 active:scale-[0.98]"
-                        >
-                          <span className="flex items-center justify-center gap-2">
-                            <Shuffle size={17} />
-                            {isRedrawing ? '重新洗牌' : '洗牌'}
-                          </span>
-                        </button>
-                      </div>
-
+                    <div className="relative z-10 flex flex-wrap items-center gap-2" aria-label="日运操作">
+                      <button
+                        data-tour="daily-draw"
+                        onClick={handleShuffle}
+                        className="min-h-11 w-24 rounded-xl bg-forest-accent px-3 text-xs font-bold text-white shadow-sm shadow-forest-accent/15 transition-all hover:scale-[1.02] hover:bg-forest-accent/90 active:scale-[0.98] sm:min-h-9 sm:w-24"
+                      >
+                        <span className="flex items-center justify-center gap-1.5">
+                          <Shuffle size={15} />
+                          {isRedrawing ? '重新洗牌' : '洗牌'}
+                        </span>
+                      </button>
                       <button
                         onClick={() => setShowCardPicker(true)}
-                        className="min-h-10 w-full rounded-xl border border-forest-accent/10 bg-white/70 px-4 text-xs font-bold text-forest-ink transition-all hover:bg-white"
+                        className="min-h-11 w-28 rounded-xl border border-forest-accent/10 bg-white/70 px-3 text-xs font-bold text-forest-ink transition-all hover:bg-white sm:min-h-9 sm:w-28"
                       >
-                        <span className="flex items-center justify-center gap-2">
-                          <PenLine size={16} />
-                          <span className="hidden sm:inline">录入现实抽到的牌</span>
-                          <span className="sm:hidden">录入现实牌</span>
+                        <span className="flex items-center justify-center gap-1.5">
+                          <PenLine size={15} />
+                          <span className="hidden sm:inline">录入现实牌</span>
+                          <span className="sm:hidden">现实牌</span>
                         </span>
                       </button>
                     </div>
 
-                    <p className="rounded-2xl bg-white/55 px-3 py-2 text-[11px] leading-relaxed text-forest-muted">
-                      不抽日运时，也可以把这里当作单牌抽查：先说出关键词，再看牌义。
+                    <p className="rounded-xl bg-white/50 px-2.5 py-1.5 text-[10px] leading-relaxed text-forest-muted">
+                      系统抽牌需先洗牌，再输入数字或随机一张；也可以把这里当作单牌牌义抽查。
                     </p>
-                    {archivedFortunes.length > 0 && (
-                      <button
-                        type="button"
-                        onClick={() => setShowArchiveZone(true)}
-                        className="inline-flex min-h-9 items-center justify-center gap-1.5 rounded-full px-3 text-[10px] font-bold text-forest-accent hover:bg-white/70"
-                      >
-                        <BookOpen size={13} />
-                        查看日运复盘
-                      </button>
-                    )}
                   </div>
+
+                  <button
+                    type="button"
+                    onClick={() => setShowArchiveZone(true)}
+                    className="group flex min-h-[86px] flex-col justify-between rounded-2xl border border-forest-accent/10 bg-white/70 p-3 text-left shadow-sm transition-colors hover:border-forest-accent/30 hover:bg-white/85 sm:min-h-[96px]"
+                    aria-label="打开日运复盘"
+                  >
+                    <span className="flex items-center gap-2">
+                      <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-forest-accent/10 text-forest-accent">
+                        <BookOpen size={14} />
+                      </span>
+                      <span className="min-w-0">
+                        <span className="block text-sm font-bold text-forest-ink">日运复盘</span>
+                        <span className="mt-0.5 block text-[10px] leading-relaxed text-forest-muted">
+                          已归档 {archivedFortunes.length} 天 · 已复盘 {reviewedFortuneCount} 条
+                        </span>
+                      </span>
+                    </span>
+                    <span
+                      data-tour="daily-review"
+                      className="mt-3 inline-flex min-h-7 w-fit items-center justify-center rounded-full bg-forest-accent/10 px-2.5 text-[9px] font-bold text-forest-accent transition-colors group-hover:bg-forest-accent group-hover:text-white"
+                    >
+                      查看
+                    </span>
+                  </button>
                 </motion.div>
               )}
 

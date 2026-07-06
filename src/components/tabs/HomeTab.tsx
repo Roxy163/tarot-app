@@ -1,12 +1,11 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo } from 'react';
 import { motion } from 'motion/react';
-import { Archive, BookOpen, Edit3, Library, Sparkles } from 'lucide-react';
+import { BookOpen, Edit3, Library, Sparkles } from 'lucide-react';
 import { TarotReading, TarotCardMetadata } from '../../types';
 import { StudyPavilionModules } from '../StudyPavilionModules';
 import { DailyFortuneCard } from '../DailyFortuneCard';
 import { QuickSpreadButtons } from '../QuickSpreadButtons';
 import { useDailyFortune } from '../../hooks/useDailyFortune';
-import { DailyFortuneArchiveModal } from '../DailyFortuneArchiveModal';
 import { cardAnnotationService } from '../../services/cardAnnotationService';
 
 interface HomeTabProps {
@@ -30,7 +29,6 @@ export const HomeTab: React.FC<HomeTabProps> = ({
   onSearch,
   onSelectSpread
 }) => {
-  const [showDailyArchive, setShowDailyArchive] = useState(false);
   const {
     fortunes,
     getToday,
@@ -47,12 +45,6 @@ export const HomeTab: React.FC<HomeTabProps> = ({
 
   const todayFortune = getToday();
   const realReadings = useMemo(() => readings.filter(reading => !reading.isExample), [readings]);
-  const archivedFortunes = useMemo(
-    () => fortunes
-      .filter(item => Boolean(item.archivedAt))
-      .sort((a, b) => b.date.localeCompare(a.date) || b.createdAt.localeCompare(a.createdAt)),
-    [fortunes],
-  );
   const reviewedReadings = useMemo(
     () => realReadings.filter(reading => Boolean(reading.userFeedback?.trim())),
     [realReadings],
@@ -93,78 +85,7 @@ export const HomeTab: React.FC<HomeTabProps> = ({
         </div>
       </section>
 
-      <section className="grid gap-3 sm:grid-cols-3">
-        <button
-          data-tour="daily-review"
-          type="button"
-          onClick={() => setShowDailyArchive(true)}
-          className="group flex min-h-[92px] items-center justify-between gap-3 rounded-2xl border border-forest-accent/10 bg-white/95 px-4 py-3 text-left shadow-sm transition-colors hover:border-forest-accent/30"
-        >
-          <div className="flex min-w-0 items-center gap-3">
-            <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-forest-accent/10 text-forest-accent">
-              <Archive size={18} />
-            </span>
-            <span className="min-w-0">
-              <span className="block text-sm font-bold text-forest-ink">日运复盘</span>
-              <span className="mt-1 block text-xs leading-relaxed text-forest-muted">
-                已归档 {archivedFortunes.length} 天 · 已复盘 {archivedFortunes.filter(item => item.reflection?.trim()).length} 条
-              </span>
-            </span>
-          </div>
-          <span className="rounded-full bg-forest-accent/10 px-3 py-1 text-[10px] font-bold text-forest-accent transition-colors group-hover:bg-forest-accent group-hover:text-white">
-            查看
-          </span>
-        </button>
-
-        <button
-          data-tour="library-review"
-          type="button"
-          onClick={() => {
-            onSearch('');
-            onNavigate('private');
-          }}
-          className="group flex min-h-[92px] items-center justify-between gap-3 rounded-2xl border border-forest-accent/10 bg-white/95 px-4 py-3 text-left shadow-sm transition-colors hover:border-forest-accent/30"
-        >
-          <div className="flex min-w-0 items-center gap-3">
-            <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-forest-accent/10 text-forest-accent">
-              <Library size={18} />
-            </span>
-            <span className="min-w-0">
-              <span className="block text-sm font-bold text-forest-ink">典籍复盘</span>
-              <span className="mt-1 block text-xs leading-relaxed text-forest-muted">
-                全部 {realReadings.length} 条 · 已复盘 {reviewedReadings.length} 条
-              </span>
-            </span>
-          </div>
-          <span className="rounded-full bg-forest-accent/10 px-3 py-1 text-[10px] font-bold text-forest-accent transition-colors group-hover:bg-forest-accent group-hover:text-white">
-            进入
-          </span>
-        </button>
-
-        <button
-          data-tour="card-annotations"
-          type="button"
-          onClick={() => onNavigate('metadata')}
-          className="group flex min-h-[92px] items-center justify-between gap-3 rounded-2xl border border-forest-accent/10 bg-white/95 px-4 py-3 text-left shadow-sm transition-colors hover:border-forest-accent/30"
-        >
-          <div className="flex min-w-0 items-center gap-3">
-            <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-forest-accent/10 text-forest-accent">
-              <Edit3 size={18} />
-            </span>
-            <span className="min-w-0">
-              <span className="block text-sm font-bold text-forest-ink">牌义注疏</span>
-              <span className="mt-1 block text-xs leading-relaxed text-forest-muted">
-                批量修改单牌释义 · 已自定义 {modifiedAnnotationCount} 张
-              </span>
-            </span>
-          </div>
-          <span className="rounded-full bg-forest-accent/10 px-3 py-1 text-[10px] font-bold text-forest-accent transition-colors group-hover:bg-forest-accent group-hover:text-white">
-            编辑
-          </span>
-        </button>
-      </section>
-
-      <div data-tour="daily-draw">
+      <div>
         <DailyFortuneCard
           fortune={todayFortune}
           fortunes={fortunes}
@@ -175,6 +96,59 @@ export const HomeTab: React.FC<HomeTabProps> = ({
         />
       </div>
 
+      <section className="grid gap-3 sm:grid-cols-2">
+        <button
+          type="button"
+          onClick={() => {
+            onSearch('');
+            onNavigate('private');
+          }}
+          className="group flex min-h-[78px] items-center justify-between gap-3 rounded-2xl border border-forest-accent/10 bg-white/90 px-4 py-3 text-left shadow-sm transition-colors hover:border-forest-accent/30"
+        >
+          <div className="flex min-w-0 items-center gap-3">
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-forest-accent/10 text-forest-accent">
+              <Library size={17} />
+            </span>
+            <span className="min-w-0">
+              <span className="block text-sm font-bold text-forest-ink">典籍复盘</span>
+              <span className="mt-1 block text-xs leading-relaxed text-forest-muted">
+                全部 {realReadings.length} 条 · 已复盘 {reviewedReadings.length} 条
+              </span>
+            </span>
+          </div>
+          <span
+            data-tour="library-review"
+            className="shrink-0 rounded-full bg-forest-accent/10 px-2.5 py-0.5 text-[9px] font-bold text-forest-accent transition-colors group-hover:bg-forest-accent group-hover:text-white"
+          >
+            进入
+          </span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => onNavigate('metadata')}
+          className="group flex min-h-[78px] items-center justify-between gap-3 rounded-2xl border border-forest-accent/10 bg-white/90 px-4 py-3 text-left shadow-sm transition-colors hover:border-forest-accent/30"
+        >
+          <div className="flex min-w-0 items-center gap-3">
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-forest-accent/10 text-forest-accent">
+              <Edit3 size={17} />
+            </span>
+            <span className="min-w-0">
+              <span className="block text-sm font-bold text-forest-ink">牌义注疏</span>
+              <span className="mt-1 block text-xs leading-relaxed text-forest-muted">
+                批量修改单牌释义 · 已自定义 {modifiedAnnotationCount} 张
+              </span>
+            </span>
+          </div>
+          <span
+            data-tour="card-annotations"
+            className="shrink-0 rounded-full bg-forest-accent/10 px-2.5 py-0.5 text-[9px] font-bold text-forest-accent transition-colors group-hover:bg-forest-accent group-hover:text-white"
+          >
+            编辑
+          </span>
+        </button>
+      </section>
+
       <QuickSpreadButtons onSelectSpread={onSelectSpread} />
 
       <StudyPavilionModules
@@ -184,12 +158,6 @@ export const HomeTab: React.FC<HomeTabProps> = ({
         setSearchQuery={onSearch}
       />
 
-      <DailyFortuneArchiveModal
-        fortunes={archivedFortunes}
-        isOpen={showDailyArchive}
-        onClose={() => setShowDailyArchive(false)}
-        onUpdateReflection={updateDailyFortuneReflection}
-      />
     </motion.div>
   );
 };

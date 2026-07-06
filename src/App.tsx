@@ -65,23 +65,23 @@ const FEATURE_SPOTLIGHT_STORAGE_KEY = 'tarot_feature_spotlight_seen_v3';
 const FEATURE_SPOTLIGHT_STEPS: FeatureSpotlightStep[] = [
   {
     target: '[data-tour="daily-draw"]',
-    title: '第一步，先抽今天的一张牌',
-    description: '你可以先洗牌再输入数字，也可以录入现实中抽到的牌；这里适合做单牌牌义记忆练习。',
+    title: '先抽今天的一张牌',
+    description: '洗牌输入数字，也可录入现实牌。',
   },
   {
     target: '[data-tour="daily-review"]',
-    title: '这里回看每天的一张牌',
-    description: '日运复盘会把你每天抽到或现实录入的牌整理起来，适合晚上回看：这张牌和今天发生的事哪里对应？',
+    title: '回看每日对应',
+    description: '晚上看这张牌对应了什么事。',
   },
   {
     target: '[data-tour="library-review"]',
-    title: '这里进入全部典籍复盘',
-    description: '典籍复盘会带你回到所有抽牌手记，可以按给自己、客户记录、已复盘状态来筛选长期记录。',
+    title: '进入典籍复盘',
+    description: '回看自己的手记和客户记录。',
   },
   {
     target: '[data-tour="card-annotations"]',
-    title: '这里整理自己的牌义',
-    description: '当你对某张牌有新的理解，可以进入牌义注疏批量修改单牌释义，慢慢沉淀成自己的牌义体系。',
+    title: '整理你的牌义',
+    description: '把新理解写进单牌注疏。',
   },
 ];
 

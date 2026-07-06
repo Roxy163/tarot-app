@@ -49,13 +49,13 @@ describe('DailyFortuneCard', () => {
     const user = userEvent.setup();
     const props = renderCard();
 
-    expect(screen.getByText('系统抽牌')).toBeInTheDocument();
+    expect(screen.getByText('今日单牌练习')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '洗牌' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '从洗好的牌组随机一张' })).not.toBeInTheDocument();
-    expect(screen.getByText('录入现实牌')).toBeInTheDocument();
-    expect(screen.getByText('不抽日运时，也可以把这里当作单牌抽查：先说出关键词，再看牌义。')).toBeInTheDocument();
+    expect(screen.getByText('现实牌')).toBeInTheDocument();
+    expect(screen.getByText('系统抽牌需先洗牌，再输入数字或随机一张；也可以把这里当作单牌牌义抽查。')).toBeInTheDocument();
 
-    await user.click(screen.getByText('录入现实牌'));
+    await user.click(screen.getByText('现实牌'));
     expect(screen.getByRole('heading', { name: '选择现实中抽到的牌' })).toBeInTheDocument();
 
     await user.click(screen.getByText('愚者'));

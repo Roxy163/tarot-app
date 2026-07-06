@@ -6,13 +6,13 @@ import { FeatureSpotlightGuide } from './FeatureSpotlightGuide';
 const steps = [
   {
     target: '[data-tour="daily-review"]',
-    title: '这里回看每天的一张牌',
-    description: '日运复盘会把你每天抽到或现实录入的牌整理起来。',
+    title: '回看每日对应',
+    description: '晚上看这张牌对应了什么事。',
   },
   {
     target: '[data-tour="library-review"]',
-    title: '这里进入全部典籍复盘',
-    description: '典籍复盘会带你回到所有抽牌手记。',
+    title: '进入典籍复盘',
+    description: '回看自己的手记和客户记录。',
   },
 ];
 
@@ -45,14 +45,16 @@ describe('FeatureSpotlightGuide', () => {
     );
 
     expect(screen.getByRole('dialog', { name: '功能导览' })).toBeInTheDocument();
-    expect(screen.getByText('这里回看每天的一张牌')).toBeInTheDocument();
+    expect(screen.getByText('回看每日对应')).toBeInTheDocument();
+    expect(screen.getByText('晚上看这张牌对应了什么事。')).toBeInTheDocument();
     expect(screen.getByTestId('spotlight-floating-note')).toBeInTheDocument();
     expect(screen.queryByTestId('spotlight-target-frame')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('spotlight-target-loop')).not.toBeInTheDocument();
     expect(screen.getAllByTestId('spotlight-dim-mask')).toHaveLength(4);
     expect(Element.prototype.scrollIntoView).toHaveBeenCalled();
 
     await user.click(screen.getByRole('button', { name: '下一步' }));
-    expect(screen.getByText('这里进入全部典籍复盘')).toBeInTheDocument();
+    expect(screen.getByText('进入典籍复盘')).toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: '完成' }));
     expect(onFinish).toHaveBeenCalledTimes(1);
@@ -83,6 +85,7 @@ describe('FeatureSpotlightGuide', () => {
 
     expect(await screen.findByTestId('spotlight-mobile-note')).toBeInTheDocument();
     expect(screen.getByTestId('spotlight-arrow')).toBeInTheDocument();
+    expect(screen.queryByTestId('spotlight-target-loop')).not.toBeInTheDocument();
     expect(screen.queryByTestId('spotlight-target-frame')).not.toBeInTheDocument();
     expect(screen.getAllByTestId('spotlight-dim-mask')).toHaveLength(4);
     expect(screen.getByText('1/2')).toBeInTheDocument();
