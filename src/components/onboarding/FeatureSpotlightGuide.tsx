@@ -102,48 +102,50 @@ export const FeatureSpotlightGuide: React.FC<FeatureSpotlightGuideProps> = ({
 
   const targetCenterX = targetRect ? targetRect.left + targetRect.width / 2 : viewport.width / 2;
   const targetCenterY = targetRect ? targetRect.top + targetRect.height / 2 : viewport.height / 2;
-  const panelWidth = Math.min(420, viewport.width - 32);
-  const panelLeft = clamp(targetCenterX - panelWidth / 2, 16, viewport.width - panelWidth - 16);
-  const panelShouldSitAbove = targetCenterY > viewport.height * 0.56;
-  const estimatedPanelHeight = viewport.width < 640 ? 320 : 250;
-  const rawPanelTop = targetRect
-    ? panelShouldSitAbove
-      ? targetRect.top - estimatedPanelHeight - 28
-      : Math.min(viewport.height - 210, targetRect.top + targetRect.height + 28)
-    : viewport.height / 2 - 110;
-  const panelTop = clamp(
-    rawPanelTop,
-    56,
-    Math.max(56, viewport.height - estimatedPanelHeight - 24),
+  const targetBottom = targetRect ? targetRect.top + targetRect.height : targetCenterY;
+  const noteWidth = Math.min(isMobile ? 420 : 720, viewport.width - (isMobile ? 36 : 96));
+  const noteLeft = clamp(
+    targetCenterX - noteWidth / 2,
+    isMobile ? 18 : 32,
+    Math.max(isMobile ? 18 : 32, viewport.width - noteWidth - (isMobile ? 18 : 32)),
   );
-  const arrowTop = panelShouldSitAbove ? panelTop + 92 : panelTop - 34;
-  const arrowStartX = clamp(panelLeft + panelWidth * 0.68, 36, viewport.width - 36);
-  const mobileNoteWidth = Math.min(420, viewport.width - 36);
-  const mobileNoteLeft = (viewport.width - mobileNoteWidth) / 2;
-  const mobileSpaceAbove = targetRect ? targetRect.top : targetCenterY;
-  const mobileSpaceBelow = targetRect ? viewport.height - targetRect.top - targetRect.height : viewport.height - targetCenterY;
-  const mobileNoteAboveTarget = targetRect
-    ? mobileSpaceAbove >= mobileSpaceBelow || targetRect.top + targetRect.height > viewport.height - 230
+  const targetIsTall = targetRect
+    ? targetRect.height > viewport.height * (isMobile ? 0.32 : 0.42)
+    : false;
+  const spaceAbove = targetRect ? targetRect.top : targetCenterY;
+  const spaceBelow = targetRect ? viewport.height - targetBottom : viewport.height - targetCenterY;
+  const noteAboveTarget = targetRect
+    ? targetIsTall || spaceAbove + (isMobile ? 24 : 40) >= spaceBelow || targetBottom > viewport.height - (isMobile ? 230 : 280)
     : targetCenterY > viewport.height * 0.5;
-  const estimatedMobileNoteHeight = 190;
-  const mobileNoteTop = targetRect
-    ? mobileNoteAboveTarget
-      ? clamp(targetRect.top - estimatedMobileNoteHeight - 12, 36, Math.max(36, viewport.height - estimatedMobileNoteHeight - 24))
-      : clamp(targetRect.top + targetRect.height + 24, 56, Math.max(56, viewport.height - estimatedMobileNoteHeight - 24))
-    : viewport.height * 0.18;
-  const mobileArrowStartX = clamp(mobileNoteLeft + mobileNoteWidth * 0.7, 56, viewport.width - 48);
-  const mobileArrowStartY = mobileNoteAboveTarget ? mobileNoteTop + 76 : mobileNoteTop + 18;
-  const mobileArrowEndX = targetCenterX;
-  const mobileArrowEndY = targetRect
-    ? mobileNoteAboveTarget
+  const estimatedNoteHeight = isMobile ? 210 : 230;
+  const noteTop = targetRect
+    ? noteAboveTarget
+      ? clamp(
+          targetRect.top - estimatedNoteHeight - (isMobile ? 12 : 18),
+          isMobile ? 32 : 44,
+          Math.max(isMobile ? 32 : 44, viewport.height - estimatedNoteHeight - (isMobile ? 20 : 36)),
+        )
+      : clamp(
+          targetBottom + (isMobile ? 22 : 30),
+          isMobile ? 52 : 60,
+          Math.max(isMobile ? 52 : 60, viewport.height - estimatedNoteHeight - (isMobile ? 20 : 36)),
+        )
+    : viewport.height * 0.16;
+  const arrowStartX = clamp(noteLeft + noteWidth * (noteAboveTarget ? 0.68 : 0.6), 48, viewport.width - 48);
+  const arrowStartY = noteAboveTarget
+    ? noteTop + (isMobile ? 82 : 102)
+    : noteTop + (isMobile ? 18 : 22);
+  const arrowEndX = targetCenterX;
+  const arrowEndY = targetRect
+    ? noteAboveTarget
       ? targetRect.top - 12
-      : targetRect.top + targetRect.height + 12
+      : targetBottom + 12
     : viewport.height / 2;
-  const mobileArrowControlY = mobileNoteAboveTarget
-    ? mobileArrowStartY + Math.max(36, (mobileArrowEndY - mobileArrowStartY) * 0.42)
-    : mobileArrowStartY - Math.max(36, (mobileArrowStartY - mobileArrowEndY) * 0.42);
-  const mobileArrowControlX = clamp((mobileArrowStartX + mobileArrowEndX) / 2, 32, viewport.width - 32);
-  const mobileArrowPath = `M ${mobileArrowStartX} ${mobileArrowStartY} C ${mobileArrowControlX} ${mobileArrowControlY}, ${mobileArrowControlX} ${mobileArrowControlY}, ${mobileArrowEndX} ${mobileArrowEndY}`;
+  const arrowControlY = noteAboveTarget
+    ? arrowStartY + Math.max(42, (arrowEndY - arrowStartY) * 0.42)
+    : arrowStartY - Math.max(42, (arrowStartY - arrowEndY) * 0.42);
+  const arrowControlX = clamp((arrowStartX + arrowEndX) / 2, 36, viewport.width - 36);
+  const arrowPath = `M ${arrowStartX} ${arrowStartY} C ${arrowControlX} ${arrowControlY}, ${arrowControlX} ${arrowControlY}, ${arrowEndX} ${arrowEndY}`;
 
   const handleNext = () => {
     if (stepIndex >= steps.length - 1) {
@@ -158,225 +160,123 @@ export const FeatureSpotlightGuide: React.FC<FeatureSpotlightGuideProps> = ({
     <AnimatePresence>
       {isOpen && (
         <motion.div
-          className={`fixed inset-0 z-[1000] text-white ${isMobile ? 'bg-black/55' : 'bg-black/65'}`}
+          className={`fixed inset-0 z-[1000] text-white ${isMobile ? 'bg-black/45' : 'bg-black/50'}`}
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
           role="dialog"
           aria-label="功能导览"
         >
-          {targetRect && (
-            <motion.div
-              className="pointer-events-none fixed rounded-[1.6rem] border-2 border-white shadow-[0_0_0_9999px_rgba(0,0,0,0.18),0_0_38px_rgba(255,255,255,0.45)]"
-              initial={false}
-              animate={{
-                top: targetRect.top - (isMobile ? 6 : 8),
-                left: targetRect.left - (isMobile ? 6 : 8),
-                width: targetRect.width + (isMobile ? 12 : 16),
-                height: targetRect.height + (isMobile ? 12 : 16),
-              }}
-              transition={{ type: 'spring', stiffness: 260, damping: 28 }}
-              data-testid="spotlight-target-frame"
+          <svg
+            className="pointer-events-none fixed inset-0 h-full w-full text-white"
+            viewBox={`0 0 ${viewport.width} ${viewport.height}`}
+            aria-hidden="true"
+            data-testid="spotlight-arrow"
+          >
+            <defs>
+              <marker
+                id="spotlight-arrow-head"
+                markerHeight="9"
+                markerWidth="9"
+                orient="auto"
+                refX="7"
+                refY="4.5"
+              >
+                <path d="M0,0 L9,4.5 L0,9" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" />
+              </marker>
+            </defs>
+            <motion.path
+              d={arrowPath}
+              fill="none"
+              stroke="currentColor"
+              strokeLinecap="round"
+              strokeWidth={isMobile ? 4 : 5}
+              markerEnd="url(#spotlight-arrow-head)"
+              initial={{ pathLength: 0, opacity: 0 }}
+              animate={{ pathLength: 1, opacity: 1 }}
+              transition={{ duration: 0.45, ease: 'easeOut' }}
+              key={`${step.title}-arrow`}
             />
-          )}
+            <motion.circle
+              cx={arrowEndX}
+              cy={arrowEndY}
+              r={isMobile ? 4 : 5}
+              fill="currentColor"
+              initial={{ scale: 0.65, opacity: 0.45 }}
+              animate={{ scale: [0.75, 1.25, 0.75], opacity: [0.45, 0.9, 0.45] }}
+              transition={{ duration: 1.4, repeat: Infinity }}
+            />
+          </svg>
 
-          {isMobile ? (
-            <>
-              <svg
-                className="pointer-events-none fixed inset-0 h-full w-full text-white"
-                viewBox={`0 0 ${viewport.width} ${viewport.height}`}
-                aria-hidden="true"
-                data-testid="spotlight-arrow"
+          <motion.div
+            className="fixed px-2 sm:px-0"
+            style={{
+              left: noteLeft,
+              top: noteTop,
+              width: noteWidth,
+              textShadow: '0 4px 24px rgba(0,0,0,0.62)',
+            }}
+            initial={{ opacity: 0, y: noteAboveTarget ? 16 : -16 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: noteAboveTarget ? 16 : -16 }}
+            key={`${step.title}-floating-note`}
+            data-testid={isMobile ? 'spotlight-mobile-note' : 'spotlight-floating-note'}
+          >
+            <div className="flex items-center justify-between gap-3">
+              <span className="text-sm font-bold text-white sm:text-base">
+                {stepIndex + 1}/{steps.length}
+              </span>
+              <button
+                type="button"
+                onClick={onFinish}
+                className="flex h-10 w-10 items-center justify-center rounded-full text-white/85 transition-colors hover:bg-white/10 hover:text-white active:scale-95"
+                aria-label="关闭功能导览"
               >
-                <defs>
-                  <marker
-                    id="spotlight-arrow-head"
-                    markerHeight="8"
-                    markerWidth="8"
-                    orient="auto"
-                    refX="6"
-                    refY="4"
-                  >
-                    <path d="M0,0 L8,4 L0,8" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" />
-                  </marker>
-                </defs>
-                <motion.path
-                  d={mobileArrowPath}
-                  fill="none"
-                  stroke="currentColor"
-                  strokeLinecap="round"
-                  strokeWidth="4"
-                  markerEnd="url(#spotlight-arrow-head)"
-                  initial={{ pathLength: 0, opacity: 0 }}
-                  animate={{ pathLength: 1, opacity: 1 }}
-                  transition={{ duration: 0.45, ease: 'easeOut' }}
-                  key={`${step.title}-mobile-arrow`}
-                />
-                <motion.circle
-                  cx={mobileArrowEndX}
-                  cy={mobileArrowEndY}
-                  r="5"
-                  fill="currentColor"
-                  initial={{ scale: 0.65, opacity: 0.45 }}
-                  animate={{ scale: [0.75, 1.25, 0.75], opacity: [0.45, 0.9, 0.45] }}
-                  transition={{ duration: 1.4, repeat: Infinity }}
-                />
-              </svg>
+                <X size={isMobile ? 18 : 20} />
+              </button>
+            </div>
 
-              <motion.div
-                className="fixed px-2"
-                style={{
-                  left: mobileNoteLeft,
-                  top: mobileNoteTop,
-                  width: mobileNoteWidth,
-                }}
-                initial={{ opacity: 0, y: mobileNoteAboveTarget ? 16 : -16 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: mobileNoteAboveTarget ? 16 : -16 }}
-                key={`${step.title}-mobile-note`}
-                data-testid="spotlight-mobile-note"
+            <h3 className="mt-2.5 break-words font-serif text-[1.55rem] font-bold leading-[1.12] text-white [overflow-wrap:anywhere] sm:mt-3 sm:text-[3rem]">
+              {step.title}
+            </h3>
+            <p
+              className="mt-2 max-w-[34rem] overflow-hidden break-words text-sm font-semibold leading-relaxed text-white/88 [overflow-wrap:anywhere] sm:text-base"
+              style={{
+                display: '-webkit-box',
+                WebkitBoxOrient: 'vertical',
+                WebkitLineClamp: isMobile ? 2 : 3,
+              }}
+            >
+              {step.description}
+            </p>
+
+            <div className="mt-4 flex items-center gap-3 sm:mt-5">
+              <button
+                type="button"
+                onClick={onFinish}
+                className="min-h-10 rounded-xl px-2 text-sm font-bold text-white/80 transition-colors hover:bg-white/10 hover:text-white active:scale-95"
               >
-                <div className="flex items-center justify-between gap-3">
-                  <span className="rounded-full bg-white/15 px-2.5 py-1 text-xs font-bold text-white">
-                    {stepIndex + 1}/{steps.length}
-                  </span>
-                  <button
-                    type="button"
-                    onClick={onFinish}
-                    className="flex h-9 w-9 items-center justify-center rounded-full bg-white/15 text-white transition-colors active:scale-95"
-                    aria-label="关闭功能导览"
-                  >
-                    <X size={17} />
-                  </button>
-                </div>
-
-                <h3 className="mt-3 break-words font-serif text-[1.42rem] font-bold leading-[1.12] text-white [overflow-wrap:anywhere]">
-                  {step.title}
-                </h3>
-                <p
-                  className="mt-2 max-w-[21rem] overflow-hidden break-words text-xs leading-relaxed text-white/80 [overflow-wrap:anywhere]"
-                  style={{
-                    display: '-webkit-box',
-                    WebkitBoxOrient: 'vertical',
-                    WebkitLineClamp: 2,
-                  }}
-                >
-                  {step.description}
-                </p>
-
-                <div className="mt-4 flex items-center justify-between gap-3">
-                  <button
-                    type="button"
-                    onClick={onFinish}
-                    className="min-h-10 rounded-xl px-3 text-xs font-bold text-white/72 active:scale-95"
-                  >
-                    跳过
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleNext}
-                    className="flex min-h-11 items-center justify-center gap-2 rounded-2xl bg-white px-5 text-sm font-bold text-forest-ink shadow-xl active:scale-[0.98]"
-                  >
-                    {stepIndex >= steps.length - 1 ? (
-                      <>
-                        完成
-                        <Check size={17} />
-                      </>
-                    ) : (
-                      <>
-                        下一步
-                        <ArrowRight size={17} />
-                      </>
-                    )}
-                  </button>
-                </div>
-              </motion.div>
-            </>
-          ) : (
-            <>
-              <svg
-                className="pointer-events-none fixed h-28 w-36 text-white"
-                style={{
-                  left: clamp(arrowStartX - 36, 10, viewport.width - 150),
-                  top: clamp(arrowTop, 56, viewport.height - 150),
-                  transform: panelShouldSitAbove ? 'none' : 'rotate(180deg)',
-                }}
-                viewBox="0 0 144 112"
-                aria-hidden="true"
-                data-testid="spotlight-arrow"
+                跳过
+              </button>
+              <button
+                type="button"
+                onClick={handleNext}
+                className="flex min-h-11 items-center justify-center gap-2 rounded-xl bg-white/90 px-5 text-sm font-bold text-forest-ink shadow-lg transition-transform hover:bg-white active:scale-[0.98] sm:px-6 sm:text-base"
               >
-                <path
-                  d="M12 22c48-16 79-8 92 17 9 17-10 28-24 18-15-11 6-35 52-45"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeLinecap="round"
-                  strokeWidth="4"
-                />
-              </svg>
-
-              <motion.div
-                className="fixed overflow-y-auto rounded-[1.5rem] border border-white/15 bg-white/10 p-4 shadow-2xl backdrop-blur-xl sm:p-5"
-                style={{
-                  left: panelLeft,
-                  top: panelTop,
-                  width: panelWidth,
-                  maxHeight: viewport.height - 80,
-                }}
-                initial={{ opacity: 0, y: panelShouldSitAbove ? 16 : -16 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: panelShouldSitAbove ? 16 : -16 }}
-                key={step.title}
-              >
-                <div className="mb-3 flex items-center justify-between gap-3">
-                  <span className="text-sm font-bold text-white/80">
-                    {stepIndex + 1}/{steps.length}
-                  </span>
-                  <button
-                    type="button"
-                    onClick={onFinish}
-                    className="flex h-10 w-10 items-center justify-center rounded-full bg-white/10 text-white/80 transition-colors hover:bg-white/20 hover:text-white"
-                    aria-label="关闭功能导览"
-                  >
-                    <X size={18} />
-                  </button>
-                </div>
-
-                <h3 className="break-words font-serif text-2xl font-bold leading-tight text-white [overflow-wrap:anywhere] sm:text-3xl">
-                  {step.title}
-                </h3>
-                <p className="mt-3 break-words text-sm leading-relaxed text-white/75 [overflow-wrap:anywhere]">
-                  {step.description}
-                </p>
-
-                <div className="mt-5 flex items-center justify-between gap-3">
-                  <button
-                    type="button"
-                    onClick={onFinish}
-                    className="min-h-11 rounded-xl px-4 text-xs font-bold text-white/65 transition-colors hover:bg-white/10 hover:text-white"
-                  >
-                    跳过
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleNext}
-                    className="flex min-h-11 items-center justify-center gap-2 rounded-xl bg-white px-5 text-sm font-bold text-forest-ink transition-transform hover:scale-[1.02] active:scale-[0.98]"
-                  >
-                    {stepIndex >= steps.length - 1 ? (
-                      <>
-                        <Check size={16} />
-                        完成
-                      </>
-                    ) : (
-                      <>
-                        下一步
-                        <ArrowRight size={16} />
-                      </>
-                    )}
-                  </button>
-                </div>
-              </motion.div>
-            </>
-          )}
+                {stepIndex >= steps.length - 1 ? (
+                  <>
+                    完成
+                    <Check size={isMobile ? 17 : 18} />
+                  </>
+                ) : (
+                  <>
+                    下一步
+                    <ArrowRight size={isMobile ? 17 : 18} />
+                  </>
+                )}
+              </button>
+            </div>
+          </motion.div>
         </motion.div>
       )}
     </AnimatePresence>
