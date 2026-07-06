@@ -1,6 +1,6 @@
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { FeatureSpotlightGuide } from './FeatureSpotlightGuide';
 
 const steps = [
@@ -19,6 +19,13 @@ const steps = [
 describe('FeatureSpotlightGuide', () => {
   beforeEach(() => {
     Element.prototype.scrollIntoView = vi.fn();
+    Object.defineProperty(window, 'innerWidth', { configurable: true, writable: true, value: 1024 });
+    Object.defineProperty(window, 'innerHeight', { configurable: true, writable: true, value: 768 });
+  });
+
+  afterEach(() => {
+    Object.defineProperty(window, 'innerWidth', { configurable: true, writable: true, value: 1024 });
+    Object.defineProperty(window, 'innerHeight', { configurable: true, writable: true, value: 768 });
   });
 
   it('points at feature targets and advances through the guide', async () => {
@@ -56,5 +63,29 @@ describe('FeatureSpotlightGuide', () => {
 
     await user.click(screen.getByRole('button', { name: '跳过' }));
     expect(onFinish).toHaveBeenCalledTimes(1);
+  });
+
+  it('uses a lighter arrow annotation on mobile viewports', async () => {
+    Object.defineProperty(window, 'innerWidth', { configurable: true, writable: true, value: 390 });
+    Object.defineProperty(window, 'innerHeight', { configurable: true, writable: true, value: 844 });
+
+    render(
+      <>
+        <button data-tour="daily-review" type="button">
+          日运复盘
+        </button>
+        <FeatureSpotlightGuide isOpen steps={steps} onFinish={vi.fn()} />
+      </>,
+    );
+
+    expect(await screen.findByTestId('spotlight-mobile-note')).toBeInTheDocument();
+    expect(screen.getByTestId('spotlight-arrow')).toBeInTheDocument();
+    expect(screen.getByTestId('spotlight-target-frame')).toBeInTheDocument();
+    expect(screen.getByText('1/2')).toBeInTheDocument();
+    expect(Element.prototype.scrollIntoView).toHaveBeenCalledWith({
+      block: 'center',
+      inline: 'nearest',
+      behavior: 'smooth',
+    });
   });
 });
