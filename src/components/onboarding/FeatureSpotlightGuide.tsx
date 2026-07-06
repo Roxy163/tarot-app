@@ -146,6 +146,13 @@ export const FeatureSpotlightGuide: React.FC<FeatureSpotlightGuideProps> = ({
     : arrowStartY - Math.max(42, (arrowStartY - arrowEndY) * 0.42);
   const arrowControlX = clamp((arrowStartX + arrowEndX) / 2, 36, viewport.width - 36);
   const arrowPath = `M ${arrowStartX} ${arrowStartY} C ${arrowControlX} ${arrowControlY}, ${arrowControlX} ${arrowControlY}, ${arrowEndX} ${arrowEndY}`;
+  const spotlightPadding = isMobile ? 8 : 10;
+  const spotlightTop = targetRect ? clamp(targetRect.top - spotlightPadding, 0, viewport.height) : viewport.height / 2;
+  const spotlightLeft = targetRect ? clamp(targetRect.left - spotlightPadding, 0, viewport.width) : viewport.width / 2;
+  const spotlightRight = targetRect ? clamp(targetRect.left + targetRect.width + spotlightPadding, 0, viewport.width) : viewport.width / 2;
+  const spotlightBottom = targetRect ? clamp(targetRect.top + targetRect.height + spotlightPadding, 0, viewport.height) : viewport.height / 2;
+  const spotlightHeight = Math.max(0, spotlightBottom - spotlightTop);
+  const dimStyle = { backgroundColor: isMobile ? 'rgba(0,0,0,0.4)' : 'rgba(0,0,0,0.45)' };
 
   const handleNext = () => {
     if (stepIndex >= steps.length - 1) {
@@ -160,13 +167,48 @@ export const FeatureSpotlightGuide: React.FC<FeatureSpotlightGuideProps> = ({
     <AnimatePresence>
       {isOpen && (
         <motion.div
-          className={`fixed inset-0 z-[1000] text-white ${isMobile ? 'bg-black/45' : 'bg-black/50'}`}
+          className="fixed inset-0 z-[1000] text-white"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
           role="dialog"
           aria-label="功能导览"
         >
+          {targetRect ? (
+            <>
+              <motion.div
+                className="pointer-events-none fixed"
+                style={dimStyle}
+                animate={{ left: 0, top: 0, width: viewport.width, height: spotlightTop }}
+                transition={{ duration: 0.18 }}
+                data-testid="spotlight-dim-mask"
+              />
+              <motion.div
+                className="pointer-events-none fixed"
+                style={dimStyle}
+                animate={{ left: 0, top: spotlightBottom, width: viewport.width, height: viewport.height - spotlightBottom }}
+                transition={{ duration: 0.18 }}
+                data-testid="spotlight-dim-mask"
+              />
+              <motion.div
+                className="pointer-events-none fixed"
+                style={dimStyle}
+                animate={{ left: 0, top: spotlightTop, width: spotlightLeft, height: spotlightHeight }}
+                transition={{ duration: 0.18 }}
+                data-testid="spotlight-dim-mask"
+              />
+              <motion.div
+                className="pointer-events-none fixed"
+                style={dimStyle}
+                animate={{ left: spotlightRight, top: spotlightTop, width: viewport.width - spotlightRight, height: spotlightHeight }}
+                transition={{ duration: 0.18 }}
+                data-testid="spotlight-dim-mask"
+              />
+            </>
+          ) : (
+            <div className="pointer-events-none fixed inset-0" style={dimStyle} />
+          )}
+
           <svg
             className="pointer-events-none fixed inset-0 h-full w-full text-white"
             viewBox={`0 0 ${viewport.width} ${viewport.height}`}
@@ -236,11 +278,11 @@ export const FeatureSpotlightGuide: React.FC<FeatureSpotlightGuideProps> = ({
               </button>
             </div>
 
-            <h3 className="mt-2.5 break-words font-serif text-[1.55rem] font-bold leading-[1.12] text-white [overflow-wrap:anywhere] sm:mt-3 sm:text-[3rem]">
+            <h3 className="mt-2 break-words font-serif text-[1.18rem] font-bold leading-[1.18] text-white [overflow-wrap:anywhere] sm:mt-2.5 sm:text-[1.55rem]">
               {step.title}
             </h3>
             <p
-              className="mt-2 max-w-[34rem] overflow-hidden break-words text-sm font-semibold leading-relaxed text-white/88 [overflow-wrap:anywhere] sm:text-base"
+              className="mt-1.5 max-w-[30rem] overflow-hidden break-words text-xs font-semibold leading-relaxed text-white/88 [overflow-wrap:anywhere] sm:text-sm"
               style={{
                 display: '-webkit-box',
                 WebkitBoxOrient: 'vertical',
@@ -250,7 +292,7 @@ export const FeatureSpotlightGuide: React.FC<FeatureSpotlightGuideProps> = ({
               {step.description}
             </p>
 
-            <div className="mt-4 flex items-center gap-3 sm:mt-5">
+            <div className="mt-3 flex items-center gap-3 sm:mt-4">
               <button
                 type="button"
                 onClick={onFinish}

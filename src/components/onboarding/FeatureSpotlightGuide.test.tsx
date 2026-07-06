@@ -48,6 +48,7 @@ describe('FeatureSpotlightGuide', () => {
     expect(screen.getByText('这里回看每天的一张牌')).toBeInTheDocument();
     expect(screen.getByTestId('spotlight-floating-note')).toBeInTheDocument();
     expect(screen.queryByTestId('spotlight-target-frame')).not.toBeInTheDocument();
+    expect(screen.getAllByTestId('spotlight-dim-mask')).toHaveLength(4);
     expect(Element.prototype.scrollIntoView).toHaveBeenCalled();
 
     await user.click(screen.getByRole('button', { name: '下一步' }));
@@ -83,6 +84,7 @@ describe('FeatureSpotlightGuide', () => {
     expect(await screen.findByTestId('spotlight-mobile-note')).toBeInTheDocument();
     expect(screen.getByTestId('spotlight-arrow')).toBeInTheDocument();
     expect(screen.queryByTestId('spotlight-target-frame')).not.toBeInTheDocument();
+    expect(screen.getAllByTestId('spotlight-dim-mask')).toHaveLength(4);
     expect(screen.getByText('1/2')).toBeInTheDocument();
     expect(Element.prototype.scrollIntoView).toHaveBeenCalledWith({
       block: 'center',

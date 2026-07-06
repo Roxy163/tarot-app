@@ -245,6 +245,27 @@ function AppContent() {
     }
   }, []);
 
+  const scrollPageToTop = useCallback((behavior: ScrollBehavior = 'smooth') => {
+    window.requestAnimationFrame(() => {
+      if (navigator.userAgent.toLowerCase().includes('jsdom')) {
+        document.documentElement.scrollTop = 0;
+        document.body.scrollTop = 0;
+        return;
+      }
+
+      try {
+        window.scrollTo({ top: 0, left: 0, behavior });
+      } catch {
+        document.documentElement.scrollTop = 0;
+        document.body.scrollTop = 0;
+      }
+    });
+  }, []);
+
+  useEffect(() => {
+    scrollPageToTop('smooth');
+  }, [activeTab, scrollPageToTop]);
+
   useEffect(() => {
     if (!onboardingState.hasCompletedFirstEntry || activeTab !== 'home') return;
     if (localStorage.getItem(FEATURE_SPOTLIGHT_STORAGE_KEY) === 'true') return;
@@ -276,6 +297,13 @@ function AppContent() {
   const isHomeTipDuplicate = activeTab === 'home' && (
     currentTip?.id === 'no-readings' || currentTip?.id === 'daily-reading'
   );
+
+  const navigateToTab = useCallback((tab: AppTab) => {
+    if (tab !== 'add') setEditingReading(null);
+    dismissTip();
+    setActiveTab(tab);
+    scrollPageToTop('smooth');
+  }, [dismissTip, scrollPageToTop, setEditingReading, setActiveTab]);
 
   const closeSidebar = useCallback(() => {
     setIsSidebarOpen(false);
@@ -701,29 +729,26 @@ function AppContent() {
     setSearchQuery('');
     setSearchTags([]);
     setSelectedReadingDetail(null);
-    setActiveTab('private');
-    window.requestAnimationFrame(() => {
-      window.scrollTo({ top: 0, behavior: 'smooth' });
-    });
+    navigateToTab('private');
   };
 
   // Handle edit reading navigation
   const handleEditReadingNavigate = (reading: TarotReading) => {
     setSelectedReadingDetail(null);
     handleEditReading(reading);
-    setActiveTab('add');
+    navigateToTab('add');
   };
 
   // Handle tag click in public view
   const handlePublicTagClick = (tag: string) => {
     setSearchTags([tag]);
-    setActiveTab('private');
+    navigateToTab('private');
   };
 
   // Handle author click
   const handleAuthorClick = (author: string) => {
     setSelectedAuthor(author);
-    setActiveTab('profile');
+    navigateToTab('profile');
   };
 
   const ownAuthorName = profile?.display_name || profile?.nickname || session?.email?.split('@')[0] || '研习阁主';
@@ -800,10 +825,9 @@ function AppContent() {
   }, [cardKeywordMemory, realReadings]);
 
   const navigateFromSidebar = useCallback((tab: AppTab) => {
-    if (tab !== 'add') setEditingReading(null);
-    setActiveTab(tab);
+    navigateToTab(tab);
     closeSidebar();
-  }, [closeSidebar, setEditingReading, setActiveTab]);
+  }, [closeSidebar, navigateToTab]);
 
   // Sidebar Content
   const sidebarContent = (
@@ -975,7 +999,7 @@ function AppContent() {
             <button
               onClick={() => {
                 setSelectedAuthor(profile?.display_name || profile?.nickname || session.email?.split('@')[0]);
-                setActiveTab('profile');
+                navigateToTab('profile');
                 closeSidebar();
               }}
               className={`w-full flex items-center justify-between p-3 rounded-xl transition-all group ${
@@ -1011,8 +1035,7 @@ function AppContent() {
         <button
           onClick={() => {
             setEditingReading(null);
-            dismissTip();
-            setActiveTab('home');
+            navigateToTab('home');
             setIsFeatureSpotlightOpen(true);
             closeSidebar();
           }}
@@ -1055,9 +1078,7 @@ function AppContent() {
       <MainLayout
         activeTab={activeTab}
         setActiveTab={(tab: 'home' | 'add' | 'private' | 'public' | 'metadata' | 'profile') => {
-          if (tab !== 'add') setEditingReading(null);
-          dismissTip();
-          setActiveTab(tab);
+          navigateToTab(tab);
         }}
         isSidebarOpen={isSidebarOpen}
         setIsSidebarOpen={(open) => {
@@ -1469,8 +1490,7 @@ function AppContent() {
             readings={readings}
             cardMetadata={cardMetadata}
             onNavigate={(tab: 'home' | 'add' | 'private' | 'public' | 'metadata' | 'profile') => {
-              if (tab !== 'add') setEditingReading(null);
-              setActiveTab(tab);
+              navigateToTab(tab);
             }}
             onSearch={setSearchQuery}
             onSelectSpread={(spread: string, category?: string) => {
@@ -1496,7 +1516,7 @@ function AppContent() {
                   readingDate: new Date().toISOString(),
                   category: category || ''
                 });
-                setActiveTab('add');
+                navigateToTab('add');
               }
             }}
           />
@@ -1511,8 +1531,7 @@ function AppContent() {
               searchTags={searchTags}
               onToggleTag={toggleTag}
               onNavigate={(tab: 'home' | 'add' | 'private' | 'public' | 'metadata' | 'profile') => {
-                if (tab !== 'add') setEditingReading(null);
-                setActiveTab(tab);
+                navigateToTab(tab);
               }}
               onTogglePublic={togglePublic}
               onDelete={handleDeleteReading}
@@ -1558,7 +1577,7 @@ function AppContent() {
               onCancel={() => {
                 const wasEditing = !!editingReading;
                 setEditingReading(null);
-                setActiveTab(wasEditing ? 'private' : 'home');
+                navigateToTab(wasEditing ? 'private' : 'home');
               }}
             />
           </Suspense>
@@ -1589,9 +1608,9 @@ function AppContent() {
               }}
               onTagClick={(tag) => {
                 setSearchTags([tag]);
-                setActiveTab('private');
+                navigateToTab('private');
               }}
-              onViewAll={() => setActiveTab('private')}
+              onViewAll={() => navigateToTab('private')}
               onEditReading={handleEditReadingNavigate}
               onDeleteReading={handleDeleteReading}
               onTogglePublic={togglePublic}
