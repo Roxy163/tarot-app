@@ -4,6 +4,7 @@ import { X, Search, ChevronDown, ChevronRight, Save, RotateCcw, Star, Moon, Sun,
 import { TarotCardMetadata } from '../types';
 import { TAROT_CARDS, getCardImageUrl } from '../constants';
 import { OFFICIAL_CARD_ANNOTATIONS } from '../constants/cardAnnotations';
+import { cardMatchesSearch } from '../lib/cardSearch';
 import { cardAnnotationService } from '../services/cardAnnotationService';
 
 interface CardAnnotationEditorProps {
@@ -96,12 +97,7 @@ export const CardAnnotationEditor: React.FC<CardAnnotationEditorProps> = ({
     }
 
     if (searchQuery.trim()) {
-      const query = searchQuery.toLowerCase();
-      cards = cards.filter(card => 
-        card.name.toLowerCase().includes(query) ||
-        card.english.toLowerCase().includes(query) ||
-        card.id.toLowerCase().includes(query)
-      );
+      cards = cards.filter(card => cardMatchesSearch(card, searchQuery));
     }
 
     return cards;
@@ -230,7 +226,7 @@ export const CardAnnotationEditor: React.FC<CardAnnotationEditorProps> = ({
                 <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-forest-muted" />
                 <input
                   type="text"
-                  placeholder="搜索牌名..."
+                  placeholder="搜索牌名、别称或英文..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   className="w-full min-h-11 pl-10 pr-4 py-2 bg-white rounded-lg border border-forest-accent/20 focus:border-forest-accent focus:ring-2 focus:ring-forest-accent/20 outline-none"

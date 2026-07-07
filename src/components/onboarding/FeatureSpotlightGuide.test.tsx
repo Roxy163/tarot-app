@@ -87,7 +87,9 @@ describe('FeatureSpotlightGuide', () => {
     expect(screen.getByTestId('spotlight-arrow')).toBeInTheDocument();
     expect(screen.queryByTestId('spotlight-target-loop')).not.toBeInTheDocument();
     expect(screen.queryByTestId('spotlight-target-frame')).not.toBeInTheDocument();
-    expect(screen.getAllByTestId('spotlight-dim-mask')).toHaveLength(4);
+    const masks = screen.getAllByTestId('spotlight-dim-mask');
+    expect(masks).toHaveLength(4);
+    expect(masks[0]).toHaveStyle('background-color: rgba(248, 243, 232, 0.28)');
     expect(screen.getByText('1/2')).toBeInTheDocument();
     expect(Element.prototype.scrollIntoView).toHaveBeenCalledWith({
       block: 'center',

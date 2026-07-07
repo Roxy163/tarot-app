@@ -458,8 +458,9 @@ export const DailyFortuneCard: React.FC<DailyFortuneCardProps> = ({
                       >
                         <span className="flex items-center justify-center gap-1.5">
                           <PenLine size={15} />
-                          <span className="hidden sm:inline">录入现实牌</span>
-                          <span className="sm:hidden">现实牌</span>
+                          <span className="hidden sm:inline" aria-hidden="true">录入现实牌</span>
+                          <span className="sm:hidden" aria-hidden="true">现实牌</span>
+                          <span className="sr-only">录入现实牌</span>
                         </span>
                       </button>
                     </div>

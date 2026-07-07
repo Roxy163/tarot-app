@@ -45,6 +45,13 @@ const stampReadingUpdate = (reading: TarotReading): TarotReading => ({
   updatedAt: new Date().toISOString(),
 });
 
+const withExamplesOnlyWhenEmpty = (
+  examples: TarotReading[],
+  userReadings: TarotReading[],
+) => (
+  userReadings.length > 0 ? userReadings : [...examples]
+);
+
 const mergeKeywordMemory = (
   memory: CardKeywordMemory[],
   reading: TarotReading,
@@ -162,7 +169,7 @@ export const useReadings = (
       
       if (!session?.uid) {
         pendingGuestReadingsSyncRef.current = false;
-        setReadings([...exampleReadings, ...localGuestReadings]);
+        setReadings(withExamplesOnlyWhenEmpty(exampleReadings, localGuestReadings));
         setSpreads(localSpreads);
         setCardMetadata(localMetadata);
         setCardKeywordMemory(localKeywordMemory);
@@ -193,7 +200,7 @@ export const useReadings = (
         const mergedKeywordMemory = mergeKeywordMemorySources([cloudKeywordMemory || [], localKeywordMemory]);
 
         pendingGuestReadingsSyncRef.current = getPersistableReadings(localGuestReadings).length > 0;
-        setReadings([...exampleReadings, ...mergedReadings]);
+        setReadings(withExamplesOnlyWhenEmpty(exampleReadings, mergedReadings));
         setSpreads(mergedSpreads);
         setCardMetadata(mergedMetadata);
         setCardKeywordMemory(mergedKeywordMemory);
@@ -207,7 +214,7 @@ export const useReadings = (
           localGuestReadings,
         ]);
 
-        setReadings([...exampleReadings, ...fallbackReadings]);
+        setReadings(withExamplesOnlyWhenEmpty(exampleReadings, fallbackReadings));
         setSpreads(localSpreads);
         setCardMetadata(localMetadata);
         setCardKeywordMemory(localKeywordMemory);
@@ -364,7 +371,7 @@ export const useReadings = (
           authorName: profile?.display_name || profile?.nickname || session?.email?.split('@')[0] || '研习阁主',
           ...readingData
         };
-        const updatedReadings = [reading, ...readings];
+        const updatedReadings = [reading, ...readings.filter(item => !item.isExample)];
         setReadings(updatedReadings);
 
         onShowSnackbar?.('✨ 灵见手帖已添入《阁中典籍》。');

@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { motion } from 'motion/react';
 import { X } from 'lucide-react';
 import { TAROT_CARDS, getCardImageUrl } from '../constants';
+import { cardMatchesSearch } from '../lib/cardSearch';
 
 interface CardPickerProps {
   onSelect: (card: typeof TAROT_CARDS[0], isReversed: boolean) => void;
@@ -21,13 +22,12 @@ export function CardPicker({
   const [search, setSearch] = useState('');
   const [isReversed, setIsReversed] = useState(false);
 
-  const filteredCards = TAROT_CARDS.filter(c => 
-    c.name.includes(search) || c.english.toLowerCase().includes(search.toLowerCase())
-  );
+  const filteredCards = TAROT_CARDS.filter(card => cardMatchesSearch(card, search));
 
   const highlightMatch = (text: string, searchTerm: string) => {
     if (!searchTerm) return text;
-    const regex = new RegExp(`(${searchTerm})`, 'gi');
+    const escapedSearchTerm = searchTerm.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const regex = new RegExp(`(${escapedSearchTerm})`, 'gi');
     const parts = text.split(regex);
     return parts.map((part, index) => 
       regex.test(part) ? (
@@ -72,7 +72,7 @@ export function CardPicker({
           <input 
             autoFocus
             className="w-full px-4 py-2 bg-forest-bg border-none rounded-lg focus:ring-2 focus:ring-forest-accent/20 text-sm"
-            placeholder="搜索牌名..."
+            placeholder="搜索牌名、别称或英文..."
             value={search}
             onChange={e => setSearch(e.target.value)}
           />

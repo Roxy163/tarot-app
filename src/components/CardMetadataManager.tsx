@@ -5,6 +5,7 @@ import { CardKeywordMemory, TarotCardMetadata, TarotReading } from '../types';
 import { getCardImageUrl, TAROT_CARDS } from '../constants';
 import { useCardNumerology } from '../hooks/useCardNumerology';
 import { getCardAnnotations, saveCardAnnotation } from '../lib/firebaseData';
+import { cardMatchesSearch } from '../lib/cardSearch';
 import { cardAnnotationService } from '../services/cardAnnotationService';
 import { CardAnnotationEditor } from './CardAnnotationEditor';
 import { ConfirmDialog } from './ConfirmDialog';
@@ -264,7 +265,7 @@ export function CardMetadataManager({ metadata, onUpdate, readings, cardKeywordM
 
   const filteredCards = useMemo(() => {
     return localMetadata.filter(card => {
-      const matchesSearch = card.name.includes(searchQuery) || card.english.toLowerCase().includes(searchQuery.toLowerCase());
+      const matchesSearch = cardMatchesSearch(card, searchQuery);
       const matchesFilter = filterType === 'all' || 
         (filterType === 'major' && card.id.startsWith('ar')) ||
         (filterType === 'wands' && card.id.startsWith('wa')) ||
@@ -423,7 +424,7 @@ export function CardMetadataManager({ metadata, onUpdate, readings, cardKeywordM
             <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-forest-muted" size={18} />
             <input 
               type="text" 
-              placeholder="搜索牌名或英文名..." 
+              placeholder="搜索牌名、别称或英文名..."
               className="w-full pl-12 pr-4 py-3 bg-white border border-forest-accent/10 rounded-2xl focus:ring-2 focus:ring-forest-accent/20 text-sm shadow-inner"
               value={searchQuery}
               onChange={e => setSearchQuery(e.target.value)}

@@ -219,8 +219,8 @@ export const FeatureSpotlightGuide: React.FC<FeatureSpotlightGuideProps> = ({
   const spotlightBottom = targetRect ? clamp(targetRect.top + targetRect.height + spotlightPadding, 0, viewport.height) : viewport.height / 2;
   const spotlightHeight = Math.max(0, spotlightBottom - spotlightTop);
   const dimStyle = {
-    backgroundColor: isMobile ? 'rgba(246, 240, 226, 0.72)' : 'rgba(246, 240, 226, 0.68)',
-    backdropFilter: 'blur(1.5px)',
+    backgroundColor: isMobile ? 'rgba(248, 243, 232, 0.28)' : 'rgba(248, 243, 232, 0.26)',
+    backdropFilter: 'blur(0.12px)',
   };
 
   const handleNext = () => {
@@ -318,12 +318,12 @@ export const FeatureSpotlightGuide: React.FC<FeatureSpotlightGuideProps> = ({
           </svg>
 
           <motion.div
-            className="fixed rounded-xl bg-white/45 px-2.5 py-2 shadow-lg shadow-forest-ink/5 backdrop-blur-[1px] sm:px-3 sm:py-2.5"
+            className="fixed rounded-xl bg-white/18 px-2.5 py-2 shadow-md shadow-white/25 backdrop-blur-[0.2px] sm:px-3 sm:py-2.5"
             style={{
               left: noteLeft,
               top: noteTop,
               width: noteWidth,
-              textShadow: '0 1px 14px rgba(255,255,255,0.92)',
+              textShadow: '0 1px 12px rgba(255,255,255,0.95)',
             }}
             initial={{ opacity: 0, y: notePlacement === 'above' ? 12 : -12 }}
             animate={{ opacity: 1, y: 0 }}

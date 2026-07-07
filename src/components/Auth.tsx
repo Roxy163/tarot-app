@@ -87,6 +87,15 @@ export const Auth: React.FC<AuthProps> = ({ onClose, onSignedOut }) => {
         case 'auth/user-disabled':
           errorMessage = "账号已被禁用，请联系管理员。";
           break;
+        case 'auth/unauthorized-domain':
+          errorMessage = "当前访问域名未加入 Firebase 登录授权，请在 Firebase Authentication 的 Authorized domains 中加入这个域名。";
+          break;
+        case 'auth/operation-not-allowed':
+          errorMessage = "邮箱密码登录尚未开启，请在 Firebase Authentication 中启用 Email/Password。";
+          break;
+        case 'auth/configuration-not-found':
+          errorMessage = "登录配置未完整启用，请检查 Firebase Authentication 是否已开启邮箱密码登录。";
+          break;
         case 'auth/network-request-failed':
           errorMessage = "网络连接失败，请检查网络设置。若在中国境内，建议使用网络加速服务。";
           break;
@@ -127,6 +136,15 @@ export const Auth: React.FC<AuthProps> = ({ onClose, onSignedOut }) => {
           errorMessage = "该邮箱已被注册，请尝试找回密码。";
           setResetEmail(normalizeEmailInput(email));
           setShowResetPassword(true);
+          break;
+        case 'auth/unauthorized-domain':
+          errorMessage = "当前访问域名未加入 Firebase 登录授权，请在 Firebase Authentication 的 Authorized domains 中加入这个域名。";
+          break;
+        case 'auth/operation-not-allowed':
+          errorMessage = "邮箱密码注册尚未开启，请在 Firebase Authentication 中启用 Email/Password。";
+          break;
+        case 'auth/configuration-not-found':
+          errorMessage = "登录配置未完整启用，请检查 Firebase Authentication 是否已开启邮箱密码登录。";
           break;
         case 'auth/network-request-failed':
           errorMessage = "网络连接失败，请检查网络设置。若在中国境内，建议使用网络加速服务。";

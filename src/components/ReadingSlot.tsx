@@ -40,7 +40,7 @@ export const ReadingSlot: React.FC<ReadingSlotProps> = ({
   const zIndex = isActive ? 50 : (stackIndex * 10 + 10);
   
   const positionClasses = isCelticCenter
-    ? (isRotated ? 'absolute inset-0 rotate-90 -translate-y-2' : 'relative w-full h-full')
+    ? (isRotated ? 'absolute inset-0 flex items-center justify-center rotate-90' : 'relative w-full h-full')
     : (stackIndex > 0 ? 'absolute inset-0 translate-x-1 translate-y-1' : 'relative w-full h-full');
 
   return (

@@ -5,6 +5,10 @@ import { ReadingKeywordCandidate, TarotReading, TarotCardMetadata } from '../../
 import { ReadingCard } from '../ReadingCard';
 import { useProgressiveList } from '../../hooks/useProgressiveList';
 
+const getReadingSortTime = (reading: TarotReading) => (
+  new Date(reading.updatedAt || reading.readingDate || reading.date || 0).getTime()
+);
+
 interface PrivateTabProps {
   readings: TarotReading[];
   searchQuery: string;
@@ -46,6 +50,7 @@ export const PrivateTab: React.FC<PrivateTabProps> = ({
   const [audienceFilter, setAudienceFilter] = useState<'all' | 'self' | 'client'>('all');
   const [clientFilter, setClientFilter] = useState('');
   const [isReviewFilterOpen, setIsReviewFilterOpen] = useState(false);
+  const hasRealReadings = useMemo(() => readings.some(reading => !reading.isExample), [readings]);
 
   const clientNames = useMemo(() => (
     Array.from(new Set(
@@ -56,6 +61,8 @@ export const PrivateTab: React.FC<PrivateTabProps> = ({
   ), [readings]);
 
   const filteredReadings = useMemo(() => readings.filter(r => {
+    if (hasRealReadings && r.isExample) return false;
+
     const hasFeedback = !!r.userFeedback?.trim();
     if (reviewFilter === 'reviewed' && !hasFeedback) return false;
     if (reviewFilter === 'unreviewed' && hasFeedback) return false;
@@ -80,7 +87,7 @@ export const PrivateTab: React.FC<PrivateTabProps> = ({
       searchTags.every(tag => r.keywords.includes(tag));
     
     return matchesQuery && matchesTags;
-  }), [readings, reviewFilter, audienceFilter, clientFilter, searchQuery, searchTags]);
+  }).sort((a, b) => getReadingSortTime(b) - getReadingSortTime(a)), [readings, hasRealReadings, reviewFilter, audienceFilter, clientFilter, searchQuery, searchTags]);
 
   const {
     hasMore,

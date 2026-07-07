@@ -184,13 +184,21 @@ export const verifySmsCode = async (confirmationResult: ConfirmationResult, code
 
 export const signInWithPassword = async (email: string, password: string) => {
   ensureFirebase();
-  await setPersistence(auth!, browserLocalPersistence);
+  try {
+    await setPersistence(auth!, browserLocalPersistence);
+  } catch (error) {
+    console.warn('Firebase auth persistence unavailable, continuing with default persistence:', error);
+  }
   return signInWithEmailAndPassword(auth!, email, password);
 };
 
 export const signUpWithEmail = async (email: string, password: string) => {
   ensureFirebase();
-  await setPersistence(auth!, browserLocalPersistence);
+  try {
+    await setPersistence(auth!, browserLocalPersistence);
+  } catch (error) {
+    console.warn('Firebase auth persistence unavailable, continuing with default persistence:', error);
+  }
   return createUserWithEmailAndPassword(auth!, email, password);
 };
 

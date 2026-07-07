@@ -160,7 +160,7 @@ export const LAYOUT_TEMPLATES: Record<string, { name: string, class: string, ite
   },
   'celtic': {
     name: '凯尔特十字牌阵',
-    class: 'grid grid-cols-5 gap-x-8 gap-y-6 max-w-[560px] mx-auto justify-items-center items-center',
+    class: 'grid grid-cols-5 gap-x-8 gap-y-3 sm:gap-y-6 max-w-[560px] mx-auto justify-items-center items-center',
     itemClasses: [
       'col-start-2 row-start-2', // 1. 现状
       'col-start-2 row-start-2', // 2. 挑战 (叠加在现状上)

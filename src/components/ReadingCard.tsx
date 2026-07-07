@@ -12,6 +12,12 @@ import {
   FREE_LAYOUT_SLOT_WIDTH,
 } from '../lib/freeLayout';
 
+const getGridNumber = (position: string, type: 'col' | 'row') => {
+  const pattern = type === 'col' ? /col-start-(\d+)/ : /row-start-(\d+)/;
+  const match = position.match(pattern);
+  return match ? Number(match[1]) : 1;
+};
+
 interface ReadingCardProps {
   reading: TarotReading;
   cardMetadata: TarotCardMetadata[];
@@ -58,8 +64,26 @@ export const ReadingCard: React.FC<ReadingCardProps> = ({
   const [isExtractingKeywords, setIsExtractingKeywords] = useState(false);
   const [keywordNotice, setKeywordNotice] = useState('');
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [previewWidth, setPreviewWidth] = useState(0);
   const lastPosition = useRef({ x: 0, y: 0 });
   const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const element = containerRef.current;
+    if (!element) return;
+
+    const updateWidth = () => setPreviewWidth(element.getBoundingClientRect().width);
+    updateWidth();
+
+    if (typeof ResizeObserver === 'undefined') {
+      window.addEventListener('resize', updateWidth);
+      return () => window.removeEventListener('resize', updateWidth);
+    }
+
+    const observer = new ResizeObserver(updateWidth);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
 
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
     if (e.button === 0 && e.target instanceof HTMLDivElement && !e.target.classList.contains('card-zoom-handler')) {
@@ -182,10 +206,32 @@ export const ReadingCard: React.FC<ReadingCardProps> = ({
 
   const renderCards = () => {
     const layout = reading.layoutType ? (LAYOUT_TEMPLATES[reading.layoutType] || LAYOUT_TEMPLATES.horizontal) : null;
-    const isCeltic = reading.layoutType === 'celtic-cross' || reading.spread === '凯尔特十字牌阵';
+    const isCeltic = reading.layoutType === 'celtic' || reading.layoutType === 'celtic-cross' || reading.spread === '凯尔特十字牌阵';
     const isYearly = reading.layoutType === 'yearly' || reading.spread === '年运十二宫牌阵';
     const isFreeLayout = reading.layoutType === 'free';
     const freeLayoutFrame = isFreeLayout ? getFreeLayoutDisplayFrame(reading.cards) : null;
+    const displayPositions = reading.cards.map((_, index) => reading.slotPositions?.[index] || layout?.itemClasses[index] || '');
+    const gridExtent = displayPositions.reduce((result, position) => ({
+      cols: Math.max(result.cols, getGridNumber(position, 'col')),
+      rows: Math.max(result.rows, getGridNumber(position, 'row')),
+    }), { cols: 1, rows: 1 });
+    const cardWidth = 64;
+    const cardHeight = 96;
+    const gapSize = isCeltic ? 32 : isYearly ? 0 : reading.cards.length > 3 ? 8 : 12;
+    const rawPreviewWidth = isFreeLayout
+      ? freeLayoutFrame?.width || FREE_LAYOUT_CANVAS_WIDTH
+      : gridExtent.cols * cardWidth + Math.max(0, gridExtent.cols - 1) * gapSize;
+    const rawPreviewHeight = isFreeLayout
+      ? freeLayoutFrame?.height || FREE_LAYOUT_CANVAS_HEIGHT
+      : gridExtent.rows * cardHeight + Math.max(0, gridExtent.rows - 1) * gapSize;
+    const shouldFitPreview = isFreeLayout || isCeltic || isYearly || reading.layoutType === 'custom';
+    const autoFitScale = shouldFitPreview && previewWidth > 0
+      ? Math.min(1, Math.max(0.42, (previewWidth - 24) / Math.max(1, rawPreviewWidth)))
+      : 1;
+    const fittedFrameStyle = shouldFitPreview ? {
+      width: rawPreviewWidth * autoFitScale,
+      minHeight: rawPreviewHeight * autoFitScale,
+    } : undefined;
 
     return (
       <div
@@ -197,11 +243,14 @@ export const ReadingCard: React.FC<ReadingCardProps> = ({
         onMouseDown={handleMouseDown}
         onWheel={handleWheel}
       >
+        <div className={shouldFitPreview ? 'mx-auto' : undefined} style={fittedFrameStyle}>
         <motion.div
           className="relative"
           style={{
-            transform: `translate(${position.x}px, ${position.y}px) scale(${scale})`,
-            transformOrigin: 'center center',
+            width: shouldFitPreview ? rawPreviewWidth : undefined,
+            minHeight: shouldFitPreview ? rawPreviewHeight : undefined,
+            transform: `translate(${position.x}px, ${position.y}px) scale(${scale * autoFitScale})`,
+            transformOrigin: shouldFitPreview ? 'top center' : 'center center',
             transition: isDragging ? 'none' : 'transform 0.2s ease-out'
           }}
         >
@@ -209,10 +258,16 @@ export const ReadingCard: React.FC<ReadingCardProps> = ({
             className={isFreeLayout
               ? 'relative mx-auto'
               : `${reading.layoutType ? layout?.class : 'flex flex-wrap justify-center gap-2 p-4'} ${isYearly ? 'h-[280px] sm:h-[360px]' : ''}`}
-            style={isFreeLayout ? {
-              width: freeLayoutFrame?.width || FREE_LAYOUT_CANVAS_WIDTH,
-              height: freeLayoutFrame?.height || FREE_LAYOUT_CANVAS_HEIGHT,
-            } : undefined}
+            style={{
+              ...(isFreeLayout ? {
+                width: freeLayoutFrame?.width || FREE_LAYOUT_CANVAS_WIDTH,
+                height: freeLayoutFrame?.height || FREE_LAYOUT_CANVAS_HEIGHT,
+              } : {}),
+              ...(shouldFitPreview && !isFreeLayout ? {
+                width: rawPreviewWidth,
+                maxWidth: 'none',
+              } : {}),
+            }}
           >
             {reading.cards.map((card, idx) => {
               const cardData = TAROT_CARDS.find(c =>
@@ -281,24 +336,13 @@ export const ReadingCard: React.FC<ReadingCardProps> = ({
                 return (
                   <div
                     key={idx}
-                    className={`flex flex-col items-center gap-1 ${posClass} relative cursor-pointer group/card`}
+                    className={`flex flex-col items-center gap-1 ${posClass} relative z-30 cursor-pointer group/card`}
                     onClick={(e) => {
                       e.stopPropagation();
                       setSelectedCardIdx(selectedCardIdx === idx ? null : idx);
                     }}
                   >
                     <div className="relative w-16 h-24 sm:w-20 sm:h-30">
-                      <div className={`absolute inset-0 rounded-lg overflow-hidden border-2 border-forest-accent/10 shadow-sm ${card.isReversed ? 'rotate-180' : ''}`}>
-                        <img
-                          src={getCardImageUrl(cardData?.id || 'ar00')}
-                          alt={card.name}
-                          className="w-full h-full object-contain bg-white"
-                          referrerPolicy="no-referrer"
-                        />
-                        <div className="absolute inset-x-0 bottom-0 bg-forest-text/70 text-white text-[8px] py-0.5 text-center font-sans">
-                          {cardData?.name || card.name}
-                        </div>
-                      </div>
                       <div className={`absolute inset-0 rounded-lg overflow-hidden border-2 rotate-90 transition-all ${selectedCardIdx === idx ? 'border-forest-accent ring-4 ring-forest-accent/10 scale-110 z-30' : 'border-forest-accent/10'} shadow-sm ${card.isReversed ? 'rotate-180' : ''}`}>
                         {reading.showSlotNumbers !== false && (
                           <div className="absolute top-1 left-1/2 -translate-x-1/2 bg-forest-text/60 text-white text-[8px] px-1.5 py-0.5 rounded-sm z-20 font-black">
@@ -362,6 +406,7 @@ export const ReadingCard: React.FC<ReadingCardProps> = ({
             })}
           </div>
         </motion.div>
+        </div>
 
         <div className="absolute top-2 right-2 flex gap-1.5 z-40">
           <button

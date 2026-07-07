@@ -89,4 +89,30 @@ describe('PrivateTab', () => {
 
     expect(screen.getByText('刚刚保存的记录').closest('[data-highlighted-reading="true"]')).toBeInTheDocument();
   });
+
+  it('hides examples once real records exist and shows newest records first', () => {
+    renderPrivateTab([
+      createReading({
+        id: 'example-reading',
+        question: '示例问题',
+        isExample: true,
+        updatedAt: '2099-01-01T00:00:00.000Z',
+      }),
+      createReading({
+        id: 'older-reading',
+        question: '旧记录',
+        updatedAt: '2026-07-01T00:00:00.000Z',
+      }),
+      createReading({
+        id: 'newer-reading',
+        question: '新记录',
+        updatedAt: '2026-07-06T00:00:00.000Z',
+      }),
+    ]);
+
+    expect(screen.queryByText('示例问题')).not.toBeInTheDocument();
+
+    const cards = screen.getAllByText(/新记录|旧记录/).map(item => item.textContent);
+    expect(cards).toEqual(['新记录', '旧记录']);
+  });
 });

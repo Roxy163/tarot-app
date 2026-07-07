@@ -232,6 +232,10 @@ export const FreeLayoutEditor: React.FC<FreeLayoutEditorProps> = ({
   const pointersRef = useRef<Map<number, PointerEvent>>(new Map());
   const pinchRef = useRef<{ distance: number; scale: number } | null>(null);
   const [viewportWidth, setViewportWidth] = useState(FREE_LAYOUT_CANVAS_WIDTH);
+  const viewportHeight = Math.min(
+    FREE_LAYOUT_VIEWPORT_HEIGHT,
+    Math.max(320, viewportWidth * 0.72),
+  );
   const canvasSize = {
     width: FREE_LAYOUT_CANVAS_WIDTH,
     height: FREE_LAYOUT_CANVAS_HEIGHT,
@@ -329,8 +333,8 @@ export const FreeLayoutEditor: React.FC<FreeLayoutEditorProps> = ({
 
   const getVisibleCanvasCenter = useCallback(() => ({
     x: (viewportWidth / 2 - viewportOffset.x) / canvasScale,
-    y: (FREE_LAYOUT_VIEWPORT_HEIGHT / 2 - viewportOffset.y) / canvasScale,
-  }), [canvasScale, viewportOffset.x, viewportOffset.y, viewportWidth]);
+    y: (viewportHeight / 2 - viewportOffset.y) / canvasScale,
+  }), [canvasScale, viewportHeight, viewportOffset.x, viewportOffset.y, viewportWidth]);
 
   const boundCanvasPosition = useCallback(({
     x,
@@ -676,7 +680,7 @@ export const FreeLayoutEditor: React.FC<FreeLayoutEditorProps> = ({
     left: (0 - viewportOffset.x) / canvasScale,
     top: (0 - viewportOffset.y) / canvasScale,
     width: viewportWidth / canvasScale,
-    height: FREE_LAYOUT_VIEWPORT_HEIGHT / canvasScale,
+    height: viewportHeight / canvasScale,
   };
 
   const activeSlot = cardSlots[designActiveSlot] || null;
@@ -1108,7 +1112,7 @@ export const FreeLayoutEditor: React.FC<FreeLayoutEditorProps> = ({
         style={{
           width: viewportWidth,
           maxWidth: '100%',
-          height: FREE_LAYOUT_VIEWPORT_HEIGHT,
+          height: viewportHeight,
           backgroundImage: showGrid
             ? 'linear-gradient(#e8d6d6 1px, transparent 1px), linear-gradient(90deg, #e8d6d6 1px, transparent 1px)'
             : 'none',
@@ -1261,7 +1265,7 @@ export const FreeLayoutEditor: React.FC<FreeLayoutEditorProps> = ({
                   className="pointer-events-none absolute z-10 flex w-[min(260px,80vw)] flex-col items-center gap-2 rounded-2xl border border-forest-accent/10 bg-white/85 px-4 py-4 text-center shadow-sm backdrop-blur-sm"
                   style={{
                     left: (viewportWidth / 2 - viewportOffset.x) / canvasScale,
-                    top: (FREE_LAYOUT_VIEWPORT_HEIGHT / 2 - viewportOffset.y) / canvasScale,
+                    top: (viewportHeight / 2 - viewportOffset.y) / canvasScale,
                     transform: `translate(-50%, -50%) scale(${1 / canvasScale})`,
                     transformOrigin: 'center',
                   }}

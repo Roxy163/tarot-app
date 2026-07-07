@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { motion } from 'motion/react';
 import { Layers, X, Plus, RotateCcw, Grid3X3, FolderOpen, Trash2, RefreshCw, Sparkles } from 'lucide-react';
 import { SpreadDefinition, ReadingSlotData } from '../types';
@@ -8,6 +8,30 @@ import { SpreadGridControls } from './SpreadGridControls';
 import { FreeLayoutEditor } from './FreeLayoutEditor';
 
 export type FreeLayoutSaveMode = 'original' | 'adaptive';
+
+const useContainerWidth = <T extends HTMLElement>() => {
+  const ref = useRef<T | null>(null);
+  const [width, setWidth] = useState(0);
+
+  useEffect(() => {
+    const element = ref.current;
+    if (!element) return;
+
+    const updateWidth = () => setWidth(element.getBoundingClientRect().width);
+    updateWidth();
+
+    if (typeof ResizeObserver === 'undefined') {
+      window.addEventListener('resize', updateWidth);
+      return () => window.removeEventListener('resize', updateWidth);
+    }
+
+    const observer = new ResizeObserver(updateWidth);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
+
+  return { ref, width };
+};
 
 interface SpreadDesignerProps {
   spreads: SpreadDefinition[];
@@ -75,6 +99,7 @@ export const SpreadDesigner: React.FC<SpreadDesignerProps> = ({
   onUpdateFreeLayoutSaveMode
 }) => {
   const [editMode, setEditMode] = useState<'grid' | 'free'>(layoutType === 'free' ? 'free' : 'grid');
+  const { ref: designerPreviewRef, width: designerPreviewWidth } = useContainerWidth<HTMLDivElement>();
 
   useEffect(() => {
     setEditMode(layoutType === 'free' ? 'free' : 'grid');
@@ -84,6 +109,13 @@ export const SpreadDesigner: React.FC<SpreadDesignerProps> = ({
   const itemClasses = currentTemplate.itemClasses;
   const designerSlotSizeClass = cardSlots.length > 3 ? 'w-16 sm:w-20' : 'w-20 sm:w-24';
   const designerGridGapClass = cardSlots.length > 3 ? 'gap-2 sm:gap-4' : 'gap-3 sm:gap-4';
+  const designerBaseSlotWidth = cardSlots.length > 3 ? 64 : 80;
+  const designerGap = cardSlots.length > 3 ? 8 : 12;
+  const designerRawGridWidth = gridCols * designerBaseSlotWidth + Math.max(0, gridCols - 1) * designerGap;
+  const designerScale = useMemo(() => {
+    if (editMode !== 'grid' || designerPreviewWidth <= 0) return 1;
+    return Math.min(1, designerPreviewWidth / Math.max(1, designerRawGridWidth + 8));
+  }, [designerPreviewWidth, designerRawGridWidth, editMode]);
   
   const isOfficialSpread = OFFICIAL_SPREADS.some(s => s.name === currentSpread);
   const officialSpreadNames = new Set(OFFICIAL_SPREADS.map(spread => spread.name));
@@ -159,7 +191,7 @@ export const SpreadDesigner: React.FC<SpreadDesignerProps> = ({
           </div>
         </div>
 
-        <div className="p-6 space-y-6">
+        <div className="space-y-4 p-4 sm:space-y-6 sm:p-6">
           <div className="grid gap-3 rounded-2xl border border-forest-accent/10 bg-forest-bg/40 p-3 sm:grid-cols-[minmax(0,1fr)_minmax(180px,240px)_auto] sm:items-end">
             <div className="space-y-1">
               <label htmlFor="spread-template-select" className="text-[10px] font-bold uppercase tracking-wider text-forest-muted">
@@ -314,8 +346,8 @@ export const SpreadDesigner: React.FC<SpreadDesignerProps> = ({
             )}
           </div>
 
-          <div className="rounded-3xl border border-forest-accent/10 bg-forest-bg/20 p-3">
-            <div className="flex w-full justify-start overflow-x-auto pb-2 sm:justify-center">
+          <div className="rounded-3xl border border-forest-accent/10 bg-forest-bg/20 p-2 sm:p-3">
+            <div ref={designerPreviewRef} className="flex w-full justify-center overflow-hidden pb-2">
               {editMode === 'free' ? (
                 <FreeLayoutEditor
                   cardSlots={cardSlots}
@@ -328,10 +360,19 @@ export const SpreadDesigner: React.FC<SpreadDesignerProps> = ({
                 />
               ) : (
                 <div
+                  className="mx-auto"
+                  style={{
+                    width: designerRawGridWidth * designerScale,
+                    minHeight: gridRows * designerBaseSlotWidth * 1.75 * designerScale,
+                  }}
+                >
+                <div
                   className={`grid ${designerGridGapClass} p-2 rounded-2xl border border-forest-accent/10 bg-white/70`}
                   style={{
                     gridTemplateColumns: `repeat(${gridCols}, max-content)`,
-                    width: 'max-content'
+                    width: 'max-content',
+                    transform: `scale(${designerScale})`,
+                    transformOrigin: 'top center',
                   }}
                 >
                   {Array.from({ length: gridCols * gridRows }).map((_, i) => {
@@ -383,6 +424,7 @@ export const SpreadDesigner: React.FC<SpreadDesignerProps> = ({
                       </div>
                     );
                   })}
+                </div>
                 </div>
               )}
             </div>
