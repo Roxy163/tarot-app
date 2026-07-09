@@ -131,6 +131,7 @@ export const useReadings = (
   const [isCloudSyncPaused, setIsCloudSyncPaused] = useState(false);
   const [syncNotice, setSyncNotice] = useState<string | null>(null);
   const pendingGuestReadingsSyncRef = useRef(false);
+  const pendingDeletedReadingIdsRef = useRef<Set<string>>(new Set());
 
   const parseSavedArray = <T,>(key: string): T[] | null => {
     const saved = localStorage.getItem(key);
@@ -242,10 +243,12 @@ export const useReadings = (
       localStorage.setItem('tarot_readings', JSON.stringify(userReadings));
       if (isCloudSyncPaused) return;
 
+      const deletedReadingIds = Array.from(pendingDeletedReadingIdsRef.current);
       const timer = window.setTimeout(() => {
-        replaceUserReadings(session.uid, userReadings)
+        replaceUserReadings(session.uid, userReadings, { deletedReadingIds })
           .then(result => {
             const privateChangeCount = result.privateReadingsWritten + result.privateReadingsDeleted;
+            deletedReadingIds.forEach(id => pendingDeletedReadingIdsRef.current.delete(id));
 
             if (pendingGuestReadingsSyncRef.current) {
               localStorage.removeItem('tarot_guest_data');
@@ -494,8 +497,11 @@ export const useReadings = (
 
   // 删除阅读记录
   const handleDeleteReading = useCallback((id: string) => {
+    if (session?.uid) {
+      pendingDeletedReadingIdsRef.current.add(id);
+    }
     setReadings(prev => prev.filter(r => r.id !== id));
-  }, []);
+  }, [session?.uid]);
 
   // 编辑阅读记录
   const handleEditReading = useCallback((reading: TarotReading) => {

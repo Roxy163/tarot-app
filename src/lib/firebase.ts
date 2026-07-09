@@ -16,11 +16,15 @@ export const isFirebaseReady = !!import.meta.env.VITE_FIREBASE_API_KEY && import
 
 let firebaseApp: FirebaseApp | null = null;
 let auth: ReturnType<typeof getAuth> | null = null;
+let authPersistencePromise: Promise<void> | null = null;
 
 if (isFirebaseReady) {
   try {
     firebaseApp = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
     auth = getAuth(firebaseApp);
+    authPersistencePromise = setPersistence(auth, browserLocalPersistence).catch(error => {
+      console.warn('Firebase auth persistence unavailable, continuing with default persistence:', error);
+    });
   } catch (error) {
     console.warn('Firebase initialization failed, running in guest mode');
     firebaseApp = null;
@@ -62,6 +66,18 @@ const ensureFirebase = () => {
   if (!auth) {
     throw new Error('Firebase 未配置。请设置 VITE_FIREBASE_API_KEY、VITE_FIREBASE_AUTH_DOMAIN、VITE_FIREBASE_PROJECT_ID 等环境变量。');
   }
+};
+
+export const ensureAuthPersistence = async (): Promise<void> => {
+  if (!auth) return;
+
+  if (!authPersistencePromise) {
+    authPersistencePromise = setPersistence(auth, browserLocalPersistence).catch(error => {
+      console.warn('Firebase auth persistence unavailable, continuing with default persistence:', error);
+    });
+  }
+
+  await authPersistencePromise;
 };
 
 export const getLoginHistory = (): LoginRecord | null => {
@@ -184,21 +200,13 @@ export const verifySmsCode = async (confirmationResult: ConfirmationResult, code
 
 export const signInWithPassword = async (email: string, password: string) => {
   ensureFirebase();
-  try {
-    await setPersistence(auth!, browserLocalPersistence);
-  } catch (error) {
-    console.warn('Firebase auth persistence unavailable, continuing with default persistence:', error);
-  }
+  await ensureAuthPersistence();
   return signInWithEmailAndPassword(auth!, email, password);
 };
 
 export const signUpWithEmail = async (email: string, password: string) => {
   ensureFirebase();
-  try {
-    await setPersistence(auth!, browserLocalPersistence);
-  } catch (error) {
-    console.warn('Firebase auth persistence unavailable, continuing with default persistence:', error);
-  }
+  await ensureAuthPersistence();
   return createUserWithEmailAndPassword(auth!, email, password);
 };
 

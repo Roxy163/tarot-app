@@ -11,7 +11,8 @@ import {
   sendPasswordReset,
   updateUserPassword,
   sendCurrentUserEmailVerification,
-  refreshCurrentUser
+  refreshCurrentUser,
+  ensureAuthPersistence
 } from '../lib/firebase';
 
 interface LoginHistory {
@@ -43,27 +44,37 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const [lastLogin, setLastLogin] = useState<LoginHistory | null>(null);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChangedListener((user) => {
-      setSession(user);
-      setIsEmailVerified(!!user?.emailVerified);
-      setIsLoading(false);
+    let unsubscribe: (() => void) | null = null;
+    let cancelled = false;
+
+    ensureAuthPersistence().finally(() => {
+      if (cancelled) return;
+
+      unsubscribe = onAuthStateChangedListener((user) => {
+        setSession(user);
+        setIsEmailVerified(!!user?.emailVerified);
+        setIsLoading(false);
+        if (user) {
+          const info = getLastLoginInfo(user.uid);
+          setLastLogin(info);
+        } else {
+          setLastLogin(null);
+        }
+      });
+
+      const user = getCurrentUser();
       if (user) {
+        setSession(user);
+        setIsEmailVerified(!!user.emailVerified);
         const info = getLastLoginInfo(user.uid);
         setLastLogin(info);
-      } else {
-        setLastLogin(null);
       }
     });
 
-    const user = getCurrentUser();
-    if (user) {
-      setSession(user);
-      setIsEmailVerified(!!user.emailVerified);
-      const info = getLastLoginInfo(user.uid);
-      setLastLogin(info);
-    }
-
-    return () => unsubscribe();
+    return () => {
+      cancelled = true;
+      unsubscribe?.();
+    };
   }, []);
 
   const signIn = useCallback(async (email: string, password: string) => {

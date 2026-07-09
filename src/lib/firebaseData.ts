@@ -1,7 +1,7 @@
 import type { User } from 'firebase/auth';
 import type { CardKeywordMemory, SpreadDefinition, TarotCardMetadata, TarotReading, UserProfile } from '../types';
 import { getFirebaseApp } from './firebase';
-import { createUserReadingSyncPlan } from './readingCloudSync';
+import { createUserReadingSyncPlan, UserReadingSyncOptions } from './readingCloudSync';
 
 type FirestoreApi = typeof import('firebase/firestore');
 type StorageApi = typeof import('firebase/storage');
@@ -343,14 +343,18 @@ export const deletePublicReading = async (readingId: string): Promise<void> => {
   }
 };
 
-export const replaceUserReadings = async (uid: string, readings: TarotReading[]): Promise<UserReadingSyncResult> => {
+export const replaceUserReadings = async (
+  uid: string,
+  readings: TarotReading[],
+  options: UserReadingSyncOptions = {},
+): Promise<UserReadingSyncResult> => {
   const { collection, deleteDoc, doc, getDocs, setDoc } = await loadFirestore();
   const firebaseDb = await getFirebaseDb();
 
   const readingsRef = collection(firebaseDb, 'users', uid, 'readings');
   const snapshot = await getDocs(readingsRef);
   const previousReadings = snapshot.docs.map(item => ({ id: item.id, ...item.data() }) as TarotReading);
-  const syncPlan = createUserReadingSyncPlan(uid, readings, previousReadings);
+  const syncPlan = createUserReadingSyncPlan(uid, readings, previousReadings, options);
 
   await Promise.all(
     syncPlan.readingsToWrite.map(reading => setDoc(

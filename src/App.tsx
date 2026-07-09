@@ -161,6 +161,7 @@ function AppContent() {
     handleDeleteReading,
     handleEditReading,
     toggleTag,
+    isCloudSyncPaused,
     syncNotice,
     clearSyncNotice,
   } = useReadings(session, isAuthLoading);
@@ -239,6 +240,10 @@ function AppContent() {
 
   const realReadings = useMemo(() => readings.filter(r => !r.isExample), [readings]);
   const readingCount = realReadings.length;
+  const customSpreadCount = useMemo(
+    () => spreads.filter(spread => !OFFICIAL_SPREADS.some(official => official.name === spread.name)).length,
+    [spreads],
+  );
   const hasPublicReading = realReadings.some(r => r.isPublic);
   const aiUsageCount = realReadings.filter(r => r.interpretation?.combination?.includes('AI') || r.processedByAi).length;
   
@@ -787,13 +792,8 @@ function AppContent() {
       .map(reading => toDayStart(reading.readingDate || reading.date))
       .filter((day): day is number => day !== null);
 
-    const latestReading = [...realReadings].sort(
-      (a, b) => new Date(b.readingDate || b.date).getTime() - new Date(a.readingDate || a.date).getTime()
-    )[0] || null;
-
     return {
       todayCount: dayStarts.filter(day => day === todayStart).length,
-      latestReading,
     };
   }, [realReadings]);
 
@@ -815,7 +815,7 @@ function AppContent() {
         </div>
       </div>
 
-      <div className="space-y-5">
+      <div className="space-y-4">
         <button
           onClick={() => navigateFromSidebar('home')}
           className={`w-full min-h-12 flex items-center justify-between p-3 rounded-xl transition-all group ${
@@ -829,65 +829,62 @@ function AppContent() {
           <ChevronRight size={14} className="text-forest-muted group-hover:translate-x-1 transition-transform" />
         </button>
 
-        <section className="rounded-2xl bg-forest-bg/70 border border-forest-accent/10 p-4 space-y-4">
+        <section className="rounded-2xl bg-forest-bg/70 border border-forest-accent/10 p-4 space-y-3">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-[10px] text-forest-muted font-bold uppercase tracking-widest">今日研习</p>
+              <p className="text-[10px] text-forest-muted font-bold uppercase tracking-widest">数据保险箱</p>
               <p className="text-sm text-forest-ink font-bold mt-1">
-                {sidebarInsights.todayCount > 0 ? `今日已记 ${sidebarInsights.todayCount} 则` : '今天还未记录'}
+                {session ? '云端身份已连接' : '访客本机暂存'}
               </p>
             </div>
-            <div className="w-10 h-10 rounded-xl bg-forest-accent/10 text-forest-accent flex items-center justify-center">
-              <Moon size={18} />
+            <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${
+              session
+                ? (isCloudSyncPaused ? 'bg-amber-100 text-amber-600' : 'bg-forest-accent/10 text-forest-accent')
+                : 'bg-forest-muted/10 text-forest-muted'
+            }`}>
+              {session && !isCloudSyncPaused ? <CheckCircle size={18} /> : <AlertTriangle size={18} />}
+            </div>
+          </div>
+
+          <div className="rounded-xl bg-white/70 border border-forest-accent/5 p-3">
+            <p className={`text-xs font-bold ${isCloudSyncPaused ? 'text-amber-700' : 'text-forest-accent'}`}>
+              {session
+                ? (isCloudSyncPaused ? '云端暂不可用，本机记录已保留' : '云端同步保护已开启')
+                : '登录后可跨设备同步典籍'}
+            </p>
+            <p className="mt-1 text-[10px] leading-relaxed text-forest-muted">
+              {session
+                ? '典籍会合并云端与本机记录，不会因为新设备本地为空就覆盖云端。'
+                : '当前记录只保存在这台设备，登录后再合并到云端。'}
+            </p>
+          </div>
+
+          <div className="grid grid-cols-3 gap-2 text-center">
+            <div className="rounded-xl bg-white/70 border border-forest-accent/5 p-2">
+              <p className="font-serif text-lg font-bold text-forest-accent">{readingCount}</p>
+              <p className="text-[9px] font-bold text-forest-muted">典籍</p>
+            </div>
+            <div className="rounded-xl bg-white/70 border border-forest-accent/5 p-2">
+              <p className="font-serif text-lg font-bold text-forest-accent">{customSpreadCount}</p>
+              <p className="text-[9px] font-bold text-forest-muted">自建牌阵</p>
+            </div>
+            <div className="rounded-xl bg-white/70 border border-forest-accent/5 p-2">
+              <p className="font-serif text-lg font-bold text-forest-accent">{sidebarInsights.todayCount}</p>
+              <p className="text-[9px] font-bold text-forest-muted">今日</p>
             </div>
           </div>
 
           <button
-            onClick={() => navigateFromSidebar(sidebarInsights.latestReading ? 'private' : 'add')}
+            onClick={() => navigateFromSidebar(readingCount > 0 ? 'private' : 'add')}
             className="w-full min-h-11 px-4 rounded-xl bg-forest-accent text-white text-sm font-bold hover:bg-forest-accent/90 transition-colors flex items-center justify-center gap-2"
           >
-            {sidebarInsights.latestReading ? '查看最近手记' : '写第一条手记'}
+            {readingCount > 0 ? '进入典籍复盘' : '写第一条手记'}
             <ChevronRight size={16} />
           </button>
         </section>
 
         <section className="space-y-2">
-          <p className="text-[10px] text-forest-muted font-bold px-2 uppercase tracking-widest">快捷动作</p>
-          <button
-            onClick={() => navigateFromSidebar('add')}
-            className="w-full min-h-12 flex items-center justify-between p-3 rounded-xl bg-forest-accent/5 hover:bg-forest-accent/10 text-forest-text transition-all group"
-          >
-            <div className="flex items-center gap-3">
-              <Plus size={18} className="text-forest-accent" />
-              <span className="text-sm font-medium">写一则新手记</span>
-            </div>
-            <ChevronRight size={14} className="text-forest-muted group-hover:translate-x-1 transition-transform" />
-          </button>
-          <button
-            onClick={() => navigateFromSidebar('metadata')}
-            className="w-full min-h-12 flex items-center justify-between p-3 rounded-xl bg-forest-accent/5 hover:bg-forest-accent/10 text-forest-text transition-all group"
-          >
-            <div className="flex items-center gap-3">
-              <Book size={18} className="text-forest-accent" />
-              <span className="text-sm font-medium">补充牌义笔记</span>
-            </div>
-            <ChevronRight size={14} className="text-forest-muted group-hover:translate-x-1 transition-transform" />
-          </button>
-          <button
-            onClick={() => navigateFromSidebar('public')}
-            className="w-full min-h-12 flex items-center justify-between p-3 rounded-xl bg-forest-accent/5 hover:bg-forest-accent/10 text-forest-text transition-all group"
-          >
-            <div className="flex items-center gap-3">
-              <Globe size={18} className="text-forest-accent" />
-              <span className="text-sm font-medium">看看广场灵感</span>
-            </div>
-            <ChevronRight size={14} className="text-forest-muted group-hover:translate-x-1 transition-transform" />
-          </button>
-        </section>
-      </div>
-
-      <div className="pt-4">
-        <p className="text-[10px] text-forest-muted font-bold px-2 uppercase tracking-widest mb-2">数据管理</p>
+          <p className="text-[10px] text-forest-muted font-bold px-2 uppercase tracking-widest">备份与恢复</p>
         <button 
           onClick={() => {
             if (!session) {
@@ -920,12 +917,13 @@ function AppContent() {
           </div>
           <ChevronRight size={14} className="text-forest-muted group-hover:translate-x-1 transition-transform" />
         </button>
-      </div>
+        </section>
 
-      {session && (
-        <div className="pt-4">
-          <p className="text-[10px] text-forest-muted font-bold px-2 uppercase tracking-widest mb-2">阁主管理</p>
-          <div className="space-y-1">
+        <section className="space-y-2">
+          <p className="text-[10px] text-forest-muted font-bold px-2 uppercase tracking-widest">账号与设置</p>
+          <div className="space-y-1 rounded-2xl bg-white border border-forest-accent/10 p-1.5 shadow-sm">
+            {session ? (
+              <>
             <button
               onClick={() => {
                 setSelectedAuthor(profile?.display_name || profile?.nickname || session.email?.split('@')[0]);
@@ -943,25 +941,25 @@ function AppContent() {
               <ChevronRight size={14} className="text-forest-muted group-hover:translate-x-1 transition-transform" />
             </button>
             <button
-              onClick={() => { setShowLogoutConfirm(true); closeSidebar(); }}
-              className="w-full flex items-center gap-3 p-3 rounded-xl hover:bg-forest-accent/5 text-forest-accent transition-all"
-            >
-              <LogOut size={18} />
-              <span className="text-sm font-medium">封印离阁</span>
-            </button>
-            <button
               onClick={() => { setIsSecurityModalOpen(true); closeSidebar(); }}
               className="w-full flex items-center gap-3 p-3 rounded-xl hover:bg-forest-accent/5 text-forest-text transition-all"
             >
               <ShieldCheck size={18} className="text-forest-accent" />
               <span className="text-sm font-medium">账号安全</span>
             </button>
-          </div>
-        </div>
-      )}
-
-      <div className="pt-4">
-        <p className="text-[10px] text-forest-muted font-bold px-2 uppercase tracking-widest mb-2">系统设置</p>
+              </>
+            ) : (
+              <button
+                onClick={() => { setShowAuthPage(true); closeSidebar(); }}
+                className="w-full flex items-center justify-between p-3 rounded-xl hover:bg-forest-accent/5 text-forest-text transition-all group"
+              >
+                <div className="flex items-center gap-3">
+                  <LogIn size={18} className="text-forest-accent" />
+                  <span className="text-sm font-medium">登录并开启同步</span>
+                </div>
+                <ChevronRight size={14} className="text-forest-muted group-hover:translate-x-1 transition-transform" />
+              </button>
+            )}
         <button
           onClick={() => {
             setEditingReading(null);
@@ -973,11 +971,22 @@ function AppContent() {
           className="w-full flex items-center justify-between p-3 rounded-xl hover:bg-forest-accent/5 text-forest-text transition-all group"
         >
           <div className="flex items-center gap-3">
-          <Info size={18} className="text-forest-accent" />
+            <Info size={18} className="text-forest-accent" />
             <span className="text-sm font-medium">重新查看功能导览</span>
           </div>
           <ChevronRight size={14} className="text-forest-muted group-hover:translate-x-1 transition-transform" />
         </button>
+            {session && (
+              <button
+                onClick={() => { setShowLogoutConfirm(true); closeSidebar(); }}
+                className="w-full flex items-center gap-3 p-3 rounded-xl hover:bg-forest-accent/5 text-forest-accent transition-all"
+              >
+                <LogOut size={18} />
+                <span className="text-sm font-medium">封印离阁</span>
+              </button>
+            )}
+          </div>
+        </section>
       </div>
 
       <div className="p-6 border-t border-forest-border text-center">

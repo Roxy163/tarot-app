@@ -1,8 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
-  ArrowRight,
-  Clock3,
   Eye,
   Edit3,
   RefreshCw,
@@ -16,7 +14,6 @@ interface StudyPavilionModulesProps {
   readings: TarotReading[];
   cardMetadata: TarotCardMetadata[];
   setActiveTab: (tab: string) => void;
-  setSearchQuery: (query: string) => void;
 }
 
 const getReadingDate = (reading: TarotReading) => new Date(reading.readingDate || reading.date);
@@ -72,7 +69,6 @@ export const StudyPavilionModules: React.FC<StudyPavilionModulesProps> = ({
   readings,
   cardMetadata,
   setActiveTab,
-  setSearchQuery,
 }) => {
   const [quizIndex, setQuizIndex] = useState(() => Math.floor(Math.random() * TAROT_CARDS.length));
   const [showQuizAnswer, setShowQuizAnswer] = useState(false);
@@ -92,13 +88,8 @@ export const StudyPavilionModules: React.FC<StudyPavilionModulesProps> = ({
       });
     });
 
-    const latestReading = [...userReadings].sort(
-      (a, b) => getReadingDate(b).getTime() - getReadingDate(a).getTime(),
-    )[0] || null;
-
     return {
       cardCounts,
-      latestReading,
     };
   }, [userReadings]);
 
@@ -276,44 +267,6 @@ export const StudyPavilionModules: React.FC<StudyPavilionModulesProps> = ({
             </button>
           </div>
         </div>
-      </section>
-
-      <section className="rounded-2xl bg-white/95 border border-forest-accent/10 p-4 shadow-sm">
-        <div className="flex items-center justify-between gap-3 mb-3">
-          <div className="flex items-center gap-2">
-            <Clock3 size={16} className="text-forest-accent" />
-            <h3 className="text-sm font-bold text-forest-ink">最近手记</h3>
-          </div>
-          <button
-            type="button"
-            onClick={() => setActiveTab('private')}
-            className="min-h-11 px-3 -mr-3 text-[10px] font-bold text-forest-accent flex items-center gap-1 rounded-xl hover:bg-forest-accent/5 transition-colors"
-          >
-            全部 <ArrowRight size={12} />
-          </button>
-        </div>
-
-        {summary.latestReading ? (
-          <button
-            type="button"
-            onClick={() => {
-              setSearchQuery(summary.latestReading?.question || '');
-              setActiveTab('private');
-            }}
-            className="w-full text-left rounded-xl bg-forest-bg/50 border border-forest-border/70 p-3 hover:border-forest-accent/30 transition-colors"
-          >
-            <p className="text-xs font-bold text-forest-ink truncate">{summary.latestReading.question}</p>
-            <p className="mt-1 text-[10px] text-forest-muted">
-              {getReadingDate(summary.latestReading).toLocaleDateString('zh-CN', { month: 'long', day: 'numeric' })}
-              {' · '}
-              {summary.latestReading.cards?.map(card => card.name).join(' / ')}
-            </p>
-          </button>
-        ) : (
-          <div className="rounded-xl bg-forest-bg/50 border border-forest-border/70 p-4 text-center">
-            <p className="text-xs text-forest-muted">还没有手记。今日第一张牌，留给一个真正的问题。</p>
-          </div>
-        )}
       </section>
 
     </div>

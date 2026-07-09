@@ -135,9 +135,8 @@ export const BasicInfoSection: React.FC<BasicInfoSectionProps> = ({
         </div>
 
         <div className="space-y-2">
-          <div className="space-y-1.5 rounded-xl border border-forest-accent/5 bg-forest-accent/5 p-1.5">
-            <div className="flex items-center gap-1.5">
-              <div className="flex items-center gap-1.5 px-1.5 text-xs font-bold text-forest-accent whitespace-nowrap sm:text-sm">
+          <div className="grid gap-1.5 rounded-xl border border-forest-accent/5 bg-forest-accent/5 p-1.5 sm:grid-cols-[auto_minmax(12rem,22rem)_6.25rem] sm:items-start">
+            <div className="flex min-h-11 items-center gap-1.5 px-1.5 text-xs font-bold text-forest-accent whitespace-nowrap sm:min-h-10 sm:text-sm">
                 <Layers size={14} />
                 牌阵：
                 {isSelectedCustomSpread && (
@@ -145,8 +144,8 @@ export const BasicInfoSection: React.FC<BasicInfoSectionProps> = ({
                     自定义
                   </span>
                 )}
-              </div>
-              <div className="relative min-w-0 flex-1">
+            </div>
+            <div className="relative min-w-0">
               <select 
                 className="min-h-11 w-full appearance-none rounded-lg border border-forest-accent/5 bg-white py-2 pl-3 pr-9 text-sm font-medium text-forest-ink transition-all focus:ring-2 focus:ring-forest-accent/20"
                 value={spread}
@@ -165,14 +164,13 @@ export const BasicInfoSection: React.FC<BasicInfoSectionProps> = ({
                 )}
               </select>
               <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-forest-accent/40"><ChevronDown size={14} /></div>
-              </div>
             </div>
-            <div className="grid grid-cols-2 gap-1.5 sm:flex sm:w-auto sm:shrink-0">
+            <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-1">
               <button 
                 type="button" 
                 onClick={onOpenSpreadManager}
                 aria-label={`编辑当前牌阵 ${spread}`}
-                className="flex min-h-11 flex-1 items-center justify-center gap-1.5 rounded-lg border border-forest-accent/10 bg-white px-3 py-2 text-xs font-bold text-forest-muted shadow-sm transition-all hover:border-forest-accent hover:text-forest-accent sm:flex-none"
+                className="flex min-h-11 items-center justify-center gap-1.5 rounded-lg border border-forest-accent/10 bg-white px-3 py-2 text-xs font-bold text-forest-muted shadow-sm transition-all hover:border-forest-accent hover:text-forest-accent sm:min-h-10"
                 title="编辑当前牌阵"
               >
                 <Layers size={14} />
@@ -182,7 +180,7 @@ export const BasicInfoSection: React.FC<BasicInfoSectionProps> = ({
                 type="button"
                 onClick={onCreateSpread}
                 aria-label="新建自定义牌阵"
-                className="flex min-h-11 flex-1 items-center justify-center gap-1.5 rounded-lg border border-forest-accent/10 bg-white px-3 py-2 text-xs font-bold text-forest-accent shadow-sm transition-all hover:border-forest-accent hover:bg-forest-accent hover:text-white sm:flex-none"
+                className="flex min-h-11 items-center justify-center gap-1.5 rounded-lg border border-forest-accent/10 bg-white px-3 py-2 text-xs font-bold text-forest-accent shadow-sm transition-all hover:border-forest-accent hover:bg-forest-accent hover:text-white sm:min-h-10"
                 title="新建自定义牌阵"
               >
                 <Plus size={14} />

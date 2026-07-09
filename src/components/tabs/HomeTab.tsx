@@ -155,7 +155,6 @@ export const HomeTab: React.FC<HomeTabProps> = ({
         readings={readings}
         cardMetadata={cardMetadata}
         setActiveTab={onNavigate}
-        setSearchQuery={onSearch}
       />
 
     </motion.div>

@@ -8,6 +8,10 @@ export interface UserReadingSyncPlan {
   publicReadingIdsToDelete: string[];
 }
 
+export interface UserReadingSyncOptions {
+  deletedReadingIds?: string[];
+}
+
 const normalizeForComparison = (reading: TarotReading) => JSON.stringify(JSON.parse(JSON.stringify(reading)));
 
 export const getReadingVersionTime = (reading: TarotReading) => (
@@ -36,17 +40,21 @@ export const createUserReadingSyncPlan = (
   uid: string,
   incomingReadings: TarotReading[],
   previousReadings: TarotReading[],
+  options: UserReadingSyncOptions = {},
 ): UserReadingSyncPlan => {
   const previousReadingsById = new Map<string, TarotReading>(
     previousReadings.map(reading => [reading.id, reading]),
   );
+  const deletedReadingIds = new Set(options.deletedReadingIds || []);
   const ownedReadings = incomingReadings.map(reading => ({ ...reading, userId: uid }));
   const incomingIds = new Set(ownedReadings.map(reading => reading.id));
   const mergedReadings = ownedReadings.map(reading => ({
     ...pickNewestReading(reading, previousReadingsById.get(reading.id)),
     userId: uid,
   }));
-  const readingsToDelete = previousReadings.filter(reading => !incomingIds.has(reading.id));
+  const readingsToDelete = previousReadings.filter(reading => (
+    deletedReadingIds.has(reading.id) && !incomingIds.has(reading.id)
+  ));
   const publicReadingIdsToDelete = Array.from(new Set([
     ...mergedReadings
       .filter(reading => (

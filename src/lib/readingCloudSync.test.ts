@@ -94,11 +94,26 @@ describe('readingCloudSync', () => {
     expect(plan.publicReadingIdsToDelete).toEqual([]);
   });
 
-  it('plans user reading deletions and public mirror removals for missing readings', () => {
+  it('does not delete cloud readings merely because they are absent from the current local cache', () => {
     const kept = createReading({ id: 'kept', userId: 'uid-1' });
     const deletedPrivate = createReading({ id: 'deleted-private', userId: 'uid-1', isPublic: false });
     const deletedPublic = createReading({ id: 'deleted-public', userId: 'uid-1', isPublic: true });
     const plan = createUserReadingSyncPlan('uid-1', [kept], [kept, deletedPrivate, deletedPublic]);
+
+    expect(plan.readingsToDelete).toEqual([]);
+    expect(plan.publicReadingIdsToDelete).toEqual([]);
+  });
+
+  it('plans user reading deletions and public mirror removals only for explicit deletes', () => {
+    const kept = createReading({ id: 'kept', userId: 'uid-1' });
+    const deletedPrivate = createReading({ id: 'deleted-private', userId: 'uid-1', isPublic: false });
+    const deletedPublic = createReading({ id: 'deleted-public', userId: 'uid-1', isPublic: true });
+    const plan = createUserReadingSyncPlan(
+      'uid-1',
+      [kept],
+      [kept, deletedPrivate, deletedPublic],
+      { deletedReadingIds: ['deleted-private', 'deleted-public'] },
+    );
 
     expect(plan.readingsToDelete.map(reading => reading.id)).toEqual(['deleted-private', 'deleted-public']);
     expect(plan.publicReadingIdsToDelete).toEqual(['deleted-public']);
