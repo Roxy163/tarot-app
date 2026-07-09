@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { X, ChevronRight } from 'lucide-react';
+import { useBodyScrollLock } from '../../hooks/useBodyScrollLock';
 
 export interface GuideStep {
   id: string;
@@ -32,6 +33,7 @@ export const GuideOverlay: React.FC<GuideOverlayProps> = ({
   const overlayRef = useRef<HTMLDivElement>(null);
 
   const currentStep = steps[currentStepIndex];
+  useBodyScrollLock(Boolean(currentStep && targetRect));
 
   useEffect(() => {
     const target = document.querySelector(currentStep?.target);
@@ -100,7 +102,7 @@ export const GuideOverlay: React.FC<GuideOverlayProps> = ({
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="fixed inset-0 z-[200] bg-forest-text/40 backdrop-blur-sm"
+      className="fixed inset-0 z-[200] bg-forest-text/40 backdrop-blur-sm overscroll-contain"
       onClick={handleOverlayClick}
     >
       <svg className="absolute inset-0 w-full h-full pointer-events-none">

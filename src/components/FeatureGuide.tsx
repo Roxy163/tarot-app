@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { X } from 'lucide-react';
 import { GUIDE_SECTIONS, SPREAD_GUIDE_FEATURES } from './onboarding/guideContent';
+import { useBodyScrollLock } from '../hooks/useBodyScrollLock';
 
 interface FeatureGuideProps {
   isOpen: boolean;
@@ -11,12 +12,10 @@ interface FeatureGuideProps {
 export const FeatureGuide: React.FC<FeatureGuideProps> = ({ isOpen, onClose }) => {
   const [activeSection, setActiveSection] = useState<keyof typeof GUIDE_SECTIONS>('intro');
   const dialogRef = useRef<HTMLDivElement>(null);
+  useBodyScrollLock(isOpen);
 
   useEffect(() => {
     if (!isOpen) return;
-
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
 
     const focusableSelector = 'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])';
     const focusFirstControl = () => {
@@ -54,7 +53,6 @@ export const FeatureGuide: React.FC<FeatureGuideProps> = ({ isOpen, onClose }) =
 
     return () => {
       window.clearTimeout(focusTimer);
-      document.body.style.overflow = previousOverflow;
       document.removeEventListener('keydown', handleKeyDown);
     };
   }, [isOpen, onClose]);
@@ -66,7 +64,7 @@ export const FeatureGuide: React.FC<FeatureGuideProps> = ({ isOpen, onClose }) =
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
-          className="fixed inset-0 z-[520] flex items-center justify-center p-4"
+          className="fixed inset-0 z-[520] flex items-center justify-center p-4 overscroll-contain"
         >
           <motion.div
             onClick={onClose}
@@ -115,7 +113,7 @@ export const FeatureGuide: React.FC<FeatureGuideProps> = ({ isOpen, onClose }) =
                 ))}
               </div>
 
-              <div className="flex-1 overflow-y-auto p-6">
+              <div className="flex-1 overflow-y-auto overscroll-contain p-6">
                 {activeSection === 'intro' && (
                   <motion.div
                     key="intro"

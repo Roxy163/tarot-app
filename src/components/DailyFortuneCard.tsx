@@ -17,6 +17,7 @@ import { DailyFortune } from '../types';
 import { TAROT_CARDS, getCardImageUrl } from '../constants';
 import { CardPicker } from './CardPicker';
 import { DailyFortuneArchiveModal } from './DailyFortuneArchiveModal';
+import { useBodyScrollLock } from '../hooks/useBodyScrollLock';
 
 interface FortuneChoice {
   cardNumber: number;
@@ -113,6 +114,8 @@ export const DailyFortuneCard: React.FC<DailyFortuneCardProps> = ({
   const [isRedrawing, setIsRedrawing] = useState(false);
   const shuffleIntervalRef = useRef<number | null>(null);
   const shuffleEndTimerRef = useRef<number | null>(null);
+
+  useBodyScrollLock(showArchiveDialog);
 
   const archivedFortunes = useMemo(
     () => fortunes
@@ -621,7 +624,7 @@ export const DailyFortuneCard: React.FC<DailyFortuneCardProps> = ({
 
       <AnimatePresence>
         {showArchiveDialog && editingFortune && (
-          <div className="fixed inset-0 z-[950] flex items-center justify-center bg-forest-ink/30 p-4 backdrop-blur-sm">
+          <div className="fixed inset-0 z-[950] flex items-center justify-center bg-forest-ink/30 p-4 backdrop-blur-sm overscroll-contain">
             <motion.div
               role="dialog"
               aria-label="记录日运对应"

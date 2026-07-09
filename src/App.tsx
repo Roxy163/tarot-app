@@ -1,6 +1,6 @@
 import React, { Suspense, lazy, useCallback, useMemo, useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Plus, Globe, Sparkles, X, User, ChevronRight, Info, LogOut, Database, ShieldCheck, ArrowRight, LogIn, Book, Upload, Moon, CheckCircle, AlertTriangle, Mail } from 'lucide-react';
+import { Plus, Globe, Sparkles, X, User, ChevronRight, Info, LogOut, Database, ShieldCheck, ArrowRight, LogIn, Book, Upload, Moon, CheckCircle, AlertTriangle, Mail, Home } from 'lucide-react';
 import { TarotReading, SpreadDefinition, TarotCardMetadata, UserProfile } from './types';
 import { OFFICIAL_SPREADS, PAVILION_PROVERBS, TAROT_CARDS } from './constants';
 import { Modal } from './components/Modal';
@@ -22,6 +22,8 @@ import {
   normalizeLegacyReadingSpreadNames,
 } from './lib/spreadPersistence';
 import { createTarotExportPdfBlob } from './lib/pdfExport';
+import { getAuthorDisplayName, syncReadingAuthorName } from './lib/readingAuthor';
+import { useBodyScrollLock } from './hooks/useBodyScrollLock';
 
 const loadCardMetadataManager = () => import('./components/CardMetadataManager');
 const loadReadingDetailModal = () => import('./components/ReadingDetailModal');
@@ -67,21 +69,25 @@ const FEATURE_SPOTLIGHT_STEPS: FeatureSpotlightStep[] = [
     target: '[data-tour="daily-draw"]',
     title: '先抽今天的一张牌',
     description: '洗牌输入数字，也可录入现实牌。',
+    mobileNote: 'right-top',
   },
   {
     target: '[data-tour="daily-review"]',
     title: '回看每日对应',
     description: '晚上看这张牌对应了什么事。',
+    mobileNote: 'right-middle',
   },
   {
     target: '[data-tour="library-review"]',
     title: '进入典籍复盘',
     description: '回看自己的手记和客户记录。',
+    mobileNote: 'right-middle',
   },
   {
     target: '[data-tour="card-annotations"]',
     title: '整理你的牌义',
     description: '把新理解写进单牌注疏。',
+    mobileNote: 'below-center',
   },
 ];
 
@@ -158,6 +164,7 @@ function AppContent() {
     syncNotice,
     clearSyncNotice,
   } = useReadings(session, isAuthLoading);
+  useBodyScrollLock(isProcessing || showPromotionCeremony.isOpen);
 
   const [publicReadingsCache, setPublicReadingsCache] = useState<TarotReading[]>([]);
 
@@ -751,7 +758,7 @@ function AppContent() {
     navigateToTab('profile');
   };
 
-  const ownAuthorName = profile?.display_name || profile?.nickname || session?.email?.split('@')[0] || '研习阁主';
+  const ownAuthorName = getAuthorDisplayName(profile, session);
   const isViewingOwnProfile = !selectedAuthor || selectedAuthor === ownAuthorName;
   const profileReadings = useMemo(() => {
     if (isViewingOwnProfile) return readings;
@@ -776,37 +783,9 @@ function AppContent() {
     };
 
     const todayStart = toDayStart(new Date().toISOString()) || 0;
-    const weekStart = todayStart - 6 * 24 * 60 * 60 * 1000;
     const dayStarts = realReadings
       .map(reading => toDayStart(reading.readingDate || reading.date))
       .filter((day): day is number => day !== null);
-
-    const uniqueDays = Array.from(new Set(dayStarts)).sort((a, b) => b - a);
-    const daySet = new Set(uniqueDays);
-    const latestDay = uniqueDays[0] ?? todayStart;
-    let streak = 0;
-    if (latestDay >= todayStart - 24 * 60 * 60 * 1000) {
-      for (let cursor = latestDay; daySet.has(cursor); cursor -= 24 * 60 * 60 * 1000) {
-        streak += 1;
-      }
-    }
-
-    const cardCounts = new Map<string, number>();
-    realReadings.forEach(reading => {
-      reading.cards.forEach(card => {
-        if (!card.name) return;
-        cardCounts.set(card.name, (cardCounts.get(card.name) || 0) + 1);
-      });
-    });
-
-    const topCard = Array.from(cardCounts.entries()).sort((a, b) => b[1] - a[1])[0] || null;
-    const topKeyword = cardKeywordMemory
-      .flatMap(item => item.keywords.map(keyword => ({
-        cardName: item.cardName,
-        keyword: keyword.keyword,
-        count: keyword.count,
-      })))
-      .sort((a, b) => b.count - a.count)[0] || null;
 
     const latestReading = [...realReadings].sort(
       (a, b) => new Date(b.readingDate || b.date).getTime() - new Date(a.readingDate || a.date).getTime()
@@ -814,15 +793,9 @@ function AppContent() {
 
     return {
       todayCount: dayStarts.filter(day => day === todayStart).length,
-      weekCount: dayStarts.filter(day => day >= weekStart).length,
-      streak,
-      seenCardCount: cardCounts.size,
-      memoryCardCount: cardKeywordMemory.filter(item => item.keywords.length > 0).length,
-      topCard,
-      topKeyword,
       latestReading,
     };
-  }, [cardKeywordMemory, realReadings]);
+  }, [realReadings]);
 
   const navigateFromSidebar = useCallback((tab: AppTab) => {
     navigateToTab(tab);
@@ -843,6 +816,19 @@ function AppContent() {
       </div>
 
       <div className="space-y-5">
+        <button
+          onClick={() => navigateFromSidebar('home')}
+          className={`w-full min-h-12 flex items-center justify-between p-3 rounded-xl transition-all group ${
+            activeTab === 'home' ? 'bg-forest-accent/10 text-forest-accent' : 'bg-white hover:bg-forest-accent/5 text-forest-text'
+          }`}
+        >
+          <div className="flex items-center gap-3">
+            <Home size={18} className="text-forest-accent" />
+            <span className="text-sm font-medium">回到研习台</span>
+          </div>
+          <ChevronRight size={14} className="text-forest-muted group-hover:translate-x-1 transition-transform" />
+        </button>
+
         <section className="rounded-2xl bg-forest-bg/70 border border-forest-accent/10 p-4 space-y-4">
           <div className="flex items-center justify-between">
             <div>
@@ -856,21 +842,6 @@ function AppContent() {
             </div>
           </div>
 
-          <div className="grid grid-cols-3 gap-2">
-            <div className="rounded-xl bg-white/70 border border-forest-accent/5 p-3">
-              <p className="text-lg font-serif font-bold text-forest-accent">{sidebarInsights.streak}</p>
-              <p className="text-[9px] text-forest-muted font-bold">连续天</p>
-            </div>
-            <div className="rounded-xl bg-white/70 border border-forest-accent/5 p-3">
-              <p className="text-lg font-serif font-bold text-forest-accent">{sidebarInsights.weekCount}</p>
-              <p className="text-[9px] text-forest-muted font-bold">近 7 天</p>
-            </div>
-            <div className="rounded-xl bg-white/70 border border-forest-accent/5 p-3">
-              <p className="text-lg font-serif font-bold text-forest-accent">{readingCount}</p>
-              <p className="text-[9px] text-forest-muted font-bold">总手记</p>
-            </div>
-          </div>
-
           <button
             onClick={() => navigateFromSidebar(sidebarInsights.latestReading ? 'private' : 'add')}
             className="w-full min-h-11 px-4 rounded-xl bg-forest-accent text-white text-sm font-bold hover:bg-forest-accent/90 transition-colors flex items-center justify-center gap-2"
@@ -878,47 +849,6 @@ function AppContent() {
             {sidebarInsights.latestReading ? '查看最近手记' : '写第一条手记'}
             <ChevronRight size={16} />
           </button>
-        </section>
-
-        <section className="rounded-2xl bg-white border border-forest-accent/10 p-4 space-y-4 shadow-sm">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-[10px] text-forest-muted font-bold uppercase tracking-widest">牌库洞察</p>
-              <p className="text-sm text-forest-ink font-bold mt-1">
-                已遇见 {sidebarInsights.seenCardCount}/{TAROT_CARDS.length} 张牌
-              </p>
-            </div>
-            <Book className="text-forest-accent" size={18} />
-          </div>
-
-          <div className="space-y-3">
-            <div>
-              <div className="h-2 rounded-full bg-forest-bg overflow-hidden">
-                <div
-                  className="h-full rounded-full bg-forest-accent transition-all"
-                  style={{ width: `${Math.min(100, Math.round((sidebarInsights.seenCardCount / TAROT_CARDS.length) * 100))}%` }}
-                />
-              </div>
-              <p className="mt-2 text-[10px] text-forest-muted">
-                {sidebarInsights.topCard ? `最常出现：${sidebarInsights.topCard[0]} ×${sidebarInsights.topCard[1]}` : '记录后会在这里形成你的牌库轨迹'}
-              </p>
-            </div>
-
-            <div className="grid grid-cols-2 gap-2">
-              <div className="rounded-xl bg-forest-bg/60 p-3">
-                <p className="text-base font-serif font-bold text-forest-accent">{sidebarInsights.memoryCardCount}</p>
-                <p className="text-[9px] text-forest-muted font-bold">有牌义记忆</p>
-              </div>
-              <div className="rounded-xl bg-forest-bg/60 p-3 min-w-0">
-                <p className="text-xs font-bold text-forest-accent truncate">
-                  {sidebarInsights.topKeyword ? sidebarInsights.topKeyword.keyword : '待积累'}
-                </p>
-                <p className="text-[9px] text-forest-muted font-bold truncate">
-                  {sidebarInsights.topKeyword ? `${sidebarInsights.topKeyword.cardName} 高频词` : '关键词'}
-                </p>
-              </div>
-            </div>
-          </div>
         </section>
 
         <section className="space-y-2">
@@ -1036,6 +966,7 @@ function AppContent() {
           onClick={() => {
             setEditingReading(null);
             navigateToTab('home');
+            scrollPageToTop('auto');
             setIsFeatureSpotlightOpen(true);
             closeSidebar();
           }}
@@ -1417,7 +1348,7 @@ function AppContent() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[400] flex items-center justify-center bg-forest-text/20 backdrop-blur-sm"
+            className="fixed inset-0 z-[400] flex items-center justify-center bg-forest-text/20 backdrop-blur-sm overscroll-contain"
           >
             <motion.div 
               initial={{ scale: 0.9, opacity: 0 }}
@@ -1449,7 +1380,7 @@ function AppContent() {
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             onClick={() => setShowPromotionCeremony({ isOpen: false, rank: '' })}
-            className="fixed inset-0 z-[300] flex items-center justify-center p-6 bg-white/30 backdrop-blur-xl cursor-pointer"
+            className="fixed inset-0 z-[300] flex items-center justify-center p-6 bg-white/30 backdrop-blur-xl cursor-pointer overscroll-contain"
           >
             <motion.div 
               initial={{ scale: 0.5, opacity: 0 }}
@@ -1598,7 +1529,13 @@ function AppContent() {
                   }
 
                   if (Object.keys(updated).length > 0 && session?.uid) {
-                    setProfile(await updateUserProfile(session.uid, updated));
+                    const previousAuthorName = ownAuthorName;
+                    const nextProfile = await updateUserProfile(session.uid, updated);
+                    const nextAuthorName = getAuthorDisplayName(nextProfile, session);
+
+                    setProfile(nextProfile);
+                    setReadings(prev => syncReadingAuthorName(prev, session.uid!, nextAuthorName));
+                    setSelectedAuthor(current => current === previousAuthorName ? nextAuthorName : current);
                   }
 
                   setSnackbar({ isOpen: true, message: '✨ 印鉴已更新，阁主气象一新。' });

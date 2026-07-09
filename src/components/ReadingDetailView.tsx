@@ -87,6 +87,14 @@ export const ReadingDetailView: React.FC<ReadingDetailViewProps> = ({
     { id: 'questions', label: '自我提问', icon: HelpCircle },
     { id: 'shadow', label: '反向视角', icon: RotateCcw },
   ];
+  const scrollFocusedFieldIntoView = (event: React.FocusEvent<HTMLElement>) => {
+    if (typeof window === 'undefined' || window.innerWidth >= 768) return;
+    const target = event.currentTarget;
+
+    window.setTimeout(() => {
+      target.scrollIntoView({ block: 'center', inline: 'nearest', behavior: 'smooth' });
+    }, 120);
+  };
 
   const updateActiveInterpretation = (value: string) => {
     const newInterps = [...cardInterpretations];
@@ -145,10 +153,7 @@ export const ReadingDetailView: React.FC<ReadingDetailViewProps> = ({
         className="p-4 bg-forest-accent/5 rounded-2xl border border-forest-accent/10 relative group"
       >
         <div className="flex flex-col sm:flex-row gap-6">
-          <div
-            className="w-28 sm:w-36 aspect-[2/3.5] mx-auto sm:mx-0 rounded-2xl overflow-hidden shadow-md ring-4 ring-white bg-forest-bg relative flex-shrink-0 cursor-pointer group/card-image"
-            onClick={(e) => onToggleReverse(activeSlotIndex, e)}
-          >
+          <div className="w-28 sm:w-36 aspect-[2/3.5] mx-auto sm:mx-0 rounded-2xl overflow-hidden shadow-md ring-4 ring-white bg-forest-bg relative flex-shrink-0 group/card-image">
             <div
               aria-hidden="true"
               className="absolute inset-0 opacity-80"
@@ -173,19 +178,9 @@ export const ReadingDetailView: React.FC<ReadingDetailViewProps> = ({
               className={`relative z-10 w-full h-full object-contain object-center transition-transform duration-300 ${currentSlot.isReversed ? 'rotate-180' : ''}`}
               referrerPolicy="no-referrer"
             />
-            <div className="absolute inset-x-0 bottom-0 z-20 py-2 text-[10px] text-white font-bold bg-forest-accent/60 text-center opacity-0 group-hover/card-image:opacity-100 transition-opacity">
-              点击翻转
-            </div>
-            <button 
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                onToggleReverse(activeSlotIndex, e);
-              }}
-              className="absolute bottom-2 left-1/2 z-30 -translate-x-1/2 bg-white/90 backdrop-blur-sm text-[10px] font-bold px-3 py-1 rounded-full shadow-sm hover:bg-white transition-colors"
-            >
+            <div className="absolute bottom-2 left-1/2 z-30 -translate-x-1/2 bg-white/90 backdrop-blur-sm text-[10px] font-bold px-3 py-1 rounded-full shadow-sm">
               {currentSlot.isReversed ? '逆位' : '正位'}
-            </button>
+            </div>
           </div>
           
           <div className="flex-1 space-y-4">
@@ -193,13 +188,9 @@ export const ReadingDetailView: React.FC<ReadingDetailViewProps> = ({
               <div className="space-y-1">
                 <h3 className="text-xl font-serif font-bold text-forest-accent flex items-center gap-2">
                   {currentSlot.name}
-                  <button 
-                    type="button" 
-                    onClick={(e) => onToggleReverse(activeSlotIndex, e)}
-                    className={`text-xs font-sans px-2 py-0.5 rounded-full cursor-pointer hover:scale-110 active:scale-95 transition-all ${currentSlot.isReversed ? 'bg-orange-100 text-orange-600' : 'bg-green-100 text-green-600'}`}
-                  >
+                  <span className={`text-xs font-sans px-2 py-0.5 rounded-full ${currentSlot.isReversed ? 'bg-orange-100 text-orange-600' : 'bg-green-100 text-green-600'}`}>
                     {currentSlot.isReversed ? '逆' : '正'}
-                  </button>
+                  </span>
                 </h3>
                 <div className="flex flex-wrap gap-2">
                   <CardNumerologyBadge cardName={currentSlot.name} isLoggedIn={isLoggedIn} userId={userId} />
@@ -235,9 +226,9 @@ export const ReadingDetailView: React.FC<ReadingDetailViewProps> = ({
                 <button 
                   type="button" 
                   onClick={(e) => onToggleReverse(activeSlotIndex, e)}
-                  className="flex items-center gap-2 px-4 py-2 bg-forest-accent text-white rounded-xl text-xs font-bold shadow-md hover:bg-forest-accent/90 active:scale-95 transition-all"
+                  className="flex min-h-11 items-center gap-2 px-4 py-2 bg-forest-accent text-white rounded-xl text-xs font-bold shadow-md hover:bg-forest-accent/90 active:scale-95 transition-all"
                 >
-                  <RotateCcw size={14} /> 一键翻转正逆位
+                  <RotateCcw size={14} /> 切换正逆位
                 </button>
                 <button 
                   type="button" 
@@ -285,6 +276,7 @@ export const ReadingDetailView: React.FC<ReadingDetailViewProps> = ({
                   className="w-full px-4 py-3 bg-white border border-forest-accent/10 rounded-xl focus:ring-2 focus:ring-forest-accent/20 transition-all text-sm shadow-inner" 
                   placeholder={isDailyMode ? "记录今天这张牌与你生活的对应..." : `记录关于“${currentSlot.label || `位置 ${activeSlotIndex + 1}`}”的直觉与洞察...`}
                   value={cardInterpretations[activeSlotIndex] || ''} 
+                  onFocus={scrollFocusedFieldIntoView}
                   onChange={e => updateActiveInterpretation(e.target.value)}
                 />
               </div>

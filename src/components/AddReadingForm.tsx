@@ -2,7 +2,7 @@ import React, { useState, useEffect, FormEvent } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Sparkles, Layers, User, MessageSquare, RotateCcw, BookOpen, X, Settings, Save, Hash, Orbit, Home, Wind, Info } from 'lucide-react';
 import { CardKeywordMemory, SpreadDefinition, TarotCardMetadata, ReadingSlotData, TarotReading, ReadingFormData } from '../types';
-import { DEFAULT_CUSTOM_SPREAD_NAME, LAYOUT_TEMPLATES, TAROT_CARDS, getCardImageUrl, OFFICIAL_SPREADS } from '../constants';
+import { LAYOUT_TEMPLATES, TAROT_CARDS, getCardImageUrl, OFFICIAL_SPREADS } from '../constants';
 import { CardPicker } from './CardPicker';
 import { FreeLayoutSaveMode, SpreadDesigner } from './SpreadDesigner';
 import { CardCorrespondenceEditor } from './CardCorrespondenceEditor';
@@ -18,9 +18,9 @@ import {
   addReadingSlot,
   applyGridSlotPositionClick,
   appendSlotHistory,
+  moveReadingSlot,
   removeReadingSlot,
   selectCardForSlot,
-  swapReadingSlots,
   toggleSlotReversal,
   updateReadingSlotLabel,
 } from '../lib/readingSlotOperations';
@@ -35,7 +35,8 @@ import {
 } from '../lib/spreadPersistence';
 import { centerGridSlots, shiftGridSlots } from '../lib/spreadGridLayout';
 import { buildReadingSubmitPayload } from '../lib/readingSubmitPayload';
-import { ensureFreeLayoutSlots } from '../lib/freeLayout';
+import { convertGridSlotsToFreeLayout, ensureFreeLayoutSlots } from '../lib/freeLayout';
+import { useBodyScrollLock } from '../hooks/useBodyScrollLock';
 
 interface AddReadingFormProps {
   onSubmit: (data: Partial<ReadingFormData>) => void;
@@ -134,8 +135,10 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
   const [showUpdatePrompt, setShowUpdatePrompt] = useState<{ name: string, oldSlots: string[] } | null>(null);
   const [showRestoreConfirm, setShowRestoreConfirm] = useState<{ name?: string } | null>(null);
   const [spreadSaveConflict, setSpreadSaveConflict] = useState<SpreadSaveConflict | null>(null);
+  const [spreadNameNotice, setSpreadNameNotice] = useState('');
   const [submitNotice, setSubmitNotice] = useState('');
-  const [pendingDeleteSpreadName, setPendingDeleteSpreadName] = useState<string | null>(null);
+  const [pendingDeleteSpreadNames, setPendingDeleteSpreadNames] = useState<string[]>([]);
+  useBodyScrollLock(Boolean(showRestoreConfirm || spreadSaveConflict));
 
   const {
     isLongPressActive,
@@ -146,6 +149,8 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
 
   const isDailyMode = formData.category === '日运';
   const isMultiCard = cardSlots.length > 1;
+  const isOfficialSelectedSpread = OFFICIAL_SPREADS.some(spread => spread.name === formData.spread);
+  const canAddSlot = !isOfficialSelectedSpread;
   const influenceFields = [
     {
       key: 'numerologyInfluence',
@@ -183,6 +188,14 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
     setActiveInfluenceKey(checked ? 'numerologyInfluence' : null);
   };
   const activeInfluenceField = influenceFields.find(field => field.key === activeInfluenceKey);
+  const scrollFocusedFieldIntoView = (event: React.FocusEvent<HTMLElement>) => {
+    if (typeof window === 'undefined' || window.innerWidth >= 768) return;
+    const target = event.currentTarget;
+
+    window.setTimeout(() => {
+      target.scrollIntoView({ block: 'center', inline: 'nearest', behavior: 'smooth' });
+    }, 120);
+  };
 
   useEffect(() => {
     if (isDailyMode && !initialData) {
@@ -282,6 +295,7 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
   };
 
   const addSlot = () => {
+    if (!canAddSlot) return;
     updateCardSlotsWithHistory(addReadingSlot(cardSlots));
   };
   
@@ -296,17 +310,27 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
   const requestDeleteSpread = (spreadName: string) => {
     if (!spreadName || OFFICIAL_SPREADS.some(spread => spread.name === spreadName)) return;
 
-    setPendingDeleteSpreadName(spreadName);
+    setPendingDeleteSpreadNames([spreadName]);
+  };
+
+  const requestDeleteSpreads = (spreadNames: string[]) => {
+    const safeNames = spreadNames.filter(name => (
+      name && !OFFICIAL_SPREADS.some(spread => spread.name === name)
+    ));
+
+    if (safeNames.length === 0) return;
+    setPendingDeleteSpreadNames(Array.from(new Set(safeNames)));
   };
 
   const confirmDeleteSpread = () => {
-    if (!pendingDeleteSpreadName) return;
+    if (pendingDeleteSpreadNames.length === 0) return;
 
-    const updatedSpreads = spreads.filter(s => s.name !== pendingDeleteSpreadName);
+    const deleteNameSet = new Set(pendingDeleteSpreadNames);
+    const updatedSpreads = spreads.filter(s => !deleteNameSet.has(s.name));
     const fallbackSpread = updatedSpreads[0] || OFFICIAL_SPREADS[0];
 
     onUpdateSpreads(updatedSpreads);
-    if (formData.spread === pendingDeleteSpreadName && fallbackSpread) {
+    if (deleteNameSet.has(formData.spread) && fallbackSpread) {
       setFormData(prev => ({ ...prev, spread: fallbackSpread.name, layoutType: fallbackSpread.layout }));
       setCardSlots(createBlankSlotsForSpread(fallbackSpread));
       setGridCols(fallbackSpread.gridCols || 5);
@@ -315,11 +339,25 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
       setDesignActiveSlot(0);
       setIsEditingSession(false);
     }
-    setPendingDeleteSpreadName(null);
+    setPendingDeleteSpreadNames([]);
   };
 
-  const completeSpreadSave = (newSpread: SpreadDefinition) => {
-    const updatedSpreads = upsertSpreadDefinition(spreads, newSpread);
+  const completeSpreadSave = (
+    newSpread: SpreadDefinition,
+    options: { replaceCurrentCustom?: boolean } = { replaceCurrentCustom: true },
+  ) => {
+    const isRenamingCurrentCustomSpread = Boolean(
+      options.replaceCurrentCustom !== false
+      &&
+      isEditingSession
+      && formData.spread
+      && formData.spread !== newSpread.name
+      && !OFFICIAL_SPREADS.some(spread => spread.name === formData.spread),
+    );
+    const sourceSpreads = isRenamingCurrentCustomSpread
+      ? spreads.filter(spread => spread.name !== formData.spread)
+      : spreads;
+    const updatedSpreads = upsertSpreadDefinition(sourceSpreads, newSpread);
     
     onUpdateSpreads(updatedSpreads);
     setFormData(prev => ({ ...prev, spread: newSpread.name, layoutType: newSpread.layout }));
@@ -327,6 +365,7 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
     setGridCols(newSpread.gridCols || gridCols);
     setGridRows(newSpread.gridRows || gridRows);
     setNewSpreadName('');
+    setSpreadNameNotice('');
     setSpreadSaveConflict(null);
     setSaveSuccess(true);
     setIsEditingSession(false);
@@ -343,7 +382,12 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
   });
 
   const saveSpread = () => {
-    const requestedName = newSpreadName.trim() || (formData.spread ? '' : DEFAULT_CUSTOM_SPREAD_NAME);
+    const requestedName = newSpreadName.trim();
+    if (!requestedName) {
+      setSpreadNameNotice('先给这个牌阵起个名字，再保存。');
+      return;
+    }
+
     const name = getSafeCustomSpreadName(formData.spread, requestedName, OFFICIAL_SPREADS);
     if (!name) return;
 
@@ -369,7 +413,7 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
     completeSpreadSave({
       ...spreadSaveConflict.spread,
       name: getUniqueSpreadName(spreadSaveConflict.name, spreads, OFFICIAL_SPREADS),
-    });
+    }, { replaceCurrentCustom: false });
   };
 
   const restoreDefaults = (name?: string) => {
@@ -414,7 +458,7 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
   };
 
   const swapSlotIndex = (oldIndex: number, newIndex: number) => {
-    const newSlots = swapReadingSlots(cardSlots, oldIndex, newIndex);
+    const newSlots = moveReadingSlot(cardSlots, oldIndex, newIndex);
     if (newSlots === cardSlots) return;
     updateCardSlotsWithHistory(newSlots);
     setDesignActiveSlot(newIndex);
@@ -445,7 +489,7 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
     setCardSlots([]);
     setGridCols(20);
     setGridRows(12);
-    setNewSpreadName(DEFAULT_CUSTOM_SPREAD_NAME);
+    setNewSpreadName('');
     setDesignActiveSlot(-1);
     setShowSpreadManager(true);
     setIsEditingSession(true);
@@ -479,7 +523,7 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
     setCardSlots([]);
     setGridCols(20);
     setGridRows(12);
-    setNewSpreadName(DEFAULT_CUSTOM_SPREAD_NAME);
+    setNewSpreadName('');
     setShowSpreadManager(true);
     setIsEditingSession(true);
     setDesignActiveSlot(-1);
@@ -521,7 +565,7 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
   const itemClasses = currentTemplate.itemClasses;
 
   return (
-    <form onSubmit={handleSubmit} className="bg-white p-6 sm:p-10 rounded-3xl shadow-sm border border-forest-border space-y-8">
+    <form onSubmit={handleSubmit} className="space-y-6 rounded-3xl border border-forest-border bg-white p-4 pb-[calc(2rem+env(safe-area-inset-bottom))] shadow-sm sm:space-y-8 sm:p-10">
       {editingCorrespondence && (
         <CardCorrespondenceEditor 
           card={editingCorrespondence.card}
@@ -566,7 +610,7 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
 
       <AnimatePresence>
         {showRestoreConfirm && (
-          <div className="fixed inset-0 z-[150] flex items-center justify-center p-4 bg-forest-text/20 backdrop-blur-sm">
+          <div className="fixed inset-0 z-[150] flex items-center justify-center p-4 bg-forest-text/20 backdrop-blur-sm overscroll-contain">
             <motion.div 
               initial={{ opacity: 0, scale: 0.9 }} 
               animate={{ opacity: 1, scale: 1 }} 
@@ -605,7 +649,7 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
 
       <AnimatePresence>
         {spreadSaveConflict && (
-          <div className="fixed inset-0 z-[150] flex items-center justify-center p-4 bg-forest-text/20 backdrop-blur-sm">
+          <div className="fixed inset-0 z-[150] flex items-center justify-center p-4 bg-forest-text/20 backdrop-blur-sm overscroll-contain">
             <motion.div
               initial={{ opacity: 0, scale: 0.9 }}
               animate={{ opacity: 1, scale: 1 }}
@@ -665,6 +709,7 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
         onSetActiveSlotIndex={setActiveSlotIndex}
         cardSlots={cardSlots}
         onAddSlot={addSlot}
+        canAddSlot={canAddSlot}
         isDailyMode={isDailyMode}
         isForClient={formData.isForClient}
         onToggleClientMode={() => setFormData({...formData, isForClient: !formData.isForClient})}
@@ -704,8 +749,13 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
               onStartNewSession={handleCreateNewSpread}
               onClose={() => setShowSpreadManager(false)}
               onDeleteSpread={requestDeleteSpread}
+              onDeleteSpreads={requestDeleteSpreads}
               onSaveSpread={saveSpread}
-              onUpdateNewSpreadName={setNewSpreadName}
+              onUpdateNewSpreadName={(name) => {
+                setNewSpreadName(name);
+                setSpreadNameNotice('');
+              }}
+              saveNotice={spreadNameNotice}
               onShiftSlots={shiftSlots}
               onCenterSpread={centerSpread}
               onUpdateLayoutType={(layout) => {
@@ -724,7 +774,11 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
                   setGridRows(5);
                 }
                 if (layout === 'free') {
-                  setCardSlots(prev => ensureFreeLayoutSlots(prev.length > 0 ? prev : [{ name: '', isReversed: false, label: '位置1' }]));
+                  setCardSlots(prev => (
+                    prev.length > 0
+                      ? convertGridSlotsToFreeLayout(prev, formData.layoutType)
+                      : ensureFreeLayoutSlots([{ name: '', isReversed: false, label: '位置1' }])
+                  ));
                   setDesignActiveSlot(0);
                   return;
                 }
@@ -779,14 +833,18 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
       </AnimatePresence>
 
       <ConfirmDialog
-        isOpen={Boolean(pendingDeleteSpreadName)}
-        title="删除自定义牌阵"
-        message={`确定要删除“${pendingDeleteSpreadName || ''}”吗？已经保存的抽牌手记不会被删除，但之后不能再从列表里选择这个牌阵。`}
+        isOpen={pendingDeleteSpreadNames.length > 0}
+        title={pendingDeleteSpreadNames.length > 1 ? '批量删除自定义牌阵' : '删除自定义牌阵'}
+        message={
+          pendingDeleteSpreadNames.length > 1
+            ? `确定要删除这 ${pendingDeleteSpreadNames.length} 个自定义牌阵吗？已经保存的抽牌手记不会被删除，但之后不能再从列表里选择这些牌阵。`
+            : `确定要删除“${pendingDeleteSpreadNames[0] || ''}”吗？已经保存的抽牌手记不会被删除，但之后不能再从列表里选择这个牌阵。`
+        }
         confirmText="删除"
         cancelText="取消"
         destructive
         onConfirm={confirmDeleteSpread}
-        onClose={() => setPendingDeleteSpreadName(null)}
+        onClose={() => setPendingDeleteSpreadNames([])}
       />
 
       <ReadingSpreadDisplay 
@@ -802,8 +860,8 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
         onSlotClick={handleSlotClick}
         handleLongPressStart={handleLongPressStart}
         handleLongPressEnd={handleLongPressEnd}
-        toggleReverse={toggleReverse}
         removeSlot={removeSlot}
+        allowSlotRemoval={false}
         handleCycleSlot={handleCycleSlot}
         onConfirmSync={(name) => {
           const spreadDef = spreads.find(s => s.name === name);
@@ -914,6 +972,7 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
                 className="w-full px-4 py-3 bg-white border border-forest-accent/5 rounded-xl focus:ring-2 focus:ring-forest-accent/20 text-sm"
                 placeholder={activeInfluenceField.placeholder}
                 value={formData[activeInfluenceField.key]}
+                onFocus={scrollFocusedFieldIntoView}
                 onChange={e => setFormData({ ...formData, [activeInfluenceField.key]: e.target.value })}
               />
             </motion.div>
@@ -926,11 +985,11 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3 p-4 bg-forest-accent/5 rounded-2xl border border-forest-accent/5">
             <div className="space-y-1.5">
               <label className="text-sm font-bold text-forest-accent flex items-center gap-2 px-1"><User size={14} /> 客户姓名</label>
-              <input className="w-full px-4 py-2 bg-white border border-forest-accent/5 rounded-xl focus:ring-2 focus:ring-forest-accent/20 text-sm" placeholder="输入客户称呼..." value={formData.clientName} onChange={e => setFormData({...formData, clientName: e.target.value})} />
+              <input className="w-full px-4 py-2 bg-white border border-forest-accent/5 rounded-xl focus:ring-2 focus:ring-forest-accent/20 text-sm" placeholder="输入客户称呼..." value={formData.clientName} onFocus={scrollFocusedFieldIntoView} onChange={e => setFormData({...formData, clientName: e.target.value})} />
             </div>
             <div className="space-y-1.5">
               <label className="text-sm font-bold text-forest-accent flex items-center gap-2 px-1"><MessageSquare size={14} /> 客户反馈</label>
-              <input className="w-full px-4 py-2 bg-white border border-forest-accent/5 rounded-xl focus:ring-2 focus:ring-forest-accent/20 text-sm" placeholder="客户的真实反馈..." value={formData.clientFeedback} onChange={e => setFormData({...formData, clientFeedback: e.target.value})} />
+              <input className="w-full px-4 py-2 bg-white border border-forest-accent/5 rounded-xl focus:ring-2 focus:ring-forest-accent/20 text-sm" placeholder="客户的真实反馈..." value={formData.clientFeedback} onFocus={scrollFocusedFieldIntoView} onChange={e => setFormData({...formData, clientFeedback: e.target.value})} />
             </div>
           </div>
         )}
@@ -946,6 +1005,7 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
             className="w-full px-4 py-3 bg-white border border-forest-accent/5 rounded-xl focus:ring-2 focus:ring-forest-accent/20 text-sm" 
             placeholder="记录你对这次占卜的自我评价或后续验证..." 
             value={formData.userFeedback} 
+            onFocus={scrollFocusedFieldIntoView}
             onChange={e => setFormData({...formData, userFeedback: e.target.value})} 
           />
         </FoldableSection>

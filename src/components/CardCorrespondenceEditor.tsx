@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { motion } from 'motion/react';
 import { X, Save, Info } from 'lucide-react';
 import { TarotCardMetadata } from '../types';
+import { useBodyScrollLock } from '../hooks/useBodyScrollLock';
 
 interface CardCorrespondenceEditorProps {
   card: { name: string; isReversed: boolean };
@@ -11,6 +12,8 @@ interface CardCorrespondenceEditorProps {
 }
 
 export function CardCorrespondenceEditor({ card, metadata, onUpdate, onClose }: CardCorrespondenceEditorProps) {
+  useBodyScrollLock(true);
+
   const [localMetadata, setLocalMetadata] = useState<TarotCardMetadata>(metadata);
 
   const handleChange = (field: keyof NonNullable<TarotCardMetadata['astrology']>, value: string) => {
@@ -24,7 +27,7 @@ export function CardCorrespondenceEditor({ card, metadata, onUpdate, onClose }: 
   };
 
   return (
-    <div className="fixed inset-0 z-[1100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+    <div className="fixed inset-0 z-[1100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm overscroll-contain">
       <motion.div 
         initial={{ opacity: 0, scale: 0.9 }}
         animate={{ opacity: 1, scale: 1 }}

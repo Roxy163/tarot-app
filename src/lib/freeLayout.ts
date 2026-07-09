@@ -1,4 +1,5 @@
 import { ReadingSlotData } from '../types';
+import { parseGridPosition } from './spreadGridLayout';
 
 export const FREE_LAYOUT_CANVAS_WIDTH = 640;
 export const FREE_LAYOUT_CANVAS_HEIGHT = 460;
@@ -187,6 +188,78 @@ export const adaptFreeLayoutSlotsToCanvas = (
       x: offsetX + ((slot.x || 0) - bounds.minX) * adaptiveScale,
       y: offsetY + ((slot.y || 0) - bounds.minY) * adaptiveScale,
       scale: scale * adaptiveScale,
+    };
+  });
+};
+
+const getGridToFreeStep = (layoutType?: string) => {
+  if (layoutType === 'yearly') {
+    return { x: 46, y: 44 };
+  }
+
+  if (layoutType === 'celtic') {
+    return { x: 86, y: 86 };
+  }
+
+  return { x: FREE_LAYOUT_SLOT_WIDTH + 28, y: FREE_LAYOUT_SLOT_HEIGHT + 20 };
+};
+
+export const convertGridSlotsToFreeLayout = (
+  slots: ReadingSlotData[],
+  layoutType?: string,
+  canvasWidth = FREE_LAYOUT_CANVAS_WIDTH,
+  canvasHeight = FREE_LAYOUT_CANVAS_HEIGHT,
+) => {
+  const positionedSlots = slots.map(slot => ({
+    slot,
+    grid: parseGridPosition(slot.position),
+  }));
+
+  if (positionedSlots.every(item => !item.grid)) {
+    return ensureFreeLayoutSlots(slots);
+  }
+
+  const positions = positionedSlots
+    .map(item => item.grid)
+    .filter((position): position is NonNullable<typeof position> => Boolean(position));
+  const minCol = Math.min(...positions.map(position => position.col));
+  const maxCol = Math.max(...positions.map(position => position.col));
+  const minRow = Math.min(...positions.map(position => position.row));
+  const maxRow = Math.max(...positions.map(position => position.row));
+  const step = getGridToFreeStep(layoutType);
+  const padding = 36;
+  const rawWidth = (maxCol - minCol) * step.x + FREE_LAYOUT_SLOT_WIDTH;
+  const rawHeight = (maxRow - minRow) * step.y + FREE_LAYOUT_SLOT_HEIGHT;
+  const fitScale = Math.min(
+    1,
+    Math.max(0.45, (canvasWidth - padding * 2) / Math.max(1, rawWidth)),
+    Math.max(0.45, (canvasHeight - padding * 2) / Math.max(1, rawHeight)),
+  );
+  const fittedWidth = rawWidth * fitScale;
+  const fittedHeight = rawHeight * fitScale;
+  const startX = (canvasWidth - fittedWidth) / 2;
+  const startY = (canvasHeight - fittedHeight) / 2;
+
+  return positionedSlots.map(({ slot, grid }, index) => {
+    if (!grid) {
+      const fallback = getDefaultFreePosition(index, slots.length);
+      return {
+        ...slot,
+        position: '',
+        x: typeof slot.x === 'number' ? slot.x : fallback.x,
+        y: typeof slot.y === 'number' ? slot.y : fallback.y,
+        rotation: typeof slot.rotation === 'number' ? slot.rotation : (slot.isRotated ? 90 : 0),
+        scale: typeof slot.scale === 'number' ? slot.scale : fitScale,
+      };
+    }
+
+    return {
+      ...slot,
+      position: '',
+      x: startX + (grid.col - minCol) * step.x * fitScale,
+      y: startY + (grid.row - minRow) * step.y * fitScale,
+      rotation: typeof slot.rotation === 'number' ? slot.rotation : (slot.isRotated ? 90 : 0),
+      scale: typeof slot.scale === 'number' ? slot.scale : fitScale,
     };
   });
 };

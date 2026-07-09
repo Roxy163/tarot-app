@@ -74,6 +74,27 @@ export const swapReadingSlots = (
   return nextSlots;
 };
 
+export const moveReadingSlot = (
+  slots: ReadingSlotData[],
+  oldIndex: number,
+  newIndex: number,
+) => {
+  if (
+    oldIndex < 0
+    || oldIndex >= slots.length
+    || newIndex < 0
+    || newIndex >= slots.length
+    || oldIndex === newIndex
+  ) {
+    return slots;
+  }
+
+  const nextSlots = [...slots];
+  const [movedSlot] = nextSlots.splice(oldIndex, 1);
+  nextSlots.splice(newIndex, 0, movedSlot);
+  return nextSlots;
+};
+
 export const updateReadingSlotLabel = (
   slots: ReadingSlotData[],
   index: number,

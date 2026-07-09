@@ -4,6 +4,7 @@ import { BookOpen, ChevronRight, Moon, PenLine, Settings, Sparkles, Sun, X } fro
 import { getCardImageUrl } from '../../constants';
 import { useOnboarding } from '../../context/OnboardingContext';
 import { FIRST_ENTRY_STEPS } from './guideContent';
+import { useBodyScrollLock } from '../../hooks/useBodyScrollLock';
 
 type GuidePreviewKind = 'overview' | 'home' | 'reading' | 'workspace' | 'library';
 
@@ -305,6 +306,7 @@ export const FirstEntryGuide: React.FC = () => {
   const currentStep = FIRST_ENTRY_STEPS[state.currentStep];
   const dialogRef = useRef<HTMLDivElement>(null);
   const isLastStep = state.currentStep === FIRST_ENTRY_STEPS.length - 1;
+  useBodyScrollLock(Boolean(currentStep));
 
   useEffect(() => {
     if (!currentStep) completeFirstEntry();
@@ -320,9 +322,6 @@ export const FirstEntryGuide: React.FC = () => {
 
   useEffect(() => {
     if (!currentStep) return;
-
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
 
     const focusableSelector = 'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])';
     const focusFirstControl = () => {
@@ -360,7 +359,6 @@ export const FirstEntryGuide: React.FC = () => {
 
     return () => {
       window.clearTimeout(focusTimer);
-      document.body.style.overflow = previousOverflow;
       document.removeEventListener('keydown', handleKeyDown);
     };
   }, [currentStep, skipFirstEntry]);
@@ -374,7 +372,7 @@ export const FirstEntryGuide: React.FC = () => {
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="fixed inset-0 z-[300] overflow-y-auto bg-forest-bg text-forest-text"
+      className="fixed inset-0 z-[300] overflow-y-auto overscroll-contain bg-forest-bg text-forest-text"
     >
       <motion.div
         ref={dialogRef}

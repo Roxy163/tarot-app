@@ -3,15 +3,10 @@ import { motion, AnimatePresence } from 'motion/react';
 import {
   AlignCenterHorizontal,
   AlignCenterVertical,
-  Copy,
   Crosshair,
-  FlipHorizontal,
-  FlipVertical,
   Maximize2,
-  Minus,
   Move,
   Plus,
-  RotateCcw,
   Trash2,
   ZoomIn,
   ZoomOut,
@@ -34,7 +29,7 @@ const DRAG_START_DELAY = 160;
 const DRAG_MOVE_THRESHOLD = 6;
 const CLICK_SUPPRESS_MS = 180;
 const PENDING_SLOT_TIMEOUT_MS = 2000;
-const ALIGNMENT_SNAP_THRESHOLD = 8;
+const ALIGNMENT_SNAP_THRESHOLD = 14;
 
 type DragPosition = {
   x: number;
@@ -193,6 +188,7 @@ interface FreeLayoutEditorProps {
   designActiveSlot: number;
   onSetDesignActiveSlot: (idx: number) => void;
   onRemoveSlot: (idx: number) => void;
+  onSwapSlotIndex?: (oldIdx: number, newIdx: number) => void;
   onUpdateSlots: (slots: ReadingSlotData[]) => void;
 }
 
@@ -201,6 +197,7 @@ export const FreeLayoutEditor: React.FC<FreeLayoutEditorProps> = ({
   designActiveSlot,
   onSetDesignActiveSlot,
   onRemoveSlot,
+  onSwapSlotIndex,
   onUpdateSlots
 }) => {
   const [showGrid, setShowGrid] = useState(true);
@@ -787,7 +784,7 @@ export const FreeLayoutEditor: React.FC<FreeLayoutEditorProps> = ({
     onSetDesignActiveSlot(-1);
   }, [cardSlots, onSetDesignActiveSlot, onUpdateSlots, selectedSlotIndexes]);
 
-  const handleCenterSelectedSlots = useCallback((axis: 'horizontal' | 'vertical') => {
+  const handleCenterSelectedSlots = useCallback((axis: 'horizontal' | 'vertical' | 'both') => {
     if (selectedSlotIndexes.length === 0) return;
 
     const selectedMetrics = selectedSlotIndexes
@@ -808,8 +805,8 @@ export const FreeLayoutEditor: React.FC<FreeLayoutEditorProps> = ({
       bottom: -Infinity,
     });
     const center = getVisibleCanvasCenter();
-    const deltaX = axis === 'horizontal' ? center.x - (bounds.left + bounds.right) / 2 : 0;
-    const deltaY = axis === 'vertical' ? center.y - (bounds.top + bounds.bottom) / 2 : 0;
+    const deltaX = axis === 'horizontal' || axis === 'both' ? center.x - (bounds.left + bounds.right) / 2 : 0;
+    const deltaY = axis === 'vertical' || axis === 'both' ? center.y - (bounds.top + bounds.bottom) / 2 : 0;
     const selectedIndexes = new Set(selectedMetrics.map(item => item.idx));
     const newSlots = cardSlots.map((slot, idx) => {
       if (!selectedIndexes.has(idx)) return slot;
@@ -932,23 +929,23 @@ export const FreeLayoutEditor: React.FC<FreeLayoutEditorProps> = ({
     onUpdateSlots,
   ]);
 
-  const handleCenterActiveSlot = useCallback((axis: 'horizontal' | 'vertical') => {
+  const handleCenterActiveSlot = useCallback((axis: 'horizontal' | 'vertical' | 'both') => {
     const slot = cardSlots[designActiveSlot];
     if (!slot) return;
 
     const center = getVisibleCanvasCenter();
     const metrics = getSlotMetrics(slot);
     const bounded = boundCanvasPosition({
-      x: axis === 'horizontal' ? center.x - metrics.width / 2 : metrics.x,
-      y: axis === 'vertical' ? center.y - metrics.height / 2 : metrics.y,
+      x: axis === 'horizontal' || axis === 'both' ? center.x - metrics.width / 2 : metrics.x,
+      y: axis === 'vertical' || axis === 'both' ? center.y - metrics.height / 2 : metrics.y,
       scale: slot.scale || 1,
     });
     const nextSlots = [...cardSlots];
 
     nextSlots[designActiveSlot] = {
       ...slot,
-      x: bounded.x,
-      y: bounded.y,
+      x: axis === 'vertical' ? metrics.x : bounded.x,
+      y: axis === 'horizontal' ? metrics.y : bounded.y,
     };
     onUpdateSlots(nextSlots);
   }, [boundCanvasPosition, cardSlots, designActiveSlot, getVisibleCanvasCenter, onUpdateSlots]);
@@ -1006,20 +1003,20 @@ export const FreeLayoutEditor: React.FC<FreeLayoutEditorProps> = ({
         onClose={() => setShowClearConfirm(false)}
       />
 
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-2">
           <span className="text-xs font-bold text-forest-accent">自由画布模式</span>
           <span className="px-2 py-0.5 bg-forest-pink/10 text-forest-pink rounded-full text-[9px] font-bold">
             自由摆放
           </span>
         </div>
-        <div className="flex items-center gap-3">
-          <div className="flex flex-wrap items-center gap-2">
-            <div className="flex min-h-11 items-center rounded-xl bg-forest-bg p-1">
+        <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-1.5">
+            <div className="flex min-h-11 sm:min-h-10 items-center rounded-xl bg-forest-bg p-0.5">
               <button
                 type="button"
                 onClick={() => setInteractionMode('place')}
-                className={`flex min-h-11 items-center gap-1 rounded-lg px-3 text-xs font-bold transition-all ${
+                className={`flex min-h-11 sm:min-h-10 items-center gap-1 rounded-lg px-2.5 text-xs font-bold transition-all ${
                   interactionMode === 'place'
                     ? 'bg-white text-forest-accent shadow-sm'
                     : 'text-forest-muted hover:text-forest-accent'
@@ -1031,7 +1028,7 @@ export const FreeLayoutEditor: React.FC<FreeLayoutEditorProps> = ({
               <button
                 type="button"
                 onClick={() => setInteractionMode('pan')}
-                className={`flex min-h-11 items-center gap-1 rounded-lg px-3 text-xs font-bold transition-all ${
+                className={`flex min-h-11 sm:min-h-10 items-center gap-1 rounded-lg px-2.5 text-xs font-bold transition-all ${
                   interactionMode === 'pan'
                     ? 'bg-white text-forest-accent shadow-sm'
                     : 'text-forest-muted hover:text-forest-accent'
@@ -1044,7 +1041,7 @@ export const FreeLayoutEditor: React.FC<FreeLayoutEditorProps> = ({
             <button
               type="button"
               onClick={() => updateCanvasScale(prev => prev + 0.1)}
-              className="flex min-h-11 min-w-11 items-center justify-center rounded-xl bg-forest-accent/10 text-forest-accent transition-all hover:bg-forest-accent/20"
+              className="flex min-h-11 sm:min-h-10 min-w-11 sm:min-w-10 items-center justify-center rounded-xl bg-forest-accent/10 text-forest-accent transition-all hover:bg-forest-accent/20"
               title="放大画布"
               aria-label="放大画布"
             >
@@ -1053,7 +1050,7 @@ export const FreeLayoutEditor: React.FC<FreeLayoutEditorProps> = ({
             <button
               type="button"
               onClick={() => updateCanvasScale(prev => prev - 0.1)}
-              className="flex min-h-11 min-w-11 items-center justify-center rounded-xl bg-forest-accent/10 text-forest-accent transition-all hover:bg-forest-accent/20"
+              className="flex min-h-11 sm:min-h-10 min-w-11 sm:min-w-10 items-center justify-center rounded-xl bg-forest-accent/10 text-forest-accent transition-all hover:bg-forest-accent/20"
               title="缩小画布"
               aria-label="缩小画布"
             >
@@ -1062,7 +1059,7 @@ export const FreeLayoutEditor: React.FC<FreeLayoutEditorProps> = ({
             <button
               type="button"
               onClick={resetView}
-              className="flex min-h-11 min-w-11 items-center justify-center rounded-xl bg-forest-accent/10 text-forest-accent transition-all hover:bg-forest-accent/20"
+              className="flex min-h-11 sm:min-h-10 min-w-11 sm:min-w-10 items-center justify-center rounded-xl bg-forest-accent/10 text-forest-accent transition-all hover:bg-forest-accent/20"
               title="重置视图"
               aria-label="重置视图"
             >
@@ -1071,7 +1068,7 @@ export const FreeLayoutEditor: React.FC<FreeLayoutEditorProps> = ({
             <button
               type="button"
               onClick={() => setShowGrid(!showGrid)}
-              className={`min-h-11 rounded-xl px-3 text-[10px] font-bold transition-all ${
+              className={`min-h-11 sm:min-h-10 rounded-xl px-2.5 text-[10px] font-bold transition-all ${
                 showGrid ? 'bg-forest-accent/10 text-forest-accent' : 'bg-gray-100 text-gray-400'
               }`}
             >
@@ -1080,7 +1077,7 @@ export const FreeLayoutEditor: React.FC<FreeLayoutEditorProps> = ({
             <button
               type="button"
               onClick={() => setSnapEnabled(!snapEnabled)}
-              className={`min-h-11 rounded-xl px-3 text-[10px] font-bold transition-all ${
+              className={`min-h-11 sm:min-h-10 rounded-xl px-2.5 text-[10px] font-bold transition-all ${
                 snapEnabled ? 'bg-amber-100 text-amber-600' : 'bg-gray-100 text-gray-400'
               }`}
             >
@@ -1090,7 +1087,7 @@ export const FreeLayoutEditor: React.FC<FreeLayoutEditorProps> = ({
               type="button"
               onClick={handleClearAll}
               disabled={cardSlots.length === 0}
-              className={`flex min-h-11 items-center gap-1 rounded-xl px-3 text-[10px] font-bold transition-all ${
+              className={`flex min-h-11 sm:min-h-10 items-center gap-1 rounded-xl px-2.5 text-[10px] font-bold transition-all ${
                 cardSlots.length === 0
                   ? 'cursor-not-allowed bg-gray-100 text-gray-300'
                   : 'bg-red-100 text-red-600 hover:bg-red-200'
@@ -1273,7 +1270,7 @@ export const FreeLayoutEditor: React.FC<FreeLayoutEditorProps> = ({
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, y: 8 }}
                 >
-                  <div className="flex h-10 w-10 items-center justify-center rounded-full bg-forest-accent/10 text-forest-accent">
+                  <div className="flex h-11 w-11 sm:h-10 sm:w-10 items-center justify-center rounded-full bg-forest-accent/10 text-forest-accent">
                     <Plus size={18} />
                   </div>
                   <p className="text-xs font-bold text-forest-ink">点击画布创建第一个位置</p>
@@ -1328,11 +1325,13 @@ export const FreeLayoutEditor: React.FC<FreeLayoutEditorProps> = ({
                   isActive={idx === designActiveSlot}
                   isSelected={selectedSlotSet.has(idx)}
                   selectedCount={selectedSlotIndexes.length}
+                  selectedSlotIndexes={selectedSlotIndexes}
                   canvasScale={canvasScale}
                   canvasSize={canvasSize}
                   onSelectSlot={handleSelectSlot}
                   onUpdateSlots={onUpdateSlots}
                   onMoveSlot={handleMoveSlot}
+                  onSwapSlotIndex={onSwapSlotIndex}
                   cardSlots={cardSlots}
                   snapEnabled={snapEnabled}
                   onUpdateAlignmentGuides={setAlignmentGuides}
@@ -1357,13 +1356,13 @@ export const FreeLayoutEditor: React.FC<FreeLayoutEditorProps> = ({
         </div>
       </div>
 
-      <p className="text-[9px] text-forest-muted text-center">
+      <p className="text-center text-[9px] text-forest-muted">
         点击空白处预览落点，虚影会在 2 秒后自动取消；切到移动视图可拖动画布。
       </p>
 
       {activeSlot && (
-        <div className="rounded-2xl border border-forest-accent/10 bg-white/85 p-3 shadow-sm">
-          <div className="mb-2 flex items-center justify-between gap-2">
+        <div className="rounded-2xl border border-forest-accent/10 bg-white/85 p-2.5 shadow-sm">
+          <div className="mb-1.5 flex items-center justify-between gap-2">
             <p className="text-[10px] font-bold text-forest-accent">
               {isMultiSelecting ? `已选中 ${selectedSlotIndexes.length} 个位置` : `已选中：${activeSlot.label || `位置${designActiveSlot + 1}`}`}
             </p>
@@ -1371,21 +1370,13 @@ export const FreeLayoutEditor: React.FC<FreeLayoutEditorProps> = ({
               {isMultiSelecting ? '多选操作' : '快捷摆位'}
             </span>
           </div>
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
+          <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-4">
             {isMultiSelecting ? (
               <>
                 <button
                   type="button"
-                  onClick={handleDuplicateSelectedSlots}
-                  className="flex min-h-11 items-center justify-center gap-1 rounded-xl bg-forest-accent/10 px-2 text-[10px] font-bold text-forest-accent transition-all hover:bg-forest-accent/20"
-                >
-                  <Copy size={14} />
-                  复制所选
-                </button>
-                <button
-                  type="button"
                   onClick={() => handleCenterSelectedSlots('horizontal')}
-                  className="flex min-h-11 items-center justify-center gap-1 rounded-xl bg-amber-100 px-2 text-[10px] font-bold text-amber-700 transition-all hover:bg-amber-200"
+                  className="flex min-h-11 sm:min-h-10 items-center justify-center gap-1 rounded-xl bg-amber-100 px-2 text-[10px] font-bold text-amber-700 transition-all hover:bg-amber-200"
                 >
                   <AlignCenterHorizontal size={14} />
                   所选水平
@@ -1393,55 +1384,23 @@ export const FreeLayoutEditor: React.FC<FreeLayoutEditorProps> = ({
                 <button
                   type="button"
                   onClick={() => handleCenterSelectedSlots('vertical')}
-                  className="flex min-h-11 items-center justify-center gap-1 rounded-xl bg-amber-100 px-2 text-[10px] font-bold text-amber-700 transition-all hover:bg-amber-200"
+                  className="flex min-h-11 sm:min-h-10 items-center justify-center gap-1 rounded-xl bg-amber-100 px-2 text-[10px] font-bold text-amber-700 transition-all hover:bg-amber-200"
                 >
                   <AlignCenterVertical size={14} />
                   所选垂直
                 </button>
                 <button
                   type="button"
-                  onClick={() => handleRotateSelectedSlots(-15)}
-                  className="flex min-h-11 items-center justify-center gap-1 rounded-xl bg-forest-accent/10 px-2 text-[10px] font-bold text-forest-accent transition-all hover:bg-forest-accent/20"
+                  onClick={() => handleCenterSelectedSlots('both')}
+                  className="flex min-h-11 sm:min-h-10 items-center justify-center gap-1 rounded-xl bg-amber-100 px-2 text-[10px] font-bold text-amber-700 transition-all hover:bg-amber-200"
                 >
-                  <RotateCcw size={14} />
-                  所选左旋
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleRotateSelectedSlots(15)}
-                  className="flex min-h-11 items-center justify-center gap-1 rounded-xl bg-forest-accent/10 px-2 text-[10px] font-bold text-forest-accent transition-all hover:bg-forest-accent/20"
-                >
-                  <RotateCcw size={14} className="rotate-180" />
-                  所选右旋
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleScaleSelectedSlots(-0.1)}
-                  className="flex min-h-11 items-center justify-center gap-1 rounded-xl bg-amber-100 px-2 text-[10px] font-bold text-amber-700 transition-all hover:bg-amber-200"
-                >
-                  <Minus size={14} />
-                  所选缩小
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleScaleSelectedSlots(0.1)}
-                  className="flex min-h-11 items-center justify-center gap-1 rounded-xl bg-amber-100 px-2 text-[10px] font-bold text-amber-700 transition-all hover:bg-amber-200"
-                >
-                  <Plus size={14} />
-                  所选放大
-                </button>
-                <button
-                  type="button"
-                  onClick={handleDeleteSelectedSlots}
-                  className="flex min-h-11 items-center justify-center gap-1 rounded-xl bg-red-100 px-2 text-[10px] font-bold text-red-600 transition-all hover:bg-red-200"
-                >
-                  <Trash2 size={14} />
-                  删除所选
+                  <Maximize2 size={14} />
+                  所选居中
                 </button>
                 <button
                   type="button"
                   onClick={() => setSelectedSlotIndexes([designActiveSlot].filter(idx => idx >= 0))}
-                  className="flex min-h-11 items-center justify-center gap-1 rounded-xl bg-gray-100 px-2 text-[10px] font-bold text-forest-muted transition-all hover:bg-gray-200"
+                  className="flex min-h-11 sm:min-h-10 items-center justify-center gap-1 rounded-xl bg-gray-100 px-2 text-[10px] font-bold text-forest-muted transition-all hover:bg-gray-200"
                 >
                   <Crosshair size={14} />
                   取消多选
@@ -1451,58 +1410,8 @@ export const FreeLayoutEditor: React.FC<FreeLayoutEditorProps> = ({
               <>
             <button
               type="button"
-              onClick={handleDuplicateActiveSlot}
-              className="flex min-h-11 items-center justify-center gap-1 rounded-xl bg-forest-accent/10 px-2 text-[10px] font-bold text-forest-accent transition-all hover:bg-forest-accent/20"
-            >
-              <Copy size={14} />
-              复制
-            </button>
-            <button
-              type="button"
-              onClick={() => handleMirrorCopyActiveSlot('horizontal')}
-              className="flex min-h-11 items-center justify-center gap-1 rounded-xl bg-forest-pink/10 px-2 text-[10px] font-bold text-forest-pink transition-all hover:bg-forest-pink/20"
-            >
-              <FlipHorizontal size={14} />
-              左右镜像
-            </button>
-            <button
-              type="button"
-              onClick={() => handleMirrorCopyActiveSlot('vertical')}
-              className="flex min-h-11 items-center justify-center gap-1 rounded-xl bg-forest-pink/10 px-2 text-[10px] font-bold text-forest-pink transition-all hover:bg-forest-pink/20"
-            >
-              <FlipVertical size={14} />
-              上下镜像
-            </button>
-            <button
-              type="button"
-              onClick={() => handleMirrorGroupAroundActive('horizontal')}
-              disabled={!canMirrorGroup}
-              className={`flex min-h-11 items-center justify-center gap-1 rounded-xl px-2 text-[10px] font-bold transition-all ${
-                canMirrorGroup
-                  ? 'bg-forest-pink/10 text-forest-pink hover:bg-forest-pink/20'
-                  : 'cursor-not-allowed bg-gray-100 text-gray-300'
-              }`}
-            >
-              <FlipHorizontal size={14} />
-              成组左右
-            </button>
-            <button
-              type="button"
-              onClick={() => handleMirrorGroupAroundActive('vertical')}
-              disabled={!canMirrorGroup}
-              className={`flex min-h-11 items-center justify-center gap-1 rounded-xl px-2 text-[10px] font-bold transition-all ${
-                canMirrorGroup
-                  ? 'bg-forest-pink/10 text-forest-pink hover:bg-forest-pink/20'
-                  : 'cursor-not-allowed bg-gray-100 text-gray-300'
-              }`}
-            >
-              <FlipVertical size={14} />
-              成组上下
-            </button>
-            <button
-              type="button"
               onClick={() => handleCenterActiveSlot('horizontal')}
-              className="flex min-h-11 items-center justify-center gap-1 rounded-xl bg-amber-100 px-2 text-[10px] font-bold text-amber-700 transition-all hover:bg-amber-200"
+              className="flex min-h-11 sm:min-h-10 items-center justify-center gap-1 rounded-xl bg-amber-100 px-2 text-[10px] font-bold text-amber-700 transition-all hover:bg-amber-200"
             >
               <AlignCenterHorizontal size={14} />
               水平居中
@@ -1510,50 +1419,18 @@ export const FreeLayoutEditor: React.FC<FreeLayoutEditorProps> = ({
             <button
               type="button"
               onClick={() => handleCenterActiveSlot('vertical')}
-              className="flex min-h-11 items-center justify-center gap-1 rounded-xl bg-amber-100 px-2 text-[10px] font-bold text-amber-700 transition-all hover:bg-amber-200"
+              className="flex min-h-11 sm:min-h-10 items-center justify-center gap-1 rounded-xl bg-amber-100 px-2 text-[10px] font-bold text-amber-700 transition-all hover:bg-amber-200"
             >
               <AlignCenterVertical size={14} />
               垂直居中
             </button>
             <button
               type="button"
-              onClick={() => handleRotate(designActiveSlot, -15)}
-              className="flex min-h-11 items-center justify-center gap-1 rounded-xl bg-forest-accent/10 px-2 text-[10px] font-bold text-forest-accent transition-all hover:bg-forest-accent/20"
+              onClick={() => handleCenterActiveSlot('both')}
+              className="flex min-h-11 sm:min-h-10 items-center justify-center gap-1 rounded-xl bg-amber-100 px-2 text-[10px] font-bold text-amber-700 transition-all hover:bg-amber-200"
             >
-              <RotateCcw size={14} />
-              左旋
-            </button>
-            <button
-              type="button"
-              onClick={() => handleRotate(designActiveSlot, 15)}
-              className="flex min-h-11 items-center justify-center gap-1 rounded-xl bg-forest-accent/10 px-2 text-[10px] font-bold text-forest-accent transition-all hover:bg-forest-accent/20"
-            >
-              <RotateCcw size={14} className="rotate-180" />
-              右旋
-            </button>
-            <button
-              type="button"
-              onClick={() => handleScale(designActiveSlot, -0.1)}
-              className="flex min-h-11 items-center justify-center gap-1 rounded-xl bg-amber-100 px-2 text-[10px] font-bold text-amber-700 transition-all hover:bg-amber-200"
-            >
-              <Minus size={14} />
-              缩小
-            </button>
-            <button
-              type="button"
-              onClick={() => handleScale(designActiveSlot, 0.1)}
-              className="flex min-h-11 items-center justify-center gap-1 rounded-xl bg-amber-100 px-2 text-[10px] font-bold text-amber-700 transition-all hover:bg-amber-200"
-            >
-              <Plus size={14} />
-              放大
-            </button>
-            <button
-              type="button"
-              onClick={() => onRemoveSlot(designActiveSlot)}
-              className="flex min-h-11 items-center justify-center gap-1 rounded-xl bg-red-100 px-2 text-[10px] font-bold text-red-600 transition-all hover:bg-red-200"
-            >
-              <Trash2 size={14} />
-              删除
+              <Maximize2 size={14} />
+              居中
             </button>
               </>
             )}
@@ -1570,12 +1447,14 @@ interface FreeLayoutSlotProps {
   isActive: boolean;
   isSelected: boolean;
   selectedCount: number;
+  selectedSlotIndexes: number[];
   canvasScale: number;
   canvasSize: { width: number; height: number };
   cardSlots: ReadingSlotData[];
   onSelectSlot: (idx: number, additive?: boolean, preserveSelection?: boolean) => void;
   onUpdateSlots: (slots: ReadingSlotData[]) => void;
   onMoveSlot: (idx: number, x: number, y: number, options?: { snap?: boolean; moveSelection?: boolean }) => void;
+  onSwapSlotIndex?: (oldIdx: number, newIdx: number) => void;
   snapEnabled: boolean;
   onUpdateAlignmentGuides: (guides: AlignmentGuide[]) => void;
 }
@@ -1586,12 +1465,14 @@ const FreeLayoutSlot: React.FC<FreeLayoutSlotProps> = ({
   isActive,
   isSelected,
   selectedCount,
+  selectedSlotIndexes,
   canvasScale,
   canvasSize,
   cardSlots,
   onSelectSlot,
   onUpdateSlots,
   onMoveSlot,
+  onSwapSlotIndex,
   snapEnabled,
   onUpdateAlignmentGuides,
 }) => {
@@ -1603,7 +1484,12 @@ const FreeLayoutSlot: React.FC<FreeLayoutSlotProps> = ({
   const suppressClickTimerRef = useRef<number | null>(null);
   const mouseDragCleanupRef = useRef<(() => void) | null>(null);
   const [dragPreview, setDragPreview] = useState<DragPosition | null>(null);
+  const [orderInput, setOrderInput] = useState((idx + 1).toString());
   const scale = slot.scale || 1;
+
+  useEffect(() => {
+    setOrderInput((idx + 1).toString());
+  }, [idx]);
 
   const clearDragStartTimer = useCallback(() => {
     if (!dragStartTimerRef.current) return;
@@ -1697,14 +1583,18 @@ const FreeLayoutSlot: React.FC<FreeLayoutSlotProps> = ({
     const aligned = getAlignedFreeLayoutPosition({
       position: bounded,
       movingSlot: slot,
-      otherSlots: cardSlots.filter((_, slotIndex) => slotIndex !== idx),
+      otherSlots: cardSlots.filter((_, slotIndex) => (
+        isSelected && selectedCount > 1
+          ? !selectedSlotIndexes.includes(slotIndex)
+          : slotIndex !== idx
+      )),
       snap: snapEnabled,
     });
 
     updateDragPreview(aligned.position);
     dragAlignedRef.current = aligned.guides.length > 0;
     onUpdateAlignmentGuides(aligned.guides);
-  }, [canvasScale, canvasSize, cardSlots, clearDragStartTimer, idx, onUpdateAlignmentGuides, scale, slot, snapEnabled, updateDragPreview]);
+  }, [canvasScale, canvasSize, cardSlots, clearDragStartTimer, idx, isSelected, onUpdateAlignmentGuides, scale, selectedCount, selectedSlotIndexes, slot, snapEnabled, updateDragPreview]);
 
   const finishSlotDrag = useCallback((pointerId?: number) => {
     const dragState = dragStateRef.current;
@@ -1816,6 +1706,18 @@ const FreeLayoutSlot: React.FC<FreeLayoutSlotProps> = ({
   const currentX = dragPreview?.x ?? slot.x ?? 0;
   const currentY = dragPreview?.y ?? slot.y ?? 0;
 
+  const commitOrderInput = () => {
+    const parsedIndex = Number.parseInt(orderInput, 10);
+    if (Number.isNaN(parsedIndex)) {
+      setOrderInput((idx + 1).toString());
+      return;
+    }
+
+    const nextIndex = Math.max(0, Math.min(cardSlots.length - 1, parsedIndex - 1));
+    setOrderInput((nextIndex + 1).toString());
+    onSwapSlotIndex?.(idx, nextIndex);
+  };
+
   return (
     <motion.div
       data-testid={`free-layout-slot-${idx}`}
@@ -1856,9 +1758,27 @@ const FreeLayoutSlot: React.FC<FreeLayoutSlotProps> = ({
           transform: `rotate(${slot.rotation || 0}deg)`,
         }}
       >
-        <span className={`font-black text-lg ${isActive ? 'text-white' : 'text-forest-ink'}`}>
-          {idx + 1}
-        </span>
+        <input
+          type="number"
+          min={1}
+          max={cardSlots.length}
+          inputMode="numeric"
+          aria-label={`修改第 ${idx + 1} 个位置序号`}
+          value={orderInput}
+          onPointerDown={(e) => e.stopPropagation()}
+          onMouseDown={(e) => e.stopPropagation()}
+          onClick={(e) => e.stopPropagation()}
+          onChange={(e) => setOrderInput(e.target.value)}
+          onBlur={commitOrderInput}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              e.currentTarget.blur();
+            }
+          }}
+          className={`w-12 rounded-lg border-none bg-transparent px-1 py-0.5 text-center text-lg font-black focus:ring-2 focus:ring-white/60 ${
+            isActive ? 'text-white bg-white/10' : 'text-forest-ink bg-forest-accent/5'
+          }`}
+        />
 
         <input
           type="text"

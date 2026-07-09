@@ -6,6 +6,7 @@ import { TAROT_CARDS, getCardImageUrl } from '../constants';
 import { OFFICIAL_CARD_ANNOTATIONS } from '../constants/cardAnnotations';
 import { cardMatchesSearch } from '../lib/cardSearch';
 import { cardAnnotationService } from '../services/cardAnnotationService';
+import { useBodyScrollLock } from '../hooks/useBodyScrollLock';
 
 interface CardAnnotationEditorProps {
   isOpen: boolean;
@@ -38,6 +39,8 @@ export const CardAnnotationEditor: React.FC<CardAnnotationEditorProps> = ({
   initialCardId,
   onAnnotationsUpdated
 }) => {
+  useBodyScrollLock(isOpen);
+
   const [selectedCardId, setSelectedCardId] = useState<string | null>(initialCardId || null);
   const [filter, setFilter] = useState<FilterType>('all');
   const [searchQuery, setSearchQuery] = useState('');
@@ -195,7 +198,7 @@ export const CardAnnotationEditor: React.FC<CardAnnotationEditorProps> = ({
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="fixed inset-0 z-[520] bg-black/50 backdrop-blur-sm"
+      className="fixed inset-0 z-[520] bg-black/50 backdrop-blur-sm overscroll-contain"
       onClick={(e) => e.target === e.currentTarget && onClose()}
     >
       <motion.div
@@ -258,7 +261,7 @@ export const CardAnnotationEditor: React.FC<CardAnnotationEditorProps> = ({
                   <p className="mb-2 text-[10px] font-bold uppercase tracking-widest text-forest-muted">
                     已修改牌义
                   </p>
-                  <div className="flex max-h-28 flex-wrap gap-1.5 overflow-y-auto pr-1">
+                  <div className="flex max-h-28 flex-wrap gap-1.5 overflow-y-auto overscroll-contain pr-1">
                     {TAROT_CARDS.filter(card => modifiedCardIds.has(card.id)).map(card => (
                       <button
                         key={card.id}
@@ -300,7 +303,7 @@ export const CardAnnotationEditor: React.FC<CardAnnotationEditorProps> = ({
             </div>
 
             {/* Card List */}
-            <div className="flex-1 overflow-y-auto p-2 space-y-1">
+            <div className="flex-1 overflow-y-auto overscroll-contain p-2 space-y-1">
               {filteredCards.length === 0 ? (
                 <div className="text-center py-8 text-forest-muted">
                   <p>没有找到匹配的牌</p>
@@ -401,7 +404,7 @@ export const CardAnnotationEditor: React.FC<CardAnnotationEditorProps> = ({
                 </div>
 
                 {/* Editor Form */}
-                <div className="flex-1 overflow-y-auto p-4 space-y-4 pb-28 md:pb-6">
+                <div className="flex-1 overflow-y-auto overscroll-contain p-4 space-y-4 pb-28 md:pb-6">
                   {/* Basic Info Grid */}
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>

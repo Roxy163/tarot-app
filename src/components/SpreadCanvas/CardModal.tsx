@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { X, RotateCcw, FlipVertical } from 'lucide-react';
 import { useSpreadCanvasStore, getCardMeaning, getCardData } from '../../store/spreadCanvasStore';
 import { ConfirmDialog } from '../ConfirmDialog';
+import { useBodyScrollLock } from '../../hooks/useBodyScrollLock';
 
 export const CardModal: React.FC = () => {
   const {
@@ -16,6 +17,7 @@ export const CardModal: React.FC = () => {
 
   const [activeTab, setActiveTab] = useState<'upright' | 'reversed'>('upright');
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  useBodyScrollLock(Boolean(showCardModal && selectedCardForModal));
 
   if (!selectedCardForModal) return null;
 
@@ -58,14 +60,14 @@ export const CardModal: React.FC = () => {
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
-          className="fixed inset-0 z-[520] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm"
+          className="fixed inset-0 z-[520] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm overscroll-contain"
           onClick={closeCardModal}
         >
           <motion.div
             initial={{ scale: 0.9, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
             exit={{ scale: 0.9, opacity: 0 }}
-            className="w-full max-w-2xl max-h-[90dvh] overflow-y-auto bg-[#1a1a2e] border border-[#d4af37] rounded-2xl shadow-2xl"
+            className="w-full max-w-2xl max-h-[90dvh] overflow-y-auto overscroll-contain bg-[#1a1a2e] border border-[#d4af37] rounded-2xl shadow-2xl"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between px-6 py-4 border-b border-[#d4af37]/30">

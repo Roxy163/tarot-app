@@ -17,6 +17,22 @@ const getGridNumber = (position: string, type: 'col' | 'row') => {
   return match ? Number(match[1]) : 1;
 };
 
+const yearlyMobilePositions = [
+  { x: 8, y: 49 },
+  { x: 18, y: 67 },
+  { x: 34, y: 79 },
+  { x: 50, y: 83 },
+  { x: 66, y: 79 },
+  { x: 82, y: 67 },
+  { x: 92, y: 49 },
+  { x: 82, y: 31 },
+  { x: 66, y: 19 },
+  { x: 50, y: 15 },
+  { x: 34, y: 19 },
+  { x: 18, y: 31 },
+  { x: 50, y: 49 },
+];
+
 const useElementWidth = <T extends HTMLElement>() => {
   const ref = useRef<T | null>(null);
   const [width, setWidth] = useState(0);
@@ -54,8 +70,8 @@ interface ReadingSpreadDisplayProps {
   onSlotClick: (index: number) => void;
   handleLongPressStart: (index: number) => void;
   handleLongPressEnd: () => void;
-  toggleReverse: (index: number, e: React.MouseEvent) => void;
   removeSlot: (index: number, e: React.MouseEvent) => void;
+  allowSlotRemoval?: boolean;
   handleCycleSlot: (index: number, e: React.MouseEvent) => void;
   onConfirmSync: (spreadName: string) => void;
   onCancelSync: () => void;
@@ -74,19 +90,21 @@ export const ReadingSpreadDisplay: React.FC<ReadingSpreadDisplayProps> = ({
   onSlotClick,
   handleLongPressStart,
   handleLongPressEnd,
-  toggleReverse,
   removeSlot,
+  allowSlotRemoval = true,
   handleCycleSlot,
   onConfirmSync,
   onCancelSync
 }) => {
   const { ref: spreadViewportRef, width: spreadViewportWidth } = useElementWidth<HTMLDivElement>();
+  const complexGridScrollRef = useRef<HTMLDivElement | null>(null);
   const isFreeLayout = formData.layoutType === 'free';
   const freeLayoutFrame = isFreeLayout ? getFreeLayoutDisplayFrame(cardSlots) : null;
   const isCustomGridLayout = formData.layoutType === 'custom';
   const customGridGapClass = cardSlots.length > 3 ? 'gap-2 sm:gap-4' : 'gap-3 sm:gap-4';
   const isCelticCross = formData.layoutType === 'celtic' || formData.spread === '凯尔特十字牌阵';
-  const isComplexGridLayout = isCustomGridLayout || isCelticCross || formData.layoutType === 'yearly';
+  const isYearlyRadialLayout = formData.layoutType === 'yearly';
+  const isComplexGridLayout = isCustomGridLayout || isCelticCross;
   const templateGapOverride = !isCelticCross && formData.layoutType !== 'yearly' && cardSlots.length > 3
     ? 'gap-2 sm:gap-4'
     : '';
@@ -106,7 +124,7 @@ export const ReadingSpreadDisplay: React.FC<ReadingSpreadDisplayProps> = ({
   const isSmallCard = cardSlots.length > 3;
   const baseSlotWidth = isSmallCard ? 64 : 80;
   const baseSlotHeight = isSmallCard ? 112 : 140;
-  const gapSize = isCelticCross ? 32 : formData.layoutType === 'yearly' ? 0 : isSmallCard ? 8 : 12;
+  const gapSize = isCelticCross ? 32 : isSmallCard ? 8 : 12;
   const rawGridWidth = isFreeLayout
     ? freeLayoutFrame?.width || FREE_LAYOUT_CANVAS_WIDTH
     : gridExtent.cols * baseSlotWidth + Math.max(0, gridExtent.cols - 1) * gapSize;
@@ -114,9 +132,17 @@ export const ReadingSpreadDisplay: React.FC<ReadingSpreadDisplayProps> = ({
     ? freeLayoutFrame?.height || FREE_LAYOUT_CANVAS_HEIGHT
     : gridExtent.rows * baseSlotHeight + Math.max(0, gridExtent.rows - 1) * gapSize;
   const availableDisplayWidth = Math.max(280, spreadViewportWidth || rawGridWidth);
-  const mobileDisplayScale = spreadViewportWidth > 0
+  const fitDisplayScale = spreadViewportWidth > 0
     ? Math.min(1, availableDisplayWidth / Math.max(1, rawGridWidth + 16))
     : 1;
+  const readableScaleFloor = spreadViewportWidth > 0 && spreadViewportWidth < 640
+    ? formData.layoutType === 'yearly'
+      ? 0.82
+      : isCelticCross
+        ? 0.62
+        : 0.8
+    : 0;
+  const mobileDisplayScale = Math.min(1, Math.max(fitDisplayScale, readableScaleFloor));
   const shouldScaleGrid = isComplexGridLayout && mobileDisplayScale < 0.98;
   const scaledGridStyle = shouldScaleGrid ? {
     width: rawGridWidth * mobileDisplayScale,
@@ -124,8 +150,26 @@ export const ReadingSpreadDisplay: React.FC<ReadingSpreadDisplayProps> = ({
   } : undefined;
   const gridInnerStyle = shouldScaleGrid ? {
     transform: `scale(${mobileDisplayScale})`,
-    transformOrigin: 'top center',
+    transformOrigin: 'top left',
   } : undefined;
+
+  useEffect(() => {
+    const element = complexGridScrollRef.current;
+    if (!element || !isComplexGridLayout || isFreeLayout || shouldScaleGrid || spreadViewportWidth >= 640) return;
+
+    window.requestAnimationFrame(() => {
+      if (element.scrollWidth <= element.clientWidth) return;
+      element.scrollLeft = (element.scrollWidth - element.clientWidth) / 2;
+    });
+  }, [
+    cardSlots.length,
+    formData.layoutType,
+    isComplexGridLayout,
+    isFreeLayout,
+    mobileDisplayScale,
+    shouldScaleGrid,
+    spreadViewportWidth,
+  ]);
 
   return (
     <div ref={spreadViewportRef} className="space-y-4">
@@ -205,8 +249,8 @@ export const ReadingSpreadDisplay: React.FC<ReadingSpreadDisplayProps> = ({
                       onSlotClick={onSlotClick}
                       onLongPressStart={handleLongPressStart}
                       onLongPressEnd={handleLongPressEnd}
-                      onToggleReverse={toggleReverse}
                       onRemove={removeSlot}
+                      allowRemove={allowSlotRemoval}
                     />
                   </div>
                 );
@@ -214,8 +258,53 @@ export const ReadingSpreadDisplay: React.FC<ReadingSpreadDisplayProps> = ({
             </div>
           </div>
         </div>
+      ) : isYearlyRadialLayout ? (
+        <div className="w-full overflow-hidden pb-2" data-testid="yearly-radial-spread">
+          <div className="relative mx-auto aspect-square w-full max-w-[280px] rounded-3xl border border-forest-accent/10 bg-forest-bg/20 sm:max-w-[520px]">
+            <div className="pointer-events-none absolute inset-[18%] rounded-full border border-dashed border-forest-accent/12" />
+            <div className="pointer-events-none absolute left-1/2 top-1/2 h-px w-[72%] -translate-x-1/2 bg-forest-accent/10" />
+            <div className="pointer-events-none absolute left-1/2 top-1/2 h-[72%] w-px -translate-y-1/2 bg-forest-accent/10" />
+            {cardSlots.map((slot, index) => {
+              const point = yearlyMobilePositions[index] || yearlyMobilePositions[yearlyMobilePositions.length - 1];
+              const slotScale = spreadViewportWidth > 0 && spreadViewportWidth < 640 ? 0.68 : 0.82;
+
+              return (
+                <div
+                  key={`${slot.label || index}-${index}`}
+                  className="absolute z-10"
+                  style={{
+                    left: `${point.x}%`,
+                    top: `${point.y}%`,
+                    transform: `translate(-50%, -50%) scale(${slotScale})`,
+                    transformOrigin: 'center center',
+                  }}
+                >
+                  <ReadingSlot
+                    slot={slot}
+                    index={index}
+                    isActive={activeSlotIndex === index}
+                    isCelticCenter={false}
+                    stackIndex={0}
+                    isSmall
+                    showSlotNumbers={showSlotNumbers}
+                    onSlotClick={onSlotClick}
+                    onLongPressStart={handleLongPressStart}
+                    onLongPressEnd={handleLongPressEnd}
+                    onRemove={removeSlot}
+                    allowRemove={allowSlotRemoval}
+                  />
+                </div>
+              );
+            })}
+          </div>
+        </div>
       ) : (
-      <div className={isComplexGridLayout ? 'w-full overflow-hidden pb-2' : ''}>
+      <div
+        ref={isComplexGridLayout ? complexGridScrollRef : undefined}
+        className={isComplexGridLayout
+          ? `w-full overscroll-contain pb-2 custom-scrollbar-hide ${shouldScaleGrid ? 'overflow-hidden' : 'overflow-auto'}`
+          : ''}
+      >
         <div className={shouldScaleGrid ? 'mx-auto' : undefined} style={scaledGridStyle}>
         <div
           className={isCustomGridLayout
@@ -273,8 +362,8 @@ export const ReadingSpreadDisplay: React.FC<ReadingSpreadDisplayProps> = ({
                       onSlotClick={onSlotClick}
                       onLongPressStart={handleLongPressStart}
                       onLongPressEnd={handleLongPressEnd}
-                      onToggleReverse={toggleReverse}
                       onRemove={removeSlot}
+                      allowRemove={allowSlotRemoval}
                       onCycle={slotsAtPos.length > 1 ? handleCycleSlot : undefined}
                     />
                   ))}

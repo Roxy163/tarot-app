@@ -4,6 +4,7 @@ import { X } from 'lucide-react';
 
 interface DesignerSlotProps {
   idx: number;
+  totalSlots: number;
   isActive: boolean;
   slot: any;
   isCelticCenter: boolean;
@@ -16,7 +17,7 @@ interface DesignerSlotProps {
 
 export const DesignerSlot: React.FC<DesignerSlotProps> = ({ 
   idx, isActive, slot, isCelticCenter, stackIndex,
-  onSetActive, onUpdateLabel, onSwapSlotIndex, onRemove
+  totalSlots, onSetActive, onUpdateLabel, onSwapSlotIndex, onRemove
 }) => {
   const [localIdx, setLocalIdx] = React.useState((idx + 1).toString());
 
@@ -36,6 +37,18 @@ export const DesignerSlot: React.FC<DesignerSlotProps> = ({
     ? (isRotated ? 'absolute inset-0 rotate-90 translate-y-1' : 'relative w-full h-full')
     : (isSecondary ? 'absolute inset-0 translate-x-1 translate-y-1' : 'relative w-full h-full');
 
+  const commitIndexChange = () => {
+    const parsedIndex = Number.parseInt(localIdx, 10);
+    if (Number.isNaN(parsedIndex)) {
+      setLocalIdx((idx + 1).toString());
+      return;
+    }
+
+    const nextIndex = Math.max(0, Math.min(totalSlots - 1, parsedIndex - 1));
+    setLocalIdx((nextIndex + 1).toString());
+    onSwapSlotIndex(idx, nextIndex);
+  };
+
   return (
     <motion.div 
       layout
@@ -51,9 +64,26 @@ export const DesignerSlot: React.FC<DesignerSlotProps> = ({
       whileTap={{ scale: 0.95 }}
     >
       <div className="flex items-center justify-center w-full">
-        <span className={`text-center font-black ${isCelticCenter ? 'text-[10px]' : 'text-lg'} ${isActive ? 'text-white' : 'text-forest-ink'}`}>
-          {idx + 1}
-        </span>
+        <input
+          type="number"
+          min={1}
+          max={totalSlots}
+          inputMode="numeric"
+          aria-label={`修改第 ${idx + 1} 个位置序号`}
+          value={localIdx}
+          onClick={e => e.stopPropagation()}
+          onPointerDown={e => e.stopPropagation()}
+          onChange={e => setLocalIdx(e.target.value)}
+          onBlur={commitIndexChange}
+          onKeyDown={e => {
+            if (e.key === 'Enter') {
+              e.currentTarget.blur();
+            }
+          }}
+          className={`w-12 rounded-lg border-none bg-transparent px-1 py-0.5 text-center font-black focus:ring-2 focus:ring-white/60 ${
+            isCelticCenter ? 'text-[10px]' : 'text-lg'
+          } ${isActive ? 'text-white bg-white/10' : 'text-forest-ink bg-forest-accent/5'}`}
+        />
       </div>
       
       <input 

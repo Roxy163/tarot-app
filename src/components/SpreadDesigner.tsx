@@ -2,10 +2,11 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { motion } from 'motion/react';
 import { Layers, X, Plus, RotateCcw, Grid3X3, FolderOpen, Trash2, RefreshCw, Sparkles } from 'lucide-react';
 import { SpreadDefinition, ReadingSlotData } from '../types';
-import { DEFAULT_CUSTOM_SPREAD_NAME, LAYOUT_TEMPLATES, OFFICIAL_SPREADS } from '../constants';
+import { LAYOUT_TEMPLATES, OFFICIAL_SPREADS } from '../constants';
 import { DesignerSlot } from './DesignerSlot';
 import { SpreadGridControls } from './SpreadGridControls';
 import { FreeLayoutEditor } from './FreeLayoutEditor';
+import { useBodyScrollLock } from '../hooks/useBodyScrollLock';
 
 export type FreeLayoutSaveMode = 'original' | 'adaptive';
 
@@ -43,8 +44,10 @@ interface SpreadDesignerProps {
   isEditingSession?: boolean;
   onSelectSpread: (spread: SpreadDefinition) => void;
   onDeleteSpread: (name: string) => void;
+  onDeleteSpreads?: (names: string[]) => void;
   onSaveSpread: () => void;
   onUpdateNewSpreadName: (name: string) => void;
+  saveNotice?: string;
   onUpdateLayoutType: (layout: string) => void;
   onUpdateSlotPosition: (col: number, row: number) => void;
   onSwapSlotIndex: (oldIdx: number, newIdx: number) => void;
@@ -76,8 +79,10 @@ export const SpreadDesigner: React.FC<SpreadDesignerProps> = ({
   isEditingSession,
   onSelectSpread,
   onDeleteSpread,
+  onDeleteSpreads,
   onSaveSpread,
   onUpdateNewSpreadName,
+  saveNotice,
   onUpdateLayoutType,
   onUpdateSlotPosition,
   onSwapSlotIndex,
@@ -98,12 +103,23 @@ export const SpreadDesigner: React.FC<SpreadDesignerProps> = ({
   freeLayoutSaveMode = 'original',
   onUpdateFreeLayoutSaveMode
 }) => {
+  useBodyScrollLock(true);
+
   const [editMode, setEditMode] = useState<'grid' | 'free'>(layoutType === 'free' ? 'free' : 'grid');
+  const [selectedCustomSpreadNames, setSelectedCustomSpreadNames] = useState<string[]>([]);
   const { ref: designerPreviewRef, width: designerPreviewWidth } = useContainerWidth<HTMLDivElement>();
+  const longPressDeleteTimerRef = useRef<number | null>(null);
+  const longPressTriggeredRef = useRef(false);
 
   useEffect(() => {
     setEditMode(layoutType === 'free' ? 'free' : 'grid');
   }, [layoutType]);
+
+  useEffect(() => () => {
+    if (longPressDeleteTimerRef.current) {
+      window.clearTimeout(longPressDeleteTimerRef.current);
+    }
+  }, []);
 
   const currentTemplate = LAYOUT_TEMPLATES[layoutType as keyof typeof LAYOUT_TEMPLATES] || LAYOUT_TEMPLATES['horizontal'];
   const itemClasses = currentTemplate.itemClasses;
@@ -118,8 +134,11 @@ export const SpreadDesigner: React.FC<SpreadDesignerProps> = ({
   }, [designerPreviewWidth, designerRawGridWidth, editMode]);
   
   const isOfficialSpread = OFFICIAL_SPREADS.some(s => s.name === currentSpread);
-  const officialSpreadNames = new Set(OFFICIAL_SPREADS.map(spread => spread.name));
-  const customSpreads = spreads.filter(spread => !officialSpreadNames.has(spread.name));
+  const officialSpreadNames = useMemo(() => new Set(OFFICIAL_SPREADS.map(spread => spread.name)), []);
+  const customSpreads = useMemo(
+    () => spreads.filter(spread => !officialSpreadNames.has(spread.name)),
+    [officialSpreadNames, spreads],
+  );
   const isCelticCross = layoutType === 'celtic' || currentSpread === '凯尔特十字牌阵';
   const saveButtonLabel = currentSpread && isEditingSession ? '保存修改' : '保存并使用';
   const editorStateLabel = currentSpread ? (isEditingSession ? '正在编辑' : '套用模板') : '空白创作';
@@ -129,6 +148,45 @@ export const SpreadDesigner: React.FC<SpreadDesignerProps> = ({
     && !isOfficialSpread
     && spreads.some(spread => spread.name === currentSpread),
   );
+
+  useEffect(() => {
+    setSelectedCustomSpreadNames(current => (
+      current.filter(name => spreads.some(spread => spread.name === name && !officialSpreadNames.has(name)))
+    ));
+  }, [spreads, officialSpreadNames]);
+
+  const clearLongPressDelete = () => {
+    if (!longPressDeleteTimerRef.current) return;
+
+    window.clearTimeout(longPressDeleteTimerRef.current);
+    longPressDeleteTimerRef.current = null;
+  };
+
+  const startLongPressDelete = (spreadName: string) => {
+    clearLongPressDelete();
+    longPressTriggeredRef.current = false;
+    longPressDeleteTimerRef.current = window.setTimeout(() => {
+      longPressTriggeredRef.current = true;
+      onDeleteSpread(spreadName);
+      longPressDeleteTimerRef.current = null;
+      if (window.navigator.vibrate) {
+        window.navigator.vibrate(35);
+      }
+    }, 650);
+  };
+
+  const toggleCustomSpreadSelection = (spreadName: string) => {
+    if (longPressTriggeredRef.current) {
+      longPressTriggeredRef.current = false;
+      return;
+    }
+
+    setSelectedCustomSpreadNames(current => (
+      current.includes(spreadName)
+        ? current.filter(name => name !== spreadName)
+        : [...current, spreadName]
+    ));
+  };
 
   const handleSlotClick = (col: number, row: number) => {
     onUpdateSlotPosition(col, row);
@@ -153,48 +211,65 @@ export const SpreadDesigner: React.FC<SpreadDesignerProps> = ({
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: 20 }}
-      className="fixed inset-0 z-[520] bg-forest-ink/40 backdrop-blur-sm flex items-center justify-center p-4"
+      className="fixed inset-0 z-[520] flex items-center justify-center bg-forest-ink/40 p-2 backdrop-blur-sm overscroll-contain sm:p-4"
       onClick={(e) => { if (e.target === e.currentTarget && onClose) onClose(); }}
     >
       <motion.div 
-        className="w-full max-w-3xl max-h-[90dvh] overflow-y-auto bg-white rounded-[2rem] shadow-2xl"
+        className="max-h-[92dvh] w-full max-w-4xl overflow-y-auto overscroll-contain rounded-[1.5rem] bg-white shadow-2xl sm:rounded-[2rem]"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="sticky top-0 z-10 flex items-center justify-between gap-3 border-b border-forest-accent/10 bg-white px-4 py-4 sm:px-6">
-          <div className="flex items-center gap-3">
-            <div className="p-2 bg-forest-accent/10 text-forest-accent rounded-xl">
-              <Layers size={24} />
+        <div className="sticky top-0 z-10 flex flex-col gap-3 border-b border-forest-accent/10 bg-white px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-5">
+          <div className="flex min-w-0 items-center gap-3">
+            <div className="rounded-xl bg-forest-accent/10 p-2 text-forest-accent">
+              <Layers size={20} />
             </div>
             <div className="min-w-0">
-              <h2 className="text-lg font-serif font-bold text-forest-ink">牌阵工作台</h2>
+              <h2 className="text-base font-serif font-bold text-forest-ink sm:text-lg">牌阵工作台</h2>
               <p className="truncate text-[10px] font-medium uppercase tracking-wider text-forest-muted">
                 {editorStateLabel} · {editMode === 'free' ? '自由画布' : '网格模式'}
               </p>
             </div>
           </div>
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={onSaveSpread}
-              className="min-h-11 rounded-xl bg-forest-accent px-4 py-2 text-xs font-bold text-white shadow-lg shadow-forest-accent/20 transition-all hover:bg-forest-accent/90"
-            >
-              {saveButtonLabel}
-            </button>
-            <button
-              type="button"
-              onClick={onClose}
-              aria-label="关闭工作台"
-              className="min-h-11 min-w-11 p-2 hover:bg-forest-bg rounded-xl transition-colors"
-            >
-              <X size={20} className="text-forest-muted" />
-            </button>
+          <div className="w-full space-y-1 sm:w-[min(360px,48%)]">
+            <label htmlFor="spread-name-input" className="text-[9px] font-bold uppercase tracking-wider text-forest-muted">
+              牌阵名称
+            </label>
+            <div className="flex gap-2">
+              <input
+                id="spread-name-input"
+                type="text"
+                aria-label="名称"
+                value={newSpreadName}
+                onChange={(e) => onUpdateNewSpreadName(e.target.value)}
+                placeholder="先给牌阵命名..."
+                className="min-h-11 min-w-0 flex-1 rounded-xl border border-forest-accent/10 bg-forest-bg/60 px-3 py-2 text-sm text-forest-ink focus:ring-2 focus:ring-forest-accent/20 sm:min-h-10"
+              />
+              <button
+                type="button"
+                onClick={onSaveSpread}
+                className="min-h-11 rounded-xl bg-forest-accent px-3.5 py-2 text-xs font-bold text-white shadow-lg shadow-forest-accent/20 transition-all hover:bg-forest-accent/90 sm:min-h-10 sm:px-4"
+              >
+                {saveButtonLabel}
+              </button>
+              <button
+                type="button"
+                onClick={onClose}
+                aria-label="关闭工作台"
+                className="min-h-11 min-w-11 rounded-xl p-2 transition-colors hover:bg-forest-bg sm:min-h-10 sm:min-w-10"
+              >
+                <X size={20} className="text-forest-muted" />
+              </button>
+            </div>
+            <p className={`text-[10px] ${saveNotice ? 'font-bold text-forest-pink' : 'text-forest-muted'}`}>
+              {saveNotice || '保存前先命名，保存后也能回来编辑改名。'}
+            </p>
           </div>
         </div>
 
-        <div className="space-y-4 p-4 sm:space-y-6 sm:p-6">
-          <div className="grid gap-3 rounded-2xl border border-forest-accent/10 bg-forest-bg/40 p-3 sm:grid-cols-[minmax(0,1fr)_minmax(180px,240px)_auto] sm:items-end">
-            <div className="space-y-1">
-              <label htmlFor="spread-template-select" className="text-[10px] font-bold uppercase tracking-wider text-forest-muted">
+        <div className="space-y-3 p-3 sm:space-y-4 sm:p-4">
+          <div className="grid gap-2 rounded-2xl border border-forest-accent/10 bg-forest-bg/40 p-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
+            <div className="space-y-0.5">
+              <label htmlFor="spread-template-select" className="text-[9px] font-bold uppercase tracking-wider text-forest-muted">
                 模板
               </label>
               <div className="relative">
@@ -203,7 +278,7 @@ export const SpreadDesigner: React.FC<SpreadDesignerProps> = ({
                   id="spread-template-select"
                   value={currentSpread}
                   onChange={(e) => handleTemplateChange(e.target.value)}
-                  className="min-h-11 w-full cursor-pointer appearance-none rounded-xl border border-forest-accent/10 bg-white py-3 pl-10 pr-4 text-sm text-forest-ink focus:ring-2 focus:ring-forest-accent/20"
+                  className="min-h-11 sm:min-h-10 w-full cursor-pointer appearance-none rounded-xl border border-forest-accent/10 bg-white py-2 pl-10 pr-3 text-sm text-forest-ink focus:ring-2 focus:ring-forest-accent/20"
                 >
                   <option value="">空白创作，不套用模板</option>
                   <optgroup label="官方牌阵">
@@ -222,38 +297,74 @@ export const SpreadDesigner: React.FC<SpreadDesignerProps> = ({
               </div>
             </div>
 
-            <div className="space-y-1">
-              <label htmlFor="spread-name-input" className="text-[10px] font-bold uppercase tracking-wider text-forest-muted">
-                名称
-              </label>
-              <input
-                id="spread-name-input"
-                type="text"
-                value={newSpreadName}
-                onChange={(e) => onUpdateNewSpreadName(e.target.value)}
-                placeholder="牌阵名称..."
-                className="min-h-11 w-full rounded-xl border border-forest-accent/10 bg-white px-4 py-3 text-sm text-forest-ink focus:ring-2 focus:ring-forest-accent/20"
-              />
-            </div>
-
             <button
               type="button"
               onClick={() => {
-                onUpdateNewSpreadName(DEFAULT_CUSTOM_SPREAD_NAME);
+                onUpdateNewSpreadName('');
                 onSetDesignActiveSlot(-1);
                 onStartNewSession?.();
               }}
-              className="flex min-h-11 items-center justify-center gap-2 rounded-xl border border-forest-accent/15 bg-white px-4 py-3 text-sm font-bold text-forest-accent transition-all hover:bg-forest-accent/5 sm:justify-start"
+              className="flex min-h-11 sm:min-h-10 items-center justify-center gap-1.5 rounded-xl border border-forest-accent/15 bg-white px-3 py-2 text-sm font-bold text-forest-accent transition-all hover:bg-forest-accent/5 sm:justify-start"
             >
-              <Plus size={18} />
+              <Plus size={16} />
               新建空白
             </button>
           </div>
 
-          <div className="rounded-2xl border border-forest-accent/10 bg-white p-3 shadow-sm shadow-forest-accent/5">
-            <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-                <div className="flex items-center rounded-xl bg-forest-bg p-1">
+          {customSpreads.length > 0 && (
+            <div className="rounded-2xl border border-forest-accent/10 bg-white p-2.5 shadow-sm shadow-forest-accent/5">
+              <div className="mb-2 flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-forest-accent">自建牌阵管理</p>
+                  <p className="text-[10px] text-forest-muted">点选可批量删除，长按单项也可删除。</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => onDeleteSpreads?.(selectedCustomSpreadNames)}
+                  disabled={selectedCustomSpreadNames.length === 0}
+                  className={`min-h-11 rounded-xl px-3 py-2 text-xs font-bold transition-all sm:min-h-10 ${
+                    selectedCustomSpreadNames.length === 0
+                      ? 'cursor-not-allowed bg-gray-100 text-gray-300'
+                      : 'bg-red-100 text-red-600 hover:bg-red-200'
+                  }`}
+                >
+                  删除选中 {selectedCustomSpreadNames.length > 0 ? selectedCustomSpreadNames.length : ''}
+                </button>
+              </div>
+              <div className="flex gap-2 overflow-x-auto custom-scrollbar-hide pb-1">
+                {customSpreads.map(spread => {
+                  const isSelected = selectedCustomSpreadNames.includes(spread.name);
+
+                  return (
+                    <button
+                      key={spread.name}
+                      type="button"
+                      onClick={() => toggleCustomSpreadSelection(spread.name)}
+                      onPointerDown={() => startLongPressDelete(spread.name)}
+                      onPointerUp={clearLongPressDelete}
+                      onPointerLeave={clearLongPressDelete}
+                      onPointerCancel={clearLongPressDelete}
+                      className={`flex min-h-11 shrink-0 items-center gap-2 rounded-xl border px-3 py-2 text-xs font-bold transition-all ${
+                        isSelected
+                          ? 'border-red-200 bg-red-50 text-red-600'
+                          : 'border-forest-accent/10 bg-forest-bg/60 text-forest-ink hover:border-forest-accent/30'
+                      }`}
+                      aria-pressed={isSelected}
+                      title="点选用于批量删除，长按可删除"
+                    >
+                      <span className={`h-3 w-3 rounded-full border ${isSelected ? 'border-red-500 bg-red-500' : 'border-forest-accent/30 bg-white'}`} />
+                      <span>{spread.name}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          <div className="rounded-2xl border border-forest-accent/10 bg-white p-2 shadow-sm shadow-forest-accent/5">
+            <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="flex items-center rounded-xl bg-forest-bg p-0.5">
                   <button
                     type="button"
                     onClick={() => {
@@ -265,13 +376,13 @@ export const SpreadDesigner: React.FC<SpreadDesignerProps> = ({
                         onUpdateGrid?.(Math.min(gridCols, 7), Math.min(gridRows, 7));
                       }
                     }}
-                    className={`flex min-h-11 items-center gap-2 rounded-lg px-4 py-2 text-xs font-bold transition-all ${
+                    className={`flex min-h-11 sm:min-h-10 items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-bold transition-all ${
                       editMode === 'grid'
                         ? 'bg-white text-forest-accent shadow-sm'
                         : 'text-forest-muted hover:text-forest-accent'
                     }`}
                   >
-                    <Grid3X3 size={14} />
+                    <Grid3X3 size={13} />
                     <span>网格模式</span>
                   </button>
                   <button
@@ -281,18 +392,18 @@ export const SpreadDesigner: React.FC<SpreadDesignerProps> = ({
                       onUpdateLayoutType('free');
                       onUpdateGrid?.(20, 12);
                     }}
-                    className={`flex min-h-11 items-center gap-2 rounded-lg px-4 py-2 text-xs font-bold transition-all ${
+                    className={`flex min-h-11 sm:min-h-10 items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-bold transition-all ${
                       editMode === 'free'
                         ? 'bg-white text-forest-accent shadow-sm'
                         : 'text-forest-muted hover:text-forest-accent'
                     }`}
                   >
-                    <Sparkles size={14} />
+                    <Sparkles size={13} />
                     <span>自由画布</span>
                   </button>
                 </div>
 
-                <span className={`inline-flex min-h-8 items-center rounded-full px-3 text-[10px] font-bold ${
+                <span className={`inline-flex min-h-8 items-center rounded-full px-2.5 text-[10px] font-bold ${
                   editMode === 'free'
                     ? 'bg-forest-pink/10 text-forest-pink'
                     : 'bg-forest-accent/10 text-forest-accent'
@@ -301,12 +412,12 @@ export const SpreadDesigner: React.FC<SpreadDesignerProps> = ({
                 </span>
               </div>
 
-              <div className="flex flex-wrap gap-2 lg:justify-end">
+              <div className="flex flex-wrap gap-1.5 lg:justify-end">
                 {canUndo && (
                   <button
                     type="button"
                     onClick={onUndo}
-                    className="flex min-h-11 items-center gap-2 rounded-xl px-3 py-2 text-xs font-bold text-forest-muted transition-colors hover:bg-forest-bg hover:text-forest-accent"
+                    className="flex min-h-11 sm:min-h-10 items-center gap-1.5 rounded-xl px-2.5 py-2 text-xs font-bold text-forest-muted transition-colors hover:bg-forest-bg hover:text-forest-accent"
                   >
                     <RotateCcw size={14} /> 撤销
                   </button>
@@ -315,7 +426,7 @@ export const SpreadDesigner: React.FC<SpreadDesignerProps> = ({
                   <button
                     type="button"
                     onClick={() => onRestoreDefaults(currentSpread)}
-                    className="flex min-h-11 items-center gap-2 rounded-xl px-3 py-2 text-xs font-bold text-forest-muted transition-colors hover:bg-amber-50 hover:text-amber-600"
+                    className="flex min-h-11 sm:min-h-10 items-center gap-1.5 rounded-xl px-2.5 py-2 text-xs font-bold text-forest-muted transition-colors hover:bg-amber-50 hover:text-amber-600"
                   >
                     <RefreshCw size={14} /> 恢复默认
                   </button>
@@ -325,7 +436,7 @@ export const SpreadDesigner: React.FC<SpreadDesignerProps> = ({
                     type="button"
                     onClick={() => onDeleteSpread(currentSpread)}
                     aria-label={`删除牌阵 ${currentSpread}`}
-                    className="flex min-h-11 items-center gap-2 rounded-xl px-3 py-2 text-xs font-bold text-red-500 transition-colors hover:bg-red-50"
+                    className="flex min-h-11 sm:min-h-10 items-center gap-1.5 rounded-xl px-2.5 py-2 text-xs font-bold text-red-500 transition-colors hover:bg-red-50"
                   >
                     <Trash2 size={14} /> 删除
                   </button>
@@ -334,7 +445,7 @@ export const SpreadDesigner: React.FC<SpreadDesignerProps> = ({
             </div>
 
             {editMode === 'grid' && canShowGridControls && (
-              <div className="mt-3 border-t border-forest-accent/10 pt-3">
+              <div className="mt-2 border-t border-forest-accent/10 pt-2">
                 <SpreadGridControls
                   gridCols={gridCols}
                   gridRows={gridRows}
@@ -346,7 +457,7 @@ export const SpreadDesigner: React.FC<SpreadDesignerProps> = ({
             )}
           </div>
 
-          <div className="rounded-3xl border border-forest-accent/10 bg-forest-bg/20 p-2 sm:p-3">
+          <div className="rounded-2xl border border-forest-accent/10 bg-forest-bg/20 p-2">
             <div ref={designerPreviewRef} className="flex w-full justify-center overflow-hidden pb-2">
               {editMode === 'free' ? (
                 <FreeLayoutEditor
@@ -354,6 +465,7 @@ export const SpreadDesigner: React.FC<SpreadDesignerProps> = ({
                   designActiveSlot={designActiveSlot}
                   onSetDesignActiveSlot={(idx) => onSetDesignActiveSlot(idx, true)}
                   onRemoveSlot={onRemoveSlot}
+                  onSwapSlotIndex={onSwapSlotIndex}
                   onUpdateSlots={(slots) => {
                     onUpdateSlots?.(slots);
                   }}
@@ -400,6 +512,7 @@ export const SpreadDesigner: React.FC<SpreadDesignerProps> = ({
                               <DesignerSlot
                                 key={idx}
                                 idx={idx}
+                                totalSlots={cardSlots.length}
                                 isActive={designActiveSlot === idx}
                                 slot={{...cardSlots[idx], isStacked: slotIndices.length > 1}}
                                 isCelticCenter={isCelticCenter && slotIndices.length > 1}
@@ -431,13 +544,14 @@ export const SpreadDesigner: React.FC<SpreadDesignerProps> = ({
           </div>
 
           {editMode === 'free' && onUpdateFreeLayoutSaveMode && (
-            <div className="rounded-2xl border border-forest-accent/10 bg-forest-accent/5 p-3">
-              <p className="mb-2 text-[10px] font-bold text-forest-accent">保存自由牌阵时</p>
-              <div className="grid grid-cols-2 gap-2">
+            <div className="rounded-2xl border border-forest-accent/10 bg-forest-accent/5 p-2.5">
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                <p className="text-[10px] font-bold text-forest-accent">保存自由牌阵时</p>
+                <div className="grid grid-cols-2 gap-1.5 sm:w-80">
                 <button
                   type="button"
                   onClick={() => onUpdateFreeLayoutSaveMode('original')}
-                  className={`min-h-11 rounded-xl px-3 py-2 text-xs font-bold transition-all ${
+                  className={`min-h-11 rounded-xl px-3 py-2 text-xs font-bold transition-all sm:min-h-10 ${
                     freeLayoutSaveMode === 'original'
                       ? 'bg-white text-forest-accent shadow-sm ring-1 ring-forest-accent/10'
                       : 'text-forest-muted hover:bg-white/60'
@@ -448,7 +562,7 @@ export const SpreadDesigner: React.FC<SpreadDesignerProps> = ({
                 <button
                   type="button"
                   onClick={() => onUpdateFreeLayoutSaveMode('adaptive')}
-                  className={`min-h-11 rounded-xl px-3 py-2 text-xs font-bold transition-all ${
+                  className={`min-h-11 rounded-xl px-3 py-2 text-xs font-bold transition-all sm:min-h-10 ${
                     freeLayoutSaveMode === 'adaptive'
                       ? 'bg-white text-forest-accent shadow-sm ring-1 ring-forest-accent/10'
                       : 'text-forest-muted hover:bg-white/60'
@@ -456,6 +570,7 @@ export const SpreadDesigner: React.FC<SpreadDesignerProps> = ({
                 >
                   自适应居中
                 </button>
+                </div>
               </div>
             </div>
           )}

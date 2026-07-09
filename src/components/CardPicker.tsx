@@ -3,6 +3,7 @@ import { motion } from 'motion/react';
 import { X } from 'lucide-react';
 import { TAROT_CARDS, getCardImageUrl } from '../constants';
 import { cardMatchesSearch } from '../lib/cardSearch';
+import { useBodyScrollLock } from '../hooks/useBodyScrollLock';
 
 interface CardPickerProps {
   onSelect: (card: typeof TAROT_CARDS[0], isReversed: boolean) => void;
@@ -19,8 +20,19 @@ export function CardPicker({
   title = '选择塔罗牌',
   description
 }: CardPickerProps) {
+  useBodyScrollLock(true);
+
   const [search, setSearch] = useState('');
   const [isReversed, setIsReversed] = useState(false);
+  const shouldAutoFocus = typeof window !== 'undefined' ? window.innerWidth >= 640 : true;
+  const scrollSearchIntoView = (event: React.FocusEvent<HTMLInputElement>) => {
+    if (typeof window === 'undefined' || window.innerWidth >= 768) return;
+    const target = event.currentTarget;
+
+    window.setTimeout(() => {
+      target.scrollIntoView({ block: 'center', inline: 'nearest', behavior: 'smooth' });
+    }, 120);
+  };
 
   const filteredCards = TAROT_CARDS.filter(card => cardMatchesSearch(card, search));
 
@@ -39,21 +51,21 @@ export function CardPicker({
   };
 
   return (
-    <div className="fixed inset-0 z-[1000] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+    <div className="fixed inset-0 z-[1000] flex items-end justify-center bg-forest-ink/45 p-0 backdrop-blur-[1px] overscroll-contain sm:items-center sm:p-4">
       <motion.div 
-        initial={{ opacity: 0, scale: 0.9 }}
-        animate={{ opacity: 1, scale: 1 }}
-        className="bg-white w-full max-w-2xl max-h-[80vh] rounded-2xl shadow-2xl overflow-hidden flex flex-col"
+        initial={{ opacity: 0, y: 28, scale: 0.98 }}
+        animate={{ opacity: 1, y: 0, scale: 1 }}
+        className="flex h-[88dvh] w-full max-w-2xl flex-col overflow-hidden rounded-t-[1.75rem] bg-white shadow-2xl sm:h-auto sm:max-h-[80vh] sm:rounded-2xl"
       >
-        <div className="p-4 border-b border-forest-accent/10 flex items-center justify-between bg-forest-bg/30">
+        <div className="flex items-center justify-between border-b border-forest-accent/10 bg-forest-bg/30 p-3 sm:p-4">
           <div className="min-w-0">
             <h3 className="font-serif text-lg text-forest-accent">{title}</h3>
             {description && (
               <p className="mt-1 text-xs text-forest-muted leading-relaxed">{description}</p>
             )}
           </div>
-          <div className="flex items-center gap-4">
-            <label className="flex items-center gap-2 cursor-pointer text-sm">
+          <div className="flex shrink-0 items-center gap-2 sm:gap-4">
+            <label className="flex min-h-11 items-center gap-2 rounded-xl px-2 text-sm cursor-pointer">
               <input 
                 type="checkbox" 
                 checked={isReversed} 
@@ -62,23 +74,26 @@ export function CardPicker({
               />
               逆位
             </label>
-            <button onClick={onClose} className="p-1 hover:bg-forest-accent/10 rounded-full transition-colors">
+            <button onClick={onClose} className="flex min-h-11 min-w-11 items-center justify-center rounded-full transition-colors hover:bg-forest-accent/10" aria-label="关闭选牌器">
               <X size={20} />
             </button>
           </div>
         </div>
         
-        <div className="p-4 border-b border-forest-accent/5">
+        <div className="border-b border-forest-accent/5 p-3 sm:p-4">
           <input 
-            autoFocus
-            className="w-full px-4 py-2 bg-forest-bg border-none rounded-lg focus:ring-2 focus:ring-forest-accent/20 text-sm"
+            autoFocus={shouldAutoFocus}
+            type="search"
+            inputMode="search"
+            className="min-h-11 w-full rounded-xl border-none bg-forest-bg px-4 py-2 text-sm focus:ring-2 focus:ring-forest-accent/20"
             placeholder="搜索牌名、别称或英文..."
             value={search}
+            onFocus={scrollSearchIntoView}
             onChange={e => setSearch(e.target.value)}
           />
         </div>
 
-        <div className="flex-1 overflow-y-auto p-4 grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 gap-3">
+        <div className="grid flex-1 grid-cols-3 gap-2 overflow-y-auto overscroll-contain p-3 sm:grid-cols-4 sm:gap-3 sm:p-4 md:grid-cols-6">
           {filteredCards.map(card => {
             const isExcluded = excludeCards.includes(card.name);
             return (
@@ -86,7 +101,7 @@ export function CardPicker({
                 key={card.id}
                 disabled={isExcluded}
                 onClick={() => onSelect(card, isReversed)}
-                className={`group flex flex-col items-center gap-2 p-3 rounded-xl transition-all ${
+                className={`group flex flex-col items-center gap-1.5 rounded-xl p-1.5 transition-all sm:gap-2 sm:p-3 ${
                   isExcluded ? 'opacity-30 cursor-not-allowed grayscale' : 'hover:bg-forest-accent/5 active:scale-95'
                 }`}
               >
@@ -98,7 +113,7 @@ export function CardPicker({
                     referrerPolicy="no-referrer"
                   />
                 </div>
-                <span className="text-[10px] text-forest-ink font-medium truncate w-full text-center">
+                <span className="w-full truncate text-center text-[9px] font-medium text-forest-ink sm:text-[10px]">
                   {highlightMatch(card.name, search)}
                   {isExcluded && <span className="block text-[8px] text-forest-accent mt-0.5">(已选)</span>}
                 </span>

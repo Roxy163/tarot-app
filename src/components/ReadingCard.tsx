@@ -18,6 +18,22 @@ const getGridNumber = (position: string, type: 'col' | 'row') => {
   return match ? Number(match[1]) : 1;
 };
 
+const yearlyPreviewPositions = [
+  { x: 8, y: 49 },
+  { x: 18, y: 67 },
+  { x: 34, y: 79 },
+  { x: 50, y: 83 },
+  { x: 66, y: 79 },
+  { x: 82, y: 67 },
+  { x: 92, y: 49 },
+  { x: 82, y: 31 },
+  { x: 66, y: 19 },
+  { x: 50, y: 15 },
+  { x: 34, y: 19 },
+  { x: 18, y: 31 },
+  { x: 50, y: 49 },
+];
+
 interface ReadingCardProps {
   reading: TarotReading;
   cardMetadata: TarotCardMetadata[];
@@ -121,13 +137,27 @@ export const ReadingCard: React.FC<ReadingCardProps> = ({
   const resetView = () => {
     setScale(1);
     setPosition({ x: 0, y: 0 });
+    setSelectedCardIdx(null);
   };
 
-  const handleWheel = useCallback((e: React.WheelEvent) => {
-    e.preventDefault();
-    const delta = e.deltaY > 0 ? -0.1 : 0.1;
+  const zoomFromWheelDelta = useCallback((deltaY: number) => {
+    const delta = deltaY > 0 ? -0.1 : 0.1;
     setScale(prev => Math.min(Math.max(prev + delta, 0.5), 2));
   }, []);
+
+  useEffect(() => {
+    const element = containerRef.current;
+    if (!element) return;
+
+    const handleWheelZoom = (event: WheelEvent) => {
+      event.preventDefault();
+      event.stopPropagation();
+      zoomFromWheelDelta(event.deltaY);
+    };
+
+    element.addEventListener('wheel', handleWheelZoom, { passive: false });
+    return () => element.removeEventListener('wheel', handleWheelZoom);
+  }, [zoomFromWheelDelta]);
 
   const canReviewKeywords = !isPublicView && !reading.isExample && !!onExtractKeywordCandidates && !!onConfirmKeywordCandidates;
   const hasFeedback = !!reading.userFeedback?.trim();
@@ -218,10 +248,14 @@ export const ReadingCard: React.FC<ReadingCardProps> = ({
     const cardWidth = 64;
     const cardHeight = 96;
     const gapSize = isCeltic ? 32 : isYearly ? 0 : reading.cards.length > 3 ? 8 : 12;
-    const rawPreviewWidth = isFreeLayout
+    const rawPreviewWidth = isYearly
+      ? 520
+      : isFreeLayout
       ? freeLayoutFrame?.width || FREE_LAYOUT_CANVAS_WIDTH
       : gridExtent.cols * cardWidth + Math.max(0, gridExtent.cols - 1) * gapSize;
-    const rawPreviewHeight = isFreeLayout
+    const rawPreviewHeight = isYearly
+      ? 520
+      : isFreeLayout
       ? freeLayoutFrame?.height || FREE_LAYOUT_CANVAS_HEIGHT
       : gridExtent.rows * cardHeight + Math.max(0, gridExtent.rows - 1) * gapSize;
     const shouldFitPreview = isFreeLayout || isCeltic || isYearly || reading.layoutType === 'custom';
@@ -236,12 +270,11 @@ export const ReadingCard: React.FC<ReadingCardProps> = ({
     return (
       <div
         ref={containerRef}
-        className="relative overflow-hidden rounded-xl bg-forest-bg/50 border border-forest-accent/10"
+        className="relative overflow-hidden overscroll-contain rounded-xl bg-forest-bg/50 border border-forest-accent/10"
         style={{
           cursor: isDragging ? 'grabbing' : 'grab'
         }}
         onMouseDown={handleMouseDown}
-        onWheel={handleWheel}
       >
         <div className={shouldFitPreview ? 'mx-auto' : undefined} style={fittedFrameStyle}>
         <motion.div
@@ -257,11 +290,17 @@ export const ReadingCard: React.FC<ReadingCardProps> = ({
           <div
             className={isFreeLayout
               ? 'relative mx-auto'
+              : isYearly
+                ? 'relative mx-auto rounded-2xl border border-forest-accent/10 bg-forest-bg/20'
               : `${reading.layoutType ? layout?.class : 'flex flex-wrap justify-center gap-2 p-4'} ${isYearly ? 'h-[280px] sm:h-[360px]' : ''}`}
+            data-testid={isYearly ? 'reading-card-yearly-preview' : undefined}
             style={{
               ...(isFreeLayout ? {
                 width: freeLayoutFrame?.width || FREE_LAYOUT_CANVAS_WIDTH,
                 height: freeLayoutFrame?.height || FREE_LAYOUT_CANVAS_HEIGHT,
+              } : isYearly ? {
+                width: rawPreviewWidth,
+                height: rawPreviewHeight,
               } : {}),
               ...(shouldFitPreview && !isFreeLayout ? {
                 width: rawPreviewWidth,
@@ -307,6 +346,50 @@ export const ReadingCard: React.FC<ReadingCardProps> = ({
                         height: FREE_LAYOUT_SLOT_HEIGHT,
                       }}
                     >
+                      {reading.showSlotNumbers !== false && (
+                        <div className="absolute top-1 left-1/2 -translate-x-1/2 bg-forest-text/60 text-white text-[8px] px-1.5 py-0.5 rounded-sm z-20 font-black">
+                          {idx + 1}
+                        </div>
+                      )}
+                      <img
+                        src={getCardImageUrl(cardData?.id || 'ar00')}
+                        alt={card.name}
+                        className="w-full h-full object-contain bg-white"
+                        referrerPolicy="no-referrer"
+                      />
+                      <div className="absolute inset-x-0 bottom-0 bg-forest-text/70 text-white text-[8px] py-0.5 text-center font-sans">
+                        {cardData?.name || card.name}
+                      </div>
+                    </div>
+                    {label && (
+                      <span className={`text-[9px] font-medium px-2 py-0.5 rounded leading-tight transition-colors ${selectedCardIdx === idx ? 'bg-forest-accent text-white' : 'text-forest-accent bg-forest-accent/10'}`}>
+                        {label}
+                      </span>
+                    )}
+                    {!label && card.isReversed && <span className="text-[9px] text-red-500">逆位</span>}
+                  </div>
+                );
+              }
+
+              if (isYearly) {
+                const point = yearlyPreviewPositions[idx] || yearlyPreviewPositions[yearlyPreviewPositions.length - 1];
+
+                return (
+                  <div
+                    key={idx}
+                    className="absolute z-10 flex flex-col items-center gap-1 cursor-pointer group/card"
+                    style={{
+                      left: `${point.x}%`,
+                      top: `${point.y}%`,
+                      transform: 'translate(-50%, -50%) scale(0.82)',
+                      transformOrigin: 'center center',
+                    }}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setSelectedCardIdx(selectedCardIdx === idx ? null : idx);
+                    }}
+                  >
+                    <div className={`relative w-16 h-24 sm:w-20 sm:h-30 rounded-lg overflow-hidden border-2 transition-all ${selectedCardIdx === idx ? 'border-forest-accent ring-4 ring-forest-accent/10 scale-110 z-30' : 'border-forest-accent/10 group-hover/card:border-forest-accent/30'} shadow-sm ${card.isReversed ? 'rotate-180' : ''}`}>
                       {reading.showSlotNumbers !== false && (
                         <div className="absolute top-1 left-1/2 -translate-x-1/2 bg-forest-text/60 text-white text-[8px] px-1.5 py-0.5 rounded-sm z-20 font-black">
                           {idx + 1}
@@ -429,7 +512,7 @@ export const ReadingCard: React.FC<ReadingCardProps> = ({
             className="card-zoom-handler flex min-h-11 min-w-11 items-center justify-center bg-white/80 backdrop-blur rounded-xl shadow-sm hover:bg-white transition-colors"
             onClick={(e) => { e.stopPropagation(); resetView(); }}
             title="重置"
-            aria-label="重置牌阵预览"
+            aria-label="重新预览牌阵"
           >
             <RefreshCw size={16} className="text-forest-accent" />
           </button>

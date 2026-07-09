@@ -47,12 +47,13 @@ describe('AddReadingForm spread designer flow', () => {
     await user.click(screen.getByRole('button', { name: '新建自定义牌阵' }));
     await user.click(screen.getByTestId('free-layout-canvas'));
     await user.click(screen.getByTestId('free-layout-pending-slot'));
+    await user.type(screen.getByLabelText('名称'), '命名牌阵');
     await user.click(screen.getByRole('button', { name: '保存并使用' }));
 
     expect(props.onUpdateSpreads).toHaveBeenCalledWith(
       expect.arrayContaining([
         expect.objectContaining({
-          name: '个人牌阵',
+          name: '命名牌阵',
           layout: 'free',
           slots: ['位置1'],
           freePositions: [expect.objectContaining({ x: expect.any(Number), y: expect.any(Number), scale: 1 })],
@@ -64,9 +65,8 @@ describe('AddReadingForm spread designer flow', () => {
     });
     expect(screen.getByText('已保存，当前手记正在使用这个牌阵')).toBeInTheDocument();
 
-    const spreadSelect = screen.getByText('牌阵：').closest('div')?.parentElement;
-    expect(spreadSelect).toBeTruthy();
-    expect(within(spreadSelect as HTMLElement).getByRole('button', { name: '编辑当前牌阵 个人牌阵' })).toBeInTheDocument();
+    expect(screen.getByText('牌阵：')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '编辑当前牌阵 命名牌阵' })).toBeInTheDocument();
   });
 
   it('asks before overwriting an existing custom spread name', async () => {
@@ -82,6 +82,7 @@ describe('AddReadingForm spread designer flow', () => {
     await user.click(screen.getByRole('button', { name: '新建自定义牌阵' }));
     await user.click(screen.getByTestId('free-layout-canvas'));
     await user.click(screen.getByTestId('free-layout-pending-slot'));
+    await user.type(screen.getByLabelText('名称'), '个人牌阵');
     await user.click(screen.getByRole('button', { name: '保存并使用' }));
 
     expect(screen.getByText('牌阵名称已存在')).toBeInTheDocument();
@@ -101,6 +102,7 @@ describe('AddReadingForm spread designer flow', () => {
     await user.click(screen.getByRole('button', { name: '新建自定义牌阵' }));
     await user.click(screen.getByTestId('free-layout-canvas'));
     await user.click(screen.getByTestId('free-layout-pending-slot'));
+    await user.type(screen.getByLabelText('名称'), '个人牌阵');
     await user.click(screen.getByRole('button', { name: '保存并使用' }));
     await user.click(screen.getByRole('button', { name: '另存为副本' }));
 
@@ -129,6 +131,7 @@ describe('AddReadingForm spread designer flow', () => {
     await user.click(screen.getByRole('button', { name: '新建自定义牌阵' }));
     await user.click(screen.getByTestId('free-layout-canvas'));
     await user.click(screen.getByTestId('free-layout-pending-slot'));
+    await user.type(screen.getByLabelText('名称'), '个人牌阵');
     await user.click(screen.getByRole('button', { name: '保存并使用' }));
     await user.click(screen.getByRole('button', { name: '覆盖原牌阵' }));
 
@@ -176,6 +179,35 @@ describe('AddReadingForm spread designer flow', () => {
     ]));
   });
 
+  it('renames an existing custom spread instead of creating a duplicate', async () => {
+    const user = userEvent.setup();
+    const customSpread: SpreadDefinition = {
+      name: '旧名字牌阵',
+      layout: 'free',
+      slots: ['左侧', '右侧'],
+      freePositions: [
+        { x: 120, y: 140, rotation: 0, scale: 1 },
+        { x: 260, y: 140, rotation: 0, scale: 1 },
+      ],
+    };
+    const props = renderForm({ spreads: [...OFFICIAL_SPREADS, customSpread] });
+
+    await user.selectOptions(screen.getByRole('combobox'), '旧名字牌阵');
+    await user.click(screen.getByRole('button', { name: '编辑当前牌阵 旧名字牌阵' }));
+    await user.clear(screen.getByLabelText('名称'));
+    await user.type(screen.getByLabelText('名称'), '新名字牌阵');
+    await user.click(screen.getByRole('button', { name: '保存修改' }));
+
+    const updatedSpreads = props.onUpdateSpreads.mock.calls[0][0] as SpreadDefinition[];
+
+    expect(updatedSpreads).toEqual(expect.arrayContaining([
+      expect.objectContaining({ name: '新名字牌阵' }),
+    ]));
+    expect(updatedSpreads).toEqual(expect.not.arrayContaining([
+      expect.objectContaining({ name: '旧名字牌阵' }),
+    ]));
+  });
+
   it('groups official and custom spreads in the selector with separate edit and create actions', () => {
     const customSpread: SpreadDefinition = {
       name: '镜像牌阵',
@@ -191,5 +223,32 @@ describe('AddReadingForm spread designer flow', () => {
     expect(spreadSelect.querySelector('optgroup[label="自定义牌阵 (1)"]')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '编辑当前牌阵 单牌阵' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '新建自定义牌阵' })).toBeInTheDocument();
+  });
+
+  it('does not expose the quick add-position button for official spreads', async () => {
+    const user = userEvent.setup();
+    const customSpread: SpreadDefinition = {
+      name: '镜像牌阵',
+      layout: 'free',
+      slots: ['左侧', '右侧'],
+      freePositions: [
+        { x: 120, y: 140, rotation: 0, scale: 1 },
+        { x: 260, y: 140, rotation: 0, scale: 1 },
+      ],
+    };
+
+    renderForm({ spreads: [...OFFICIAL_SPREADS, customSpread] });
+
+    expect(screen.queryByRole('button', { name: '添加自定义位置' })).not.toBeInTheDocument();
+
+    await user.selectOptions(screen.getByRole('combobox'), '镜像牌阵');
+
+    expect(screen.getByRole('button', { name: '添加自定义位置' })).toBeInTheDocument();
+  });
+
+  it('does not expose per-position remove controls while filling a finished spread', () => {
+    renderForm();
+
+    expect(screen.queryByRole('button', { name: /移除第 1 个位置/ })).not.toBeInTheDocument();
   });
 });

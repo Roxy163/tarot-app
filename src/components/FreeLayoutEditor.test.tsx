@@ -179,6 +179,24 @@ describe('FreeLayoutEditor', () => {
     expect(screen.getByTestId('free-layout-slot-1')).toHaveTextContent('已选');
   });
 
+  it('lets users change a free layout position order number', () => {
+    const onSwapSlotIndex = vi.fn();
+    renderEditor({
+      cardSlots: [
+        { name: '', isReversed: false, label: '一', x: 120, y: 120, rotation: 0, scale: 1 },
+        { name: '', isReversed: false, label: '二', x: 240, y: 130, rotation: 0, scale: 1 },
+      ],
+      designActiveSlot: 1,
+      onSwapSlotIndex,
+    });
+
+    const orderInput = screen.getByLabelText('修改第 2 个位置序号');
+    fireEvent.change(orderInput, { target: { value: '1' } });
+    fireEvent.blur(orderInput);
+
+    expect(onSwapSlotIndex).toHaveBeenCalledWith(1, 0);
+  });
+
   it('removes an unconfirmed preview slot after two seconds', () => {
     const onUpdateSlots = vi.fn();
     renderEditor({ onUpdateSlots });
@@ -453,96 +471,20 @@ describe('FreeLayoutEditor', () => {
     ]);
   });
 
-  it('rotates and scales selected slots together from the multi-select toolbar', () => {
-    const onUpdateSlots = vi.fn();
-    const props = renderEditor({
-      onUpdateSlots,
-      cardSlots: [
-        { name: '', isReversed: false, label: '一', x: 120, y: 120, rotation: 0, scale: 1 },
-        { name: '', isReversed: false, label: '二', x: 240, y: 130, rotation: 10, scale: 0.8 },
-        { name: '', isReversed: false, label: '三', x: 500, y: 320, rotation: 30, scale: 1.2 },
-      ],
-      designActiveSlot: 0,
-    });
-    const viewport = screen.getByTestId('free-layout-viewport');
+  it('keeps the free canvas quick toolbar focused on alignment only', () => {
+    renderEditor();
 
-    fireEvent.pointerDown(viewport, { pointerId: 17, clientX: 100, clientY: 100 });
-    fireEvent.pointerMove(viewport, { pointerId: 17, clientX: 340, clientY: 300 });
-    fireEvent.pointerUp(viewport, { pointerId: 17, clientX: 340, clientY: 300 });
-    fireEvent.click(screen.getByRole('button', { name: '所选右旋' }));
-
-    expect(onUpdateSlots).toHaveBeenLastCalledWith([
-      { name: '', isReversed: false, label: '一', x: 120, y: 120, rotation: 15, scale: 1 },
-      { name: '', isReversed: false, label: '二', x: 240, y: 130, rotation: 25, scale: 0.8 },
-      { name: '', isReversed: false, label: '三', x: 500, y: 320, rotation: 30, scale: 1.2 },
-    ]);
-
-    const rotatedSlots = onUpdateSlots.mock.calls.at(-1)?.[0];
-    const { renderResult, ...componentProps } = props;
-    renderResult.rerender(
-      <FreeLayoutEditor
-        {...componentProps}
-        cardSlots={rotatedSlots}
-        designActiveSlot={0}
-      />
-    );
-
-    onUpdateSlots.mockClear();
-    fireEvent.click(screen.getByRole('button', { name: '所选放大' }));
-
-    expect(onUpdateSlots).toHaveBeenCalledWith([
-      { name: '', isReversed: false, label: '一', x: 120, y: 120, rotation: 15, scale: 1.1 },
-      { name: '', isReversed: false, label: '二', x: 240, y: 130, rotation: 25, scale: 0.9 },
-      { name: '', isReversed: false, label: '三', x: 500, y: 320, rotation: 30, scale: 1.2 },
-    ]);
-  });
-
-  it('duplicates and deletes selected slots from the multi-select toolbar', () => {
-    const onUpdateSlots = vi.fn();
-    const props = renderEditor({
-      onUpdateSlots,
-      cardSlots: [
-        { name: '', isReversed: false, label: '一', x: 120, y: 120, rotation: 0, scale: 1 },
-        { name: '', isReversed: false, label: '二', x: 240, y: 130, rotation: 0, scale: 1 },
-        { name: '', isReversed: false, label: '三', x: 500, y: 320, rotation: 0, scale: 1 },
-      ],
-      designActiveSlot: 0,
-    });
-    const viewport = screen.getByTestId('free-layout-viewport');
-
-    fireEvent.pointerDown(viewport, { pointerId: 15, clientX: 100, clientY: 100 });
-    fireEvent.pointerMove(viewport, { pointerId: 15, clientX: 340, clientY: 240 });
-    fireEvent.pointerUp(viewport, { pointerId: 15, clientX: 340, clientY: 240 });
-
-    fireEvent.click(screen.getByRole('button', { name: '复制所选' }));
-
-    expect(onUpdateSlots).toHaveBeenLastCalledWith([
-      { name: '', isReversed: false, label: '一', x: 120, y: 120, rotation: 0, scale: 1 },
-      { name: '', isReversed: false, label: '二', x: 240, y: 130, rotation: 0, scale: 1 },
-      { name: '', isReversed: false, label: '三', x: 500, y: 320, rotation: 0, scale: 1 },
-      expect.objectContaining({ label: '位置4', x: 150, y: 150 }),
-      expect.objectContaining({ label: '位置5', x: 270, y: 160 }),
-    ]);
-
-    const nextSlots = onUpdateSlots.mock.calls.at(-1)?.[0];
-    const { renderResult, ...componentProps } = props;
-    renderResult.rerender(
-      <FreeLayoutEditor
-        {...componentProps}
-        cardSlots={nextSlots}
-        designActiveSlot={3}
-      />
-    );
-
-    onUpdateSlots.mockClear();
-    fireEvent.click(screen.getByRole('button', { name: '删除所选' }));
-
-    expect(onUpdateSlots).toHaveBeenCalledWith([
-      { name: '', isReversed: false, label: '一', x: 120, y: 120, rotation: 0, scale: 1 },
-      { name: '', isReversed: false, label: '二', x: 240, y: 130, rotation: 0, scale: 1 },
-      { name: '', isReversed: false, label: '三', x: 500, y: 320, rotation: 0, scale: 1 },
-    ]);
-    expect(props.onSetDesignActiveSlot).toHaveBeenCalledWith(-1);
+    expect(screen.queryByRole('button', { name: '复制' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '左右镜像' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '上下镜像' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '左旋' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '右旋' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '缩小' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '放大' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '删除' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '水平居中' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '垂直居中' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '居中' })).toBeInTheDocument();
   });
 
   it('shows alignment guides and snaps while dragging near another slot', () => {
@@ -582,109 +524,41 @@ describe('FreeLayoutEditor', () => {
     ]);
   });
 
-  it('mirror-copies the active slot across the visible vertical center', () => {
+  it('shows horizontal alignment guides and snaps rows while dragging near another slot', () => {
     const onUpdateSlots = vi.fn();
-    const onSetDesignActiveSlot = vi.fn();
     renderEditor({
       onUpdateSlots,
-      onSetDesignActiveSlot,
       cardSlots: [
         { name: '', isReversed: false, label: '核心', x: 120, y: 120, rotation: 0, scale: 1 },
+        { name: '', isReversed: false, label: '辅助', x: 260, y: 260, rotation: 0, scale: 1 },
       ],
+      designActiveSlot: 1,
+    });
+    const slot = screen.getByTestId('free-layout-slot-1');
+
+    fireEvent.pointerDown(slot, {
+      pointerId: 19,
+      clientX: 260,
+      clientY: 260,
+    });
+    fireEvent.pointerMove(slot, {
+      pointerId: 19,
+      clientX: 260,
+      clientY: 123,
     });
 
-    fireEvent.click(screen.getByRole('button', { name: '左右镜像' }));
+    expect(screen.getByTestId('free-layout-guide-horizontal')).toBeInTheDocument();
+
+    fireEvent.pointerUp(slot, {
+      pointerId: 19,
+      clientX: 260,
+      clientY: 123,
+    });
 
     expect(onUpdateSlots).toHaveBeenCalledWith([
       { name: '', isReversed: false, label: '核心', x: 120, y: 120, rotation: 0, scale: 1 },
-      expect.objectContaining({
-        name: '',
-        isReversed: false,
-        label: '位置2',
-        x: 440,
-        y: 120,
-      }),
+      { name: '', isReversed: false, label: '辅助', x: 260, y: 120, rotation: 0, scale: 1 },
     ]);
-    expect(onSetDesignActiveSlot).toHaveBeenCalledWith(1);
-  });
-
-  it('keeps a mirror copy visible when the active slot sits on the mirror axis', () => {
-    const onUpdateSlots = vi.fn();
-    renderEditor({
-      onUpdateSlots,
-      cardSlots: [
-        { name: '', isReversed: false, label: '核心', x: 290, y: 120, rotation: 0, scale: 1 },
-      ],
-    });
-
-    fireEvent.click(screen.getByRole('button', { name: '左右镜像' }));
-
-    expect(onUpdateSlots).toHaveBeenCalledWith([
-      { name: '', isReversed: false, label: '核心', x: 290, y: 120, rotation: 0, scale: 1 },
-      expect.objectContaining({
-        label: '位置2',
-        x: 390,
-        y: 120,
-      }),
-    ]);
-  });
-
-  it('keeps a mirror copy separated when the active slot is near the mirror axis', () => {
-    const onUpdateSlots = vi.fn();
-    renderEditor({
-      onUpdateSlots,
-      cardSlots: [
-        { name: '', isReversed: false, label: '核心', x: 285, y: 120, rotation: 0, scale: 1 },
-      ],
-    });
-
-    fireEvent.click(screen.getByRole('button', { name: '左右镜像' }));
-
-    expect(onUpdateSlots).toHaveBeenCalledWith([
-      { name: '', isReversed: false, label: '核心', x: 285, y: 120, rotation: 0, scale: 1 },
-      expect.objectContaining({
-        label: '位置2',
-        x: 390,
-        y: 120,
-      }),
-    ]);
-  });
-
-  it('group-mirrors other slots around the active slot vertical axis', () => {
-    const onUpdateSlots = vi.fn();
-    const onSetDesignActiveSlot = vi.fn();
-    renderEditor({
-      onUpdateSlots,
-      onSetDesignActiveSlot,
-      cardSlots: [
-        { name: '', isReversed: false, label: '轴心', x: 300, y: 160, rotation: 0, scale: 1 },
-        { name: '', isReversed: false, label: '左翼', x: 180, y: 160, rotation: 15, scale: 1 },
-        { name: '', isReversed: false, label: '上方', x: 300, y: 40, rotation: 0, scale: 0.8 },
-      ],
-      designActiveSlot: 0,
-    });
-
-    fireEvent.click(screen.getByRole('button', { name: '成组左右' }));
-
-    expect(onUpdateSlots).toHaveBeenCalledWith([
-      { name: '', isReversed: false, label: '轴心', x: 300, y: 160, rotation: 0, scale: 1 },
-      { name: '', isReversed: false, label: '左翼', x: 180, y: 160, rotation: 15, scale: 1 },
-      { name: '', isReversed: false, label: '上方', x: 300, y: 40, rotation: 0, scale: 0.8 },
-      expect.objectContaining({ label: '位置4', x: 420, y: 160, rotation: 15, scale: 1 }),
-      expect.objectContaining({ label: '位置5', x: 320, y: 40, rotation: 0, scale: 0.8 }),
-    ]);
-    expect(onSetDesignActiveSlot).toHaveBeenCalledWith(3);
-  });
-
-  it('disables group mirror buttons until there is more than one slot', () => {
-    renderEditor({
-      cardSlots: [
-        { name: '', isReversed: false, label: '轴心', x: 300, y: 160, rotation: 0, scale: 1 },
-      ],
-    });
-
-    expect(screen.getByRole('button', { name: '成组左右' })).toBeDisabled();
-    expect(screen.getByRole('button', { name: '成组上下' })).toBeDisabled();
   });
 
   it('centers the active slot horizontally from the quick positioning toolbar', () => {
@@ -698,12 +572,14 @@ describe('FreeLayoutEditor', () => {
     ]);
   });
 
-  it('removes the active slot from the quick positioning toolbar', () => {
-    const onRemoveSlot = vi.fn();
-    renderEditor({ onRemoveSlot });
+  it('centers the active slot on both axes from the quick positioning toolbar', () => {
+    const onUpdateSlots = vi.fn();
+    renderEditor({ onUpdateSlots });
 
-    fireEvent.click(screen.getByRole('button', { name: '删除' }));
+    fireEvent.click(screen.getByRole('button', { name: '居中' }));
 
-    expect(onRemoveSlot).toHaveBeenCalledWith(0);
+    expect(onUpdateSlots).toHaveBeenCalledWith([
+      { name: '', isReversed: false, label: '核心', x: 280, y: 160, rotation: 0, scale: 1 },
+    ]);
   });
 });

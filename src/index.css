@@ -59,6 +59,17 @@
   }
 }
 
+@layer utilities {
+  .custom-scrollbar-hide {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+
+  .custom-scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+}
+
 /* Dark mode styles */
 .dark body {
   background-color: var(--color-forest-bg-dark);

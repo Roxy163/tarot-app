@@ -3,6 +3,7 @@ import { AnimatePresence, motion } from 'motion/react';
 import { Archive, BookOpen, PenLine, Save, X } from 'lucide-react';
 import { DailyFortune } from '../types';
 import { TAROT_CARDS, getCardImageUrl } from '../constants';
+import { useBodyScrollLock } from '../hooks/useBodyScrollLock';
 
 interface DailyFortuneArchiveModalProps {
   fortunes: DailyFortune[];
@@ -23,6 +24,8 @@ export const DailyFortuneArchiveModal: React.FC<DailyFortuneArchiveModalProps> =
   onClose,
   onUpdateReflection,
 }) => {
+  useBodyScrollLock(isOpen);
+
   const [expandedId, setExpandedId] = useState<string | null>(fortunes[0]?.id || null);
   const [editingFortune, setEditingFortune] = useState<DailyFortune | null>(null);
   const [reflectionText, setReflectionText] = useState('');
@@ -63,7 +66,7 @@ export const DailyFortuneArchiveModal: React.FC<DailyFortuneArchiveModalProps> =
     <AnimatePresence>
       {isOpen && (
         <>
-          <div className="fixed inset-x-0 top-0 bottom-20 z-[90] flex items-end justify-center bg-forest-ink/30 p-0 backdrop-blur-sm sm:inset-0 sm:z-[900] sm:items-center sm:p-6">
+          <div className="fixed inset-x-0 top-0 bottom-20 z-[90] flex items-end justify-center bg-forest-ink/30 p-0 backdrop-blur-sm overscroll-contain sm:inset-0 sm:z-[900] sm:items-center sm:p-6">
             <motion.div
               role="dialog"
               aria-label="日运复盘"
@@ -106,7 +109,7 @@ export const DailyFortuneArchiveModal: React.FC<DailyFortuneArchiveModalProps> =
                 </div>
               </div>
 
-              <div className="flex-1 space-y-3 overflow-y-auto p-4">
+              <div className="flex-1 space-y-3 overflow-y-auto overscroll-contain p-4">
                 {fortunes.length === 0 ? (
                   <div className="flex flex-col items-center gap-3 rounded-3xl border border-dashed border-forest-accent/20 bg-white/60 px-6 py-14 text-center">
                     <Archive size={32} className="text-forest-accent/40" />
@@ -183,7 +186,7 @@ export const DailyFortuneArchiveModal: React.FC<DailyFortuneArchiveModalProps> =
 
           <AnimatePresence>
             {editingFortune && (
-              <div className="fixed inset-0 z-[960] flex items-center justify-center bg-forest-ink/30 p-4 backdrop-blur-sm">
+              <div className="fixed inset-0 z-[960] flex items-center justify-center bg-forest-ink/30 p-4 backdrop-blur-sm overscroll-contain">
                 <motion.div
                   role="dialog"
                   aria-label="补写日运对应"

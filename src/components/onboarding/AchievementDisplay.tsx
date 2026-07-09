@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Sparkles, BookOpen, Layers, Globe, Brain, Calendar, Lock } from 'lucide-react';
 import { Achievement } from '../../context/OnboardingContext';
+import { useBodyScrollLock } from '../../hooks/useBodyScrollLock';
 
 interface AchievementDisplayProps {
   achievements: Achievement[];
@@ -22,6 +23,7 @@ export const AchievementDisplay: React.FC<AchievementDisplayProps> = ({
   onViewAll,
 }) => {
   const [recentlyUnlocked, setRecentlyUnlocked] = useState<Achievement | null>(null);
+  useBodyScrollLock(Boolean(recentlyUnlocked));
 
   useEffect(() => {
     const unlocked = achievements.filter(a => a.unlockedAt).sort((a, b) => 
@@ -50,7 +52,7 @@ export const AchievementDisplay: React.FC<AchievementDisplayProps> = ({
             initial={{ opacity: 0, scale: 0.8, y: 50 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.8, y: -50 }}
-            className="fixed inset-0 z-[300] flex items-center justify-center p-6 bg-forest-text/30 backdrop-blur-xl cursor-pointer"
+            className="fixed inset-0 z-[300] flex items-center justify-center p-6 bg-forest-text/30 backdrop-blur-xl cursor-pointer overscroll-contain"
             onClick={() => setRecentlyUnlocked(null)}
           >
             <motion.div

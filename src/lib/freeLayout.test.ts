@@ -6,9 +6,11 @@ import {
   FREE_LAYOUT_SLOT_HEIGHT,
   FREE_LAYOUT_SLOT_WIDTH,
   adaptFreeLayoutSlotsToCanvas,
+  convertGridSlotsToFreeLayout,
   createFreeLayoutSlotAt,
   ensureFreeLayoutSlots,
   getBoundedFreeLayoutPosition,
+  getFreeLayoutBounds,
   getFreeLayoutDisplayFrame,
   snapFreeLayoutValue,
 } from './freeLayout';
@@ -103,5 +105,40 @@ describe('freeLayout', () => {
     expect(Math.max(...result.map(slot => (slot.x || 0) + FREE_LAYOUT_SLOT_WIDTH * (slot.scale || 1)))).toBeLessThanOrEqual(FREE_LAYOUT_CANVAS_WIDTH);
     expect(Math.max(...result.map(slot => (slot.y || 0) + FREE_LAYOUT_SLOT_HEIGHT * (slot.scale || 1)))).toBeLessThanOrEqual(FREE_LAYOUT_CANVAS_HEIGHT);
     expect(result[0].scale).toBeLessThan(1.4);
+  });
+
+  it('converts official grid positions into centered free layout coordinates', () => {
+    const result = convertGridSlotsToFreeLayout([
+      { name: '', isReversed: false, label: '目标', position: 'col-start-2 row-start-1' },
+      { name: '', isReversed: false, label: '现状', position: 'col-start-1 row-start-2' },
+      { name: '', isReversed: false, label: '挑战', position: 'col-start-1 row-start-2', isRotated: true },
+      { name: '', isReversed: false, label: '未来', position: 'col-start-3 row-start-2' },
+    ], 'celtic');
+
+    expect(result.every(slot => slot.position === '')).toBe(true);
+    expect(result[0].x).toBeGreaterThan(result[1].x || 0);
+    expect(result[3].x).toBeGreaterThan(result[0].x || 0);
+    expect(result[2]).toMatchObject({
+      x: result[1].x,
+      y: result[1].y,
+      rotation: 90,
+    });
+  });
+
+  it('keeps yearly grid templates visible when converted to free layout', () => {
+    const result = convertGridSlotsToFreeLayout([
+      { name: '', isReversed: false, label: '一月', position: 'col-start-1 row-start-4' },
+      { name: '', isReversed: false, label: '四月', position: 'col-start-7 row-start-7' },
+      { name: '', isReversed: false, label: '七月', position: 'col-start-13 row-start-4' },
+      { name: '', isReversed: false, label: '十月', position: 'col-start-7 row-start-1' },
+      { name: '', isReversed: false, label: '底牌', position: 'col-start-7 row-start-4' },
+    ], 'yearly');
+    const bounds = getFreeLayoutBounds(result);
+
+    expect(bounds.minX).toBeGreaterThanOrEqual(0);
+    expect(bounds.minY).toBeGreaterThanOrEqual(0);
+    expect(bounds.maxX).toBeLessThanOrEqual(FREE_LAYOUT_CANVAS_WIDTH);
+    expect(bounds.maxY).toBeLessThanOrEqual(FREE_LAYOUT_CANVAS_HEIGHT);
+    expect(result.find(slot => slot.label === '底牌')?.x).toBeCloseTo(result.find(slot => slot.label === '十月')?.x || 0);
   });
 });

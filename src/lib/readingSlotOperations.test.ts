@@ -5,6 +5,7 @@ import {
   addReadingSlot,
   applyGridSlotPositionClick,
   appendSlotHistory,
+  moveReadingSlot,
   removeReadingSlot,
   selectCardForSlot,
   swapReadingSlots,
@@ -67,6 +68,18 @@ describe('readingSlotOperations', () => {
     expect(swapReadingSlots(slots, 0, 1)).toEqual([slots[1], slots[0]]);
     expect(swapReadingSlots(slots, 0, 8)).toBe(slots);
     expect(swapReadingSlots(slots, 1, 1)).toBe(slots);
+  });
+
+  it('moves a slot to a new order position', () => {
+    const threeSlots = [
+      slots[0],
+      slots[1],
+      { name: '皇后', isReversed: false, label: '三' },
+    ];
+
+    expect(moveReadingSlot(threeSlots, 2, 0)).toEqual([threeSlots[2], threeSlots[0], threeSlots[1]]);
+    expect(moveReadingSlot(threeSlots, 0, 9)).toBe(threeSlots);
+    expect(moveReadingSlot(threeSlots, 1, 1)).toBe(threeSlots);
   });
 
   it('updates a slot label without mutating the original slot', () => {

@@ -3,6 +3,7 @@ import { AnimatePresence, motion } from 'motion/react';
 import { BookOpen, CheckCircle2, PencilLine, Sparkles, X } from 'lucide-react';
 import { TarotReading } from '../types';
 import { TAROT_CARDS, getCardImageUrl } from '../constants';
+import { useBodyScrollLock } from '../hooks/useBodyScrollLock';
 
 interface ReadingDetailModalProps {
   reading: TarotReading | null;
@@ -15,6 +16,8 @@ export const ReadingDetailModal: React.FC<ReadingDetailModalProps> = ({
   onClose,
   onEdit,
 }) => {
+  useBodyScrollLock(Boolean(reading));
+
   if (!reading) return null;
 
   const overviewText = (
@@ -49,7 +52,7 @@ export const ReadingDetailModal: React.FC<ReadingDetailModalProps> = ({
 
   return (
     <AnimatePresence>
-      <div className="fixed inset-0 z-[260] flex items-center justify-center p-3 sm:p-6">
+      <div className="fixed inset-0 z-[260] flex items-center justify-center p-3 overscroll-contain sm:p-6">
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
@@ -109,7 +112,7 @@ export const ReadingDetailModal: React.FC<ReadingDetailModalProps> = ({
             </div>
           </div>
 
-          <div className="overflow-y-auto max-h-[calc(92vh-88px)] p-4 sm:p-6 space-y-5">
+          <div className="overflow-y-auto overscroll-contain max-h-[calc(92vh-88px)] p-4 sm:p-6 space-y-5">
             {reading.isForClient && (
               <section className="rounded-2xl bg-amber-50 border border-amber-100 p-4 space-y-2">
                 <h3 className="text-xs font-bold text-amber-700 uppercase tracking-wider">客户档案</h3>

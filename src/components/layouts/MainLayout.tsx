@@ -2,6 +2,7 @@ import React from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Menu, History, Plus, BookOpen, Globe, User, LogIn } from 'lucide-react';
 import { TabButton } from '../TabButton';
+import { useBodyScrollLock } from '../../hooks/useBodyScrollLock';
 
 type TabType = 'home' | 'add' | 'private' | 'public' | 'metadata' | 'profile';
 
@@ -39,6 +40,8 @@ export const MainLayout: React.FC<MainLayoutProps> = ({
   onShowAuth,
   sidebarContent
 }) => {
+  useBodyScrollLock(isSidebarOpen);
+
   return (
     <div className="min-h-screen bg-forest-bg flex flex-col max-w-4xl mx-auto px-4 py-6 sm:py-8 relative overflow-x-hidden">
       {/* Sidebar */}
@@ -50,7 +53,7 @@ export const MainLayout: React.FC<MainLayoutProps> = ({
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               onClick={() => setIsSidebarOpen(false)}
-              className="fixed inset-0 bg-forest-text/20 backdrop-blur-sm z-[105]"
+              className="fixed inset-0 bg-forest-bg/35 backdrop-blur-[1px] z-[105] overscroll-contain"
             />
             <motion.aside
               initial={{ x: '-100%' }}
@@ -59,7 +62,7 @@ export const MainLayout: React.FC<MainLayoutProps> = ({
               transition={{ type: 'spring', damping: 30, stiffness: 300 }}
               className="fixed left-0 top-0 bottom-0 w-80 max-w-[85vw] bg-white shadow-2xl z-[110] flex flex-col overflow-hidden"
             >
-              <div className="flex-1 overflow-y-auto">
+              <div className="flex-1 overflow-y-auto overscroll-contain">
                 {sidebarContent}
               </div>
             </motion.aside>

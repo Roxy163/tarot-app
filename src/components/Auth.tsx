@@ -4,6 +4,7 @@ import { Mail, Lock, Send, Sparkles, ArrowRight, CloudOff, Home, Clock, CheckCir
 import { useAuth } from '../context/AuthContext';
 import { checkIfMagicLink, confirmPasswordReset } from '../lib/firebase';
 import { normalizeEmailInput } from '../lib/emailInput';
+import { useBodyScrollLock } from '../hooks/useBodyScrollLock';
 
 interface AuthProps {
   onClose?: () => void;
@@ -36,6 +37,7 @@ export const Auth: React.FC<AuthProps> = ({ onClose, onSignedOut }) => {
   const [verificationLoading, setVerificationLoading] = useState(false);
   const [verificationMessage, setVerificationMessage] = useState('');
   const [verificationError, setVerificationError] = useState('');
+  useBodyScrollLock(showResetPassword || showSetNewPassword || showChangePassword);
 
   const switchAuthMode = (nextMode: 'login' | 'signup') => {
     setAuthMode(nextMode);
@@ -603,7 +605,7 @@ export const Auth: React.FC<AuthProps> = ({ onClose, onSignedOut }) => {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-forest-text/20 backdrop-blur-sm"
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-forest-text/20 backdrop-blur-sm overscroll-contain"
             onClick={() => setShowResetPassword(false)}
           >
             <motion.div
@@ -703,7 +705,7 @@ export const Auth: React.FC<AuthProps> = ({ onClose, onSignedOut }) => {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-forest-text/20 backdrop-blur-sm"
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-forest-text/20 backdrop-blur-sm overscroll-contain"
             onClick={() => {
               setShowSetNewPassword(false);
               window.history.replaceState({}, document.title, window.location.pathname);
@@ -823,7 +825,7 @@ export const Auth: React.FC<AuthProps> = ({ onClose, onSignedOut }) => {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-forest-text/20 backdrop-blur-sm"
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-forest-text/20 backdrop-blur-sm overscroll-contain"
             onClick={() => setShowChangePassword(false)}
           >
             <motion.div

@@ -1,11 +1,13 @@
 import React, { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { ArrowRight, Check, X } from 'lucide-react';
+import { useBodyScrollLock } from '../../hooks/useBodyScrollLock';
 
 export interface FeatureSpotlightStep {
   target: string;
   title: string;
   description: string;
+  mobileNote?: 'right-top' | 'right-middle' | 'below-center';
 }
 
 interface FeatureSpotlightGuideProps {
@@ -35,12 +37,15 @@ export const FeatureSpotlightGuide: React.FC<FeatureSpotlightGuideProps> = ({
   steps,
   onFinish,
 }) => {
+  useBodyScrollLock(isOpen);
+
   const [stepIndex, setStepIndex] = useState(0);
   const [targetRect, setTargetRect] = useState<TargetRect | null>(null);
   const [viewportSize, setViewportSize] = useState(getViewportSize);
   const step = steps[stepIndex];
   const viewport = viewportSize;
   const isMobile = viewport.width < 640;
+  const mobileNoteWidth = step.mobileNote?.startsWith('right') ? 176 : 220;
 
   useEffect(() => {
     if (!isOpen || !step?.target) return;
@@ -67,10 +72,12 @@ export const FeatureSpotlightGuide: React.FC<FeatureSpotlightGuideProps> = ({
   }, [isMobile, isOpen, step?.target]);
 
   useEffect(() => {
-    if (!isOpen) {
-      setStepIndex(0);
-      return;
-    }
+    setStepIndex(0);
+    if (!isOpen) return;
+  }, [isOpen]);
+
+  useEffect(() => {
+    if (!isOpen) return;
 
     const updateTargetRect = () => {
       setViewportSize(getViewportSize());
@@ -107,9 +114,9 @@ export const FeatureSpotlightGuide: React.FC<FeatureSpotlightGuideProps> = ({
   const targetRight = targetRect ? targetRect.left + targetRect.width : targetCenterX;
   const targetBottom = targetRect ? targetRect.top + targetRect.height : targetCenterY;
   const viewportMargin = isMobile ? 18 : 32;
-  const noteGap = isMobile ? 42 : 104;
-  const noteWidth = Math.min(isMobile ? 250 : 330, viewport.width - viewportMargin * 2);
-  const estimatedNoteHeight = isMobile ? 132 : 132;
+  const noteGap = isMobile ? 34 : 104;
+  const noteWidth = Math.min(isMobile ? mobileNoteWidth : 330, viewport.width - viewportMargin * 2);
+  const estimatedNoteHeight = isMobile ? 106 : 132;
   const spaceAbove = targetRect ? targetRect.top : targetCenterY;
   const spaceBelow = targetRect ? viewport.height - targetBottom : viewport.height - targetCenterY;
   const spaceLeft = targetRect ? targetRect.left : targetCenterX;
@@ -121,21 +128,49 @@ export const FeatureSpotlightGuide: React.FC<FeatureSpotlightGuideProps> = ({
       : spaceAbove >= estimatedNoteHeight + noteGap + viewportMargin || spaceAbove >= spaceBelow
         ? 'above'
         : 'below';
-  const noteLeft = targetRect
-    ? notePlacement === 'right'
+  const canPlaceMobileRight = Boolean(targetRect && targetRight + 18 + noteWidth <= viewport.width - viewportMargin);
+  const canPlaceMobileLeft = Boolean(targetRect && targetRect.left - 18 - noteWidth >= viewportMargin);
+  const preferredMobilePlacement: NotePlacement | null = targetRect && isMobile && step.mobileNote?.startsWith('right')
+    ? canPlaceMobileRight
+      ? 'right'
+      : canPlaceMobileLeft
+        ? 'left'
+        : 'above'
+    : targetRect && isMobile && step.mobileNote === 'below-center'
+      ? 'below'
+      : null;
+  const effectiveNotePlacement = preferredMobilePlacement || notePlacement;
+  const preferredMobileLeft = targetRect && isMobile && preferredMobilePlacement === 'right'
+    ? targetRight + 18
+    : targetRect && isMobile && preferredMobilePlacement === 'left'
+      ? targetRect.left - noteWidth - 18
+      : null;
+  const preferredMobileTop = targetRect && isMobile && step.mobileNote === 'right-top'
+    ? clamp(
+        targetRect.top - estimatedNoteHeight - 22,
+        viewportMargin,
+        Math.max(viewportMargin, viewport.height - estimatedNoteHeight - viewportMargin),
+      )
+    : targetRect && isMobile && step.mobileNote === 'right-middle'
+      ? clamp(targetCenterY - estimatedNoteHeight / 2, viewportMargin, Math.max(viewportMargin, viewport.height - estimatedNoteHeight - viewportMargin))
+    : targetRect && isMobile && step.mobileNote === 'below-center'
+      ? clamp(targetBottom + 18, viewportMargin, Math.max(viewportMargin, viewport.height - estimatedNoteHeight - viewportMargin))
+      : null;
+  const noteLeft = preferredMobileLeft ?? (targetRect
+    ? effectiveNotePlacement === 'right'
       ? clamp(targetRight + noteGap, viewportMargin, viewport.width - noteWidth - viewportMargin)
-      : notePlacement === 'left'
+      : effectiveNotePlacement === 'left'
         ? clamp(targetRect.left - noteWidth - noteGap, viewportMargin, viewport.width - noteWidth - viewportMargin)
         : clamp(targetCenterX - noteWidth / 2, viewportMargin, viewport.width - noteWidth - viewportMargin)
-    : viewportMargin;
-  const noteTop = targetRect
-    ? notePlacement === 'above'
+    : viewportMargin);
+  const noteTop = preferredMobileTop ?? (targetRect
+    ? effectiveNotePlacement === 'above'
       ? clamp(
           targetRect.top - estimatedNoteHeight - noteGap,
           viewportMargin,
           Math.max(viewportMargin, viewport.height - estimatedNoteHeight - viewportMargin),
         )
-      : notePlacement === 'below'
+      : effectiveNotePlacement === 'below'
         ? clamp(
             targetBottom + noteGap,
             viewportMargin,
@@ -146,7 +181,7 @@ export const FeatureSpotlightGuide: React.FC<FeatureSpotlightGuideProps> = ({
           viewportMargin,
           Math.max(viewportMargin, viewport.height - estimatedNoteHeight - viewportMargin),
         )
-    : viewport.height * 0.16;
+    : viewport.height * 0.16);
   const noteRight = noteLeft + noteWidth;
   const noteBottom = noteTop + estimatedNoteHeight;
   const noteCenterX = noteLeft + noteWidth / 2;
@@ -154,31 +189,31 @@ export const FeatureSpotlightGuide: React.FC<FeatureSpotlightGuideProps> = ({
   const arrowComesFromRight = noteCenterX >= targetCenterX;
   const targetGap = isMobile ? 10 : 14;
   const noteArrowGap = isMobile ? 8 : 10;
-  const arrowStartX = notePlacement === 'right'
+  const arrowStartX = effectiveNotePlacement === 'right'
     ? noteLeft - noteArrowGap
-    : notePlacement === 'left'
+    : effectiveNotePlacement === 'left'
       ? noteRight + noteArrowGap
       : clamp(
           targetCenterX < noteCenterX ? noteLeft + noteWidth * 0.74 : noteLeft + noteWidth * 0.26,
           noteLeft + 28,
           noteRight - 28,
         );
-  const arrowStartY = notePlacement === 'above'
+  const arrowStartY = effectiveNotePlacement === 'above'
     ? noteBottom + noteArrowGap
-    : notePlacement === 'below'
+    : effectiveNotePlacement === 'below'
       ? noteTop - noteArrowGap
       : clamp(targetCenterY, noteTop + 24, noteBottom - 24);
   const arrowEndX = targetRect
-    ? notePlacement === 'right' || (notePlacement === 'above' && targetCenterX < noteCenterX)
+    ? effectiveNotePlacement === 'right' || (effectiveNotePlacement === 'above' && targetCenterX < noteCenterX)
       ? targetRight + targetGap
-      : notePlacement === 'left' || (notePlacement === 'above' && targetCenterX >= noteCenterX)
+      : effectiveNotePlacement === 'left' || (effectiveNotePlacement === 'above' && targetCenterX >= noteCenterX)
         ? targetRect.left - targetGap
         : clamp(targetCenterX, targetRect.left + 12, targetRight - 12)
     : targetCenterX;
   const arrowEndY = targetRect
-    ? notePlacement === 'above'
+    ? effectiveNotePlacement === 'above'
       ? clamp(targetRect.top + targetRect.height * 0.42, targetRect.top + 10, targetBottom - 10)
-      : notePlacement === 'below'
+      : effectiveNotePlacement === 'below'
         ? clamp(targetRect.top + targetRect.height * 0.58, targetRect.top + 10, targetBottom - 10)
         : clamp(targetCenterY, targetRect.top + 10, targetBottom - 10)
     : targetCenterY;
@@ -187,28 +222,28 @@ export const FeatureSpotlightGuide: React.FC<FeatureSpotlightGuideProps> = ({
   const sideDistance = Math.abs(arrowStartX - arrowEndX);
   const sideBend = clamp(sideDistance * 0.58, isMobile ? 42 : 54, isMobile ? 92 : 128);
   const sideLift = isMobile ? 54 : 82;
-  const arrowControl1X = notePlacement === 'right'
+  const arrowControl1X = effectiveNotePlacement === 'right'
     ? clamp(arrowStartX - sideBend, 20, viewport.width - 20)
-    : notePlacement === 'left'
+    : effectiveNotePlacement === 'left'
       ? clamp(arrowStartX + sideBend, 20, viewport.width - 20)
-      : notePlacement === 'above'
+      : effectiveNotePlacement === 'above'
         ? clamp(arrowStartX + (targetLeftOfNote ? -8 : 8), 20, viewport.width - 20)
         : clamp(arrowStartX + arrowDirection * (isMobile ? 46 : 72), 20, viewport.width - 20);
-  const arrowControl1Y = notePlacement === 'above'
+  const arrowControl1Y = effectiveNotePlacement === 'above'
     ? clamp(arrowStartY + (isMobile ? 56 : 74), 20, viewport.height - 20)
-    : notePlacement === 'below'
+    : effectiveNotePlacement === 'below'
       ? clamp(arrowStartY - (isMobile ? 56 : 74), 20, viewport.height - 20)
       : clamp(arrowStartY - sideLift, 20, viewport.height - 20);
-  const arrowControl2X = notePlacement === 'right'
+  const arrowControl2X = effectiveNotePlacement === 'right'
     ? clamp(arrowEndX + sideBend, 20, viewport.width - 20)
-    : notePlacement === 'left'
+    : effectiveNotePlacement === 'left'
       ? clamp(arrowEndX - sideBend, 20, viewport.width - 20)
-      : notePlacement === 'above'
+      : effectiveNotePlacement === 'above'
         ? clamp(arrowEndX + (targetLeftOfNote ? 82 : -82), 20, viewport.width - 20)
         : clamp(arrowEndX - arrowDirection * (isMobile ? 72 : 104), 20, viewport.width - 20);
-  const arrowControl2Y = notePlacement === 'above'
+  const arrowControl2Y = effectiveNotePlacement === 'above'
     ? clamp(arrowEndY + (isMobile ? 44 : 62), 20, viewport.height - 20)
-    : notePlacement === 'below'
+    : effectiveNotePlacement === 'below'
       ? clamp(arrowEndY - (isMobile ? 44 : 62), 20, viewport.height - 20)
       : clamp(arrowEndY - sideLift, 20, viewport.height - 20);
   const arrowPath = `M ${arrowStartX} ${arrowStartY} C ${arrowControl1X} ${arrowControl1Y}, ${arrowControl2X} ${arrowControl2Y}, ${arrowEndX} ${arrowEndY}`;
@@ -236,7 +271,7 @@ export const FeatureSpotlightGuide: React.FC<FeatureSpotlightGuideProps> = ({
     <AnimatePresence>
       {isOpen && (
         <motion.div
-          className="fixed inset-0 z-[1000] text-forest-ink"
+          className="fixed inset-0 z-[1000] overscroll-contain text-forest-ink"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
@@ -325,9 +360,9 @@ export const FeatureSpotlightGuide: React.FC<FeatureSpotlightGuideProps> = ({
               width: noteWidth,
               textShadow: '0 1px 12px rgba(255,255,255,0.95)',
             }}
-            initial={{ opacity: 0, y: notePlacement === 'above' ? 12 : -12 }}
+            initial={{ opacity: 0, y: effectiveNotePlacement === 'above' ? 12 : -12 }}
             animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: notePlacement === 'above' ? 12 : -12 }}
+            exit={{ opacity: 0, y: effectiveNotePlacement === 'above' ? 12 : -12 }}
             key={`${step.title}-floating-note`}
             data-testid={isMobile ? 'spotlight-mobile-note' : 'spotlight-floating-note'}
           >

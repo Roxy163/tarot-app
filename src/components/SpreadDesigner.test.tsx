@@ -68,7 +68,7 @@ describe('SpreadDesigner', () => {
 
     await user.click(screen.getByRole('button', { name: '新建空白' }));
 
-    expect(onUpdateNewSpreadName).toHaveBeenCalledWith('个人牌阵');
+    expect(onUpdateNewSpreadName).toHaveBeenCalledWith('');
     expect(onSetDesignActiveSlot).toHaveBeenCalledWith(-1);
     expect(onStartNewSession).toHaveBeenCalled();
   });

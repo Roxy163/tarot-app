@@ -1,5 +1,5 @@
 import React from 'react';
-import { Plus, RotateCcw, X, Layers } from 'lucide-react';
+import { Plus, X, Layers } from 'lucide-react';
 import { ReadingSlotData } from '../types';
 import { TAROT_CARDS, getCardImageUrl } from '../constants';
 
@@ -14,14 +14,14 @@ interface ReadingSlotProps {
   onSlotClick: (idx: number) => void;
   onLongPressStart: (idx: number) => void;
   onLongPressEnd: () => void;
-  onToggleReverse: (idx: number, e: React.MouseEvent) => void;
   onRemove: (idx: number, e: React.MouseEvent) => void;
+  allowRemove?: boolean;
   onCycle?: (idx: number, e: React.MouseEvent) => void;
 }
 
 export const ReadingSlot: React.FC<ReadingSlotProps> = ({
   slot, index, isActive, isCelticCenter, stackIndex, isSmall, showSlotNumbers,
-  onSlotClick, onLongPressStart, onLongPressEnd, onToggleReverse, onRemove, onCycle
+  onSlotClick, onLongPressStart, onLongPressEnd, onRemove, allowRemove = true, onCycle
 }) => {
   const cardData = TAROT_CARDS.find(c => 
     c.name === slot.name || 
@@ -83,29 +83,20 @@ export const ReadingSlot: React.FC<ReadingSlotProps> = ({
         )}
       </button>
       {slot.name && (
-        <button 
-          type="button" 
-          onClick={(e) => onToggleReverse(index, e)} 
-          className="absolute -bottom-2 -right-2 bg-forest-accent text-white w-11 h-11 rounded-full shadow-md flex items-center justify-center hover:scale-105 active:scale-95 transition-all z-20"
-          title="切换正逆位"
-          aria-label={`切换第 ${index + 1} 张牌正逆位`}
-        >
-          <RotateCcw size={16} />
-        </button>
-      )}
-      {slot.name && (
         <div className="absolute -bottom-2 left-2 px-1.5 py-0.5 bg-white border border-forest-accent/10 rounded-full shadow-sm text-[8px] font-bold text-forest-accent z-10 pointer-events-none">
           {slot.isReversed ? '逆' : '正'}
         </div>
       )}
-      <button 
-        type="button" 
-        onClick={(e) => onRemove(index, e)} 
-        className="absolute -top-3 -right-3 bg-white text-forest-muted hover:text-red-500 rounded-full w-11 h-11 shadow-sm border border-forest-accent/10 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity z-10 flex items-center justify-center"
-        aria-label={`移除第 ${index + 1} 个位置`}
-      >
-        <X size={14} />
-      </button>
+      {allowRemove && (
+        <button
+          type="button"
+          onClick={(e) => onRemove(index, e)}
+          className="absolute -top-3 -right-3 bg-white text-forest-muted hover:text-red-500 rounded-full w-11 h-11 shadow-sm border border-forest-accent/10 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity z-10 flex items-center justify-center"
+          aria-label={`移除第 ${index + 1} 个位置`}
+        >
+          <X size={14} />
+        </button>
+      )}
       {onCycle && (
         <button 
           type="button" 
