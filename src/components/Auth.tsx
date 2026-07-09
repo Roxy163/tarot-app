@@ -4,6 +4,8 @@ import { Mail, Lock, Send, Sparkles, ArrowRight, CloudOff, Home, Clock, CheckCir
 import { useAuth } from '../context/AuthContext';
 import { checkIfMagicLink, confirmPasswordReset } from '../lib/firebase';
 import { normalizeEmailInput } from '../lib/emailInput';
+import { getAuthErrorDisplay } from '../lib/authError';
+import type { AuthErrorDisplay, AuthRecoveryAction } from '../lib/authError';
 import { useBodyScrollLock } from '../hooks/useBodyScrollLock';
 
 interface AuthProps {
@@ -18,7 +20,7 @@ export const Auth: React.FC<AuthProps> = ({ onClose, onSignedOut }) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [authError, setAuthError] = useState<AuthErrorDisplay | null>(null);
   const [showResetPassword, setShowResetPassword] = useState(false);
   const [showSetNewPassword, setShowSetNewPassword] = useState(false);
   const [showChangePassword, setShowChangePassword] = useState(false);
@@ -41,9 +43,30 @@ export const Auth: React.FC<AuthProps> = ({ onClose, onSignedOut }) => {
 
   const switchAuthMode = (nextMode: 'login' | 'signup') => {
     setAuthMode(nextMode);
-    setError(null);
+    setAuthError(null);
     setVerificationMessage('');
     setVerificationError('');
+  };
+
+  const runAuthRecoveryAction = (action: AuthRecoveryAction) => {
+    switch (action) {
+      case 'reset-password':
+        setResetEmail(normalizeEmailInput(email));
+        setShowResetPassword(true);
+        break;
+      case 'switch-signup':
+        switchAuthMode('signup');
+        break;
+      case 'switch-login':
+        switchAuthMode('login');
+        break;
+      case 'retry':
+        setAuthError(null);
+        break;
+      case 'none':
+      default:
+        break;
+    }
   };
 
   // 检查是否是密码重置链接
@@ -62,51 +85,13 @@ export const Auth: React.FC<AuthProps> = ({ onClose, onSignedOut }) => {
     if (!normalizedEmail || !password || loading) return;
 
     setLoading(true);
-    setError(null);
+    setAuthError(null);
 
     try {
       await signIn(normalizedEmail, password);
       if (onClose) onClose();
     } catch (err: any) {
-      let errorMessage = err.message || "登录失败，请重试。";
-      
-      switch (err.code) {
-        case 'auth/invalid-credential':
-          errorMessage = "邮箱或密码不正确，请重试。";
-          break;
-        case 'auth/invalid-email':
-          errorMessage = "请输入有效的邮箱地址。";
-          break;
-        case 'auth/too-many-requests':
-          errorMessage = "尝试次数过多，请稍后再试。";
-          break;
-        case 'auth/user-not-found':
-          errorMessage = "该邮箱尚未注册，请先注册账号。";
-          break;
-        case 'auth/wrong-password':
-          errorMessage = "密码错误，请重试。";
-          break;
-        case 'auth/user-disabled':
-          errorMessage = "账号已被禁用，请联系管理员。";
-          break;
-        case 'auth/unauthorized-domain':
-          errorMessage = "当前访问域名未加入 Firebase 登录授权，请在 Firebase Authentication 的 Authorized domains 中加入这个域名。";
-          break;
-        case 'auth/operation-not-allowed':
-          errorMessage = "邮箱密码登录尚未开启，请在 Firebase Authentication 中启用 Email/Password。";
-          break;
-        case 'auth/configuration-not-found':
-          errorMessage = "登录配置未完整启用，请检查 Firebase Authentication 是否已开启邮箱密码登录。";
-          break;
-        case 'auth/network-request-failed':
-          errorMessage = "网络连接失败，请检查网络设置。若在中国境内，建议使用网络加速服务。";
-          break;
-        case 'auth/internal-error':
-          errorMessage = "服务器连接超时，请稍后再试或检查网络。";
-          break;
-      }
-      
-      setError(errorMessage);
+      setAuthError(getAuthErrorDisplay(err, 'login'));
     } finally {
       setLoading(false);
     }
@@ -118,45 +103,14 @@ export const Auth: React.FC<AuthProps> = ({ onClose, onSignedOut }) => {
     if (!normalizedEmail || !password || loading) return;
 
     setLoading(true);
-    setError(null);
+    setAuthError(null);
 
     try {
       await signUp(normalizedEmail, password);
       if (onClose) onClose();
       setVerificationMessage('验证邮件已发送，请前往邮箱完成验证。');
     } catch (err: any) {
-      let errorMessage = err.message || "注册失败，请重试。";
-      
-      switch (err.code) {
-        case 'auth/invalid-email':
-          errorMessage = "请输入有效的邮箱地址。";
-          break;
-        case 'auth/weak-password':
-          errorMessage = "密码强度不足，请使用至少6位字符。";
-          break;
-        case 'auth/email-already-in-use':
-          errorMessage = "该邮箱已被注册，请尝试找回密码。";
-          setResetEmail(normalizeEmailInput(email));
-          setShowResetPassword(true);
-          break;
-        case 'auth/unauthorized-domain':
-          errorMessage = "当前访问域名未加入 Firebase 登录授权，请在 Firebase Authentication 的 Authorized domains 中加入这个域名。";
-          break;
-        case 'auth/operation-not-allowed':
-          errorMessage = "邮箱密码注册尚未开启，请在 Firebase Authentication 中启用 Email/Password。";
-          break;
-        case 'auth/configuration-not-found':
-          errorMessage = "登录配置未完整启用，请检查 Firebase Authentication 是否已开启邮箱密码登录。";
-          break;
-        case 'auth/network-request-failed':
-          errorMessage = "网络连接失败，请检查网络设置。若在中国境内，建议使用网络加速服务。";
-          break;
-        case 'auth/internal-error':
-          errorMessage = "服务器连接超时，请稍后再试或检查网络。";
-          break;
-      }
-      
-      setError(errorMessage);
+      setAuthError(getAuthErrorDisplay(err, 'signup'));
     } finally {
       setLoading(false);
     }
@@ -457,7 +411,10 @@ export const Auth: React.FC<AuthProps> = ({ onClose, onSignedOut }) => {
                         className="w-full pl-10 pr-4 py-3.5 bg-forest-bg/30 border border-forest-accent/10 rounded-xl focus:ring-2 focus:ring-forest-accent/20 transition-all outline-none text-sm"
                         placeholder="example@email.com"
                         value={email}
-                        onChange={(e) => setEmail(normalizeEmailInput(e.target.value))}
+                        onChange={(e) => {
+                          setEmail(normalizeEmailInput(e.target.value));
+                          setAuthError(null);
+                        }}
                       />
                       <Mail className="absolute left-3 top-1/2 -translate-y-1/2 text-forest-muted" size={16} />
                     </div>
@@ -475,41 +432,48 @@ export const Auth: React.FC<AuthProps> = ({ onClose, onSignedOut }) => {
                         className="w-full pl-10 pr-4 py-3.5 bg-forest-bg/30 border border-forest-accent/10 rounded-xl focus:ring-2 focus:ring-forest-accent/20 transition-all outline-none text-sm"
                         placeholder="至少6位字符"
                         value={password}
-                        onChange={(e) => setPassword(e.target.value)}
+                        onChange={(e) => {
+                          setPassword(e.target.value);
+                          setAuthError(null);
+                        }}
                       />
                       <Lock className="absolute left-3 top-1/2 -translate-y-1/2 text-forest-muted" size={16} />
                     </div>
                   </div>
 
-                  {error && (
+                  {authError && (
                     <motion.div
                       initial={{ opacity: 0 }}
                       animate={{ opacity: 1 }}
-                      className="text-xs text-red-500 bg-red-50 p-3 rounded-lg border border-red-100"
+                      className="text-xs text-red-600 bg-red-50 p-3 rounded-2xl border border-red-100 space-y-2"
+                      role="alert"
                     >
-                      <p className="text-center">{error}</p>
-                      {error.includes('网络') && (
-                        <motion.p
-                          initial={{ opacity: 0 }}
-                          animate={{ opacity: 1 }}
-                          className="block w-full mt-2 text-xs text-amber-500 text-center"
-                        >
-                          💡 在中国境内访问可能需要网络加速服务
-                        </motion.p>
-                      )}
-                      {(error.includes('密码错误') || error.includes('密码不正确') || error.includes('找回密码')) && (
-                        <motion.button
-                          initial={{ opacity: 0 }}
-                          animate={{ opacity: 1 }}
-                          onClick={() => {
-                            setShowResetPassword(true);
-                            setResetEmail(normalizeEmailInput(email));
-                          }}
-                          className="block w-full mt-2 py-1.5 text-xs text-forest-accent hover:underline transition-colors"
-                        >
-                          忘记密码？点击找回
-                        </motion.button>
-                      )}
+                      <div className="flex items-start gap-2">
+                        <AlertCircle size={15} className="mt-0.5 shrink-0" />
+                        <div className="space-y-1">
+                          <p className="font-bold text-red-700">{authError.title}</p>
+                          <p className="leading-relaxed text-red-600/90">{authError.message}</p>
+                        </div>
+                      </div>
+                      <ul className="space-y-1 pl-6 text-[11px] leading-relaxed text-red-600/85 list-disc">
+                        {authError.tips.map(tip => (
+                          <li key={tip}>{tip}</li>
+                        ))}
+                      </ul>
+                      <div className="flex items-center justify-between gap-2">
+                        {authError.supportCode && (
+                          <span className="text-[10px] text-red-400">错误码：{authError.supportCode}</span>
+                        )}
+                        {authError.action !== 'none' && authError.actionLabel && (
+                          <button
+                            type="button"
+                            onClick={() => runAuthRecoveryAction(authError.action)}
+                            className="ml-auto min-h-9 px-3 rounded-xl bg-white border border-red-100 text-red-600 text-[11px] font-bold hover:bg-red-100/50 transition-colors"
+                          >
+                            {authError.actionLabel}
+                          </button>
+                        )}
+                      </div>
                     </motion.div>
                   )}
 

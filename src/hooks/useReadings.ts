@@ -26,6 +26,24 @@ import {
 
 const CLOUD_SAVE_DEBOUNCE_MS = 1200;
 
+export type CloudSyncStatus = 'guest' | 'loading' | 'syncing' | 'synced' | 'error';
+
+export interface CloudSyncInfo {
+  status: CloudSyncStatus;
+  lastSyncedAt: string | null;
+  lastAttemptAt: string | null;
+  cloudReadingsCount: number | null;
+  lastError: string | null;
+}
+
+const getSyncStorageKey = (uid: string) => `tarot_last_cloud_sync_at_${uid}`;
+
+const getReadableSyncError = (error: unknown) => (
+  error instanceof Error && error.message
+    ? error.message
+    : '云端暂时不可用，请稍后重试。'
+);
+
 const normalizeMemoryKeyword = (keyword: string) => keyword.trim().replace(/^#+/, '').replace(/\s+/g, '');
 
 const getReadingInsightForCard = (reading: TarotReading, cardName: string) => {
@@ -130,8 +148,40 @@ export const useReadings = (
   const [loadedDataKey, setLoadedDataKey] = useState<string | null>(null);
   const [isCloudSyncPaused, setIsCloudSyncPaused] = useState(false);
   const [syncNotice, setSyncNotice] = useState<string | null>(null);
+  const [cloudSyncInfo, setCloudSyncInfo] = useState<CloudSyncInfo>({
+    status: isAuthLoading ? 'loading' : (session?.uid ? 'loading' : 'guest'),
+    lastSyncedAt: null,
+    lastAttemptAt: null,
+    cloudReadingsCount: null,
+    lastError: null,
+  });
   const pendingGuestReadingsSyncRef = useRef(false);
   const pendingDeletedReadingIdsRef = useRef<Set<string>>(new Set());
+
+  const markCloudSyncSuccess = useCallback((cloudReadingsCount?: number | null) => {
+    if (!session?.uid) return;
+
+    const syncedAt = new Date().toISOString();
+    localStorage.setItem(getSyncStorageKey(session.uid), syncedAt);
+    setCloudSyncInfo(prev => ({
+      ...prev,
+      status: 'synced',
+      lastSyncedAt: syncedAt,
+      lastAttemptAt: syncedAt,
+      cloudReadingsCount: cloudReadingsCount ?? prev.cloudReadingsCount,
+      lastError: null,
+    }));
+  }, [session?.uid]);
+
+  const markCloudSyncError = useCallback((error: unknown) => {
+    const attemptedAt = new Date().toISOString();
+    setCloudSyncInfo(prev => ({
+      ...prev,
+      status: 'error',
+      lastAttemptAt: attemptedAt,
+      lastError: getReadableSyncError(error),
+    }));
+  }, []);
 
   const parseSavedArray = <T,>(key: string): T[] | null => {
     const saved = localStorage.getItem(key);
@@ -152,6 +202,7 @@ export const useReadings = (
     const loadData = async () => {
       if (isAuthLoading) {
         setLoadedDataKey(null);
+        setCloudSyncInfo(prev => ({ ...prev, status: 'loading', lastError: null }));
         return;
       }
 
@@ -174,11 +225,25 @@ export const useReadings = (
         setSpreads(localSpreads);
         setCardMetadata(localMetadata);
         setCardKeywordMemory(localKeywordMemory);
+        setCloudSyncInfo({
+          status: 'guest',
+          lastSyncedAt: null,
+          lastAttemptAt: null,
+          cloudReadingsCount: null,
+          lastError: null,
+        });
         setLoadedDataKey(activeDataKey);
         return;
       }
 
       try {
+        const lastSyncedAt = localStorage.getItem(getSyncStorageKey(session.uid));
+        setCloudSyncInfo(prev => ({
+          ...prev,
+          status: 'loading',
+          lastSyncedAt,
+          lastError: null,
+        }));
 
         const [cloudReadings, cloudSpreads, cloudMetadata, cloudKeywordMemory] = await Promise.all([
           getUserReadings(session.uid),
@@ -205,6 +270,16 @@ export const useReadings = (
         setSpreads(mergedSpreads);
         setCardMetadata(mergedMetadata);
         setCardKeywordMemory(mergedKeywordMemory);
+        const syncedAt = new Date().toISOString();
+        localStorage.setItem(getSyncStorageKey(session.uid), syncedAt);
+        setCloudSyncInfo(prev => ({
+          ...prev,
+          status: 'synced',
+          lastSyncedAt: syncedAt,
+          lastAttemptAt: syncedAt,
+          cloudReadingsCount: cloudReadingsNormalized.length,
+          lastError: null,
+        }));
       } catch (error) {
         console.error('Failed to load data:', error);
         if (cancelled) return;
@@ -221,6 +296,7 @@ export const useReadings = (
         setCardKeywordMemory(localKeywordMemory);
         setIsCloudSyncPaused(true);
         setSyncNotice('云端同步暂时不可用，已切换为本地暂存，避免覆盖云端典籍。');
+        markCloudSyncError(error);
       } finally {
         if (!cancelled) setLoadedDataKey(activeDataKey);
       }
@@ -230,7 +306,7 @@ export const useReadings = (
     return () => {
       cancelled = true;
     };
-  }, [activeDataKey, exampleReadings, isAuthLoading, session?.uid]);
+  }, [activeDataKey, exampleReadings, isAuthLoading, markCloudSyncError, session?.uid]);
 
   // 保存数据：登录用户写入 Firebase，访客写入本地。
   useEffect(() => {
@@ -244,11 +320,19 @@ export const useReadings = (
       if (isCloudSyncPaused) return;
 
       const deletedReadingIds = Array.from(pendingDeletedReadingIdsRef.current);
+      const attemptedAt = new Date().toISOString();
+      setCloudSyncInfo(prev => ({
+        ...prev,
+        status: 'syncing',
+        lastAttemptAt: attemptedAt,
+        lastError: null,
+      }));
       const timer = window.setTimeout(() => {
         replaceUserReadings(session.uid, userReadings, { deletedReadingIds })
           .then(result => {
             const privateChangeCount = result.privateReadingsWritten + result.privateReadingsDeleted;
             deletedReadingIds.forEach(id => pendingDeletedReadingIdsRef.current.delete(id));
+            markCloudSyncSuccess(result.totalReadings);
 
             if (pendingGuestReadingsSyncRef.current) {
               localStorage.removeItem('tarot_guest_data');
@@ -268,6 +352,7 @@ export const useReadings = (
           })
           .catch(error => {
             console.error('Failed to save readings:', error);
+            markCloudSyncError(error);
             setSyncNotice('云端典籍保存失败，本机记录已保留；刷新或重新登录后会再次尝试同步。');
           });
       }, CLOUD_SAVE_DEBOUNCE_MS);
@@ -276,7 +361,7 @@ export const useReadings = (
     } else {
       localStorage.setItem('tarot_guest_data', JSON.stringify(userReadings));
     }
-  }, [activeDataKey, isAuthLoading, isCloudSyncPaused, loadedDataKey, readings, session?.uid]);
+  }, [activeDataKey, isAuthLoading, isCloudSyncPaused, loadedDataKey, markCloudSyncError, markCloudSyncSuccess, readings, session?.uid]);
 
   useEffect(() => {
     if (isAuthLoading) return;
@@ -286,19 +371,28 @@ export const useReadings = (
       localStorage.setItem('tarot_spreads', JSON.stringify(spreads));
       if (isCloudSyncPaused) return;
 
+      setCloudSyncInfo(prev => ({
+        ...prev,
+        status: 'syncing',
+        lastAttemptAt: new Date().toISOString(),
+        lastError: null,
+      }));
       const timer = window.setTimeout(() => {
-        saveUserSpreads(session.uid, spreads).catch(error => {
-          console.error('Failed to save spreads:', error);
-          setIsCloudSyncPaused(true);
-          setSyncNotice('牌阵云端保存失败，已先保存在本地。');
-        });
+        saveUserSpreads(session.uid, spreads)
+          .then(() => markCloudSyncSuccess())
+          .catch(error => {
+            console.error('Failed to save spreads:', error);
+            setIsCloudSyncPaused(true);
+            markCloudSyncError(error);
+            setSyncNotice('牌阵云端保存失败，已先保存在本地。');
+          });
       }, CLOUD_SAVE_DEBOUNCE_MS);
 
       return () => window.clearTimeout(timer);
     }
 
     localStorage.setItem('tarot_spreads', JSON.stringify(spreads));
-  }, [activeDataKey, isAuthLoading, isCloudSyncPaused, loadedDataKey, session?.uid, spreads]);
+  }, [activeDataKey, isAuthLoading, isCloudSyncPaused, loadedDataKey, markCloudSyncError, markCloudSyncSuccess, session?.uid, spreads]);
 
   useEffect(() => {
     if (isAuthLoading) return;
@@ -308,19 +402,28 @@ export const useReadings = (
       localStorage.setItem('tarot_card_metadata', JSON.stringify(cardMetadata));
       if (isCloudSyncPaused) return;
 
+      setCloudSyncInfo(prev => ({
+        ...prev,
+        status: 'syncing',
+        lastAttemptAt: new Date().toISOString(),
+        lastError: null,
+      }));
       const timer = window.setTimeout(() => {
-        saveUserCardMetadata(session.uid, cardMetadata).catch(error => {
-          console.error('Failed to save card metadata:', error);
-          setIsCloudSyncPaused(true);
-          setSyncNotice('塔罗牌库云端保存失败，已先保存在本地。');
-        });
+        saveUserCardMetadata(session.uid, cardMetadata)
+          .then(() => markCloudSyncSuccess())
+          .catch(error => {
+            console.error('Failed to save card metadata:', error);
+            setIsCloudSyncPaused(true);
+            markCloudSyncError(error);
+            setSyncNotice('塔罗牌库云端保存失败，已先保存在本地。');
+          });
       }, CLOUD_SAVE_DEBOUNCE_MS);
 
       return () => window.clearTimeout(timer);
     }
 
     localStorage.setItem('tarot_card_metadata', JSON.stringify(cardMetadata));
-  }, [activeDataKey, cardMetadata, isAuthLoading, isCloudSyncPaused, loadedDataKey, session?.uid]);
+  }, [activeDataKey, cardMetadata, isAuthLoading, isCloudSyncPaused, loadedDataKey, markCloudSyncError, markCloudSyncSuccess, session?.uid]);
 
   useEffect(() => {
     if (isAuthLoading) return;
@@ -330,19 +433,96 @@ export const useReadings = (
       localStorage.setItem('tarot_card_keyword_memory', JSON.stringify(cardKeywordMemory));
       if (isCloudSyncPaused) return;
 
+      setCloudSyncInfo(prev => ({
+        ...prev,
+        status: 'syncing',
+        lastAttemptAt: new Date().toISOString(),
+        lastError: null,
+      }));
       const timer = window.setTimeout(() => {
-        saveUserCardKeywordMemory(session.uid, cardKeywordMemory).catch(error => {
-          console.error('Failed to save card keyword memory:', error);
-          setIsCloudSyncPaused(true);
-          setSyncNotice('个人牌义记忆云端保存失败，已先保存在本地。');
-        });
+        saveUserCardKeywordMemory(session.uid, cardKeywordMemory)
+          .then(() => markCloudSyncSuccess())
+          .catch(error => {
+            console.error('Failed to save card keyword memory:', error);
+            setIsCloudSyncPaused(true);
+            markCloudSyncError(error);
+            setSyncNotice('个人牌义记忆云端保存失败，已先保存在本地。');
+          });
       }, CLOUD_SAVE_DEBOUNCE_MS);
 
       return () => window.clearTimeout(timer);
     }
 
     localStorage.setItem('tarot_card_keyword_memory', JSON.stringify(cardKeywordMemory));
-  }, [activeDataKey, cardKeywordMemory, isAuthLoading, isCloudSyncPaused, loadedDataKey, session?.uid]);
+  }, [activeDataKey, cardKeywordMemory, isAuthLoading, isCloudSyncPaused, loadedDataKey, markCloudSyncError, markCloudSyncSuccess, session?.uid]);
+
+  const handleManualCloudSync = useCallback(async () => {
+    if (!session?.uid) {
+      setSyncNotice('登录后才能进行云端同步。');
+      return;
+    }
+
+    const uid = session.uid;
+    setIsCloudSyncPaused(false);
+    setCloudSyncInfo(prev => ({
+      ...prev,
+      status: 'syncing',
+      lastAttemptAt: new Date().toISOString(),
+      lastError: null,
+    }));
+
+    try {
+      const [cloudReadings, cloudSpreads, cloudMetadata, cloudKeywordMemory] = await Promise.all([
+        getUserReadings(uid),
+        getUserSpreads(uid),
+        getUserCardMetadata(uid),
+        getUserCardKeywordMemory(uid),
+      ]);
+
+      const cloudSpreadNameMap = getLegacyCustomSpreadNameMap(cloudSpreads, OFFICIAL_SPREADS);
+      const cloudReadingsNormalized = normalizeLegacyReadingSpreadNames(cloudReadings, cloudSpreadNameMap);
+      const currentReadings = readings.filter(reading => !reading.isExample);
+      const mergedReadings = mergeReadingsForSignedInUser(uid, [
+        cloudReadingsNormalized,
+        currentReadings,
+      ]);
+      const mergedSpreads = mergeSpreadSources([cloudSpreads || [], spreads], OFFICIAL_SPREADS);
+      const mergedMetadata = mergeCardMetadataSources([cloudMetadata || [], cardMetadata]);
+      const mergedKeywordMemory = mergeKeywordMemorySources([cloudKeywordMemory || [], cardKeywordMemory]);
+      const deletedReadingIds = Array.from(pendingDeletedReadingIdsRef.current);
+
+      const [readingSyncResult] = await Promise.all([
+        replaceUserReadings(uid, mergedReadings, { deletedReadingIds }),
+        saveUserSpreads(uid, mergedSpreads),
+        saveUserCardMetadata(uid, mergedMetadata),
+        saveUserCardKeywordMemory(uid, mergedKeywordMemory),
+      ]);
+
+      deletedReadingIds.forEach(id => pendingDeletedReadingIdsRef.current.delete(id));
+      pendingGuestReadingsSyncRef.current = false;
+      localStorage.removeItem('tarot_guest_data');
+      setReadings(withExamplesOnlyWhenEmpty(exampleReadings, mergedReadings));
+      setSpreads(mergedSpreads);
+      setCardMetadata(mergedMetadata);
+      setCardKeywordMemory(mergedKeywordMemory);
+      markCloudSyncSuccess(readingSyncResult.totalReadings);
+      setSyncNotice(`云端同步完成：典籍 ${readingSyncResult.totalReadings} 条。`);
+    } catch (error) {
+      console.error('Manual cloud sync failed:', error);
+      setIsCloudSyncPaused(true);
+      markCloudSyncError(error);
+      setSyncNotice('手动同步失败，本机记录已保留；请稍后重试。');
+    }
+  }, [
+    cardKeywordMemory,
+    cardMetadata,
+    exampleReadings,
+    markCloudSyncError,
+    markCloudSyncSuccess,
+    readings,
+    session?.uid,
+    spreads,
+  ]);
   // 添加阅读记录
   const handleAddReading = useCallback(async (newReading: any, profile?: { display_name?: string; nickname?: string }, onShowSnackbar?: (msg: string) => void) => {
     setIsProcessing(true);
@@ -543,6 +723,8 @@ export const useReadings = (
     handleEditReading,
     toggleTag,
     isCloudSyncPaused,
+    cloudSyncInfo,
+    handleManualCloudSync,
     syncNotice,
     clearSyncNotice,
   };

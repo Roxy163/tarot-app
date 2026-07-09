@@ -16,6 +16,7 @@ import { SmartTipBanner } from './components/onboarding/SmartTipBanner';
 import { FeatureSpotlightGuide, FeatureSpotlightStep } from './components/onboarding/FeatureSpotlightGuide';
 import { useSmartTips } from './hooks/useSmartTips';
 import { usePersistentTab } from './hooks/usePersistentTab';
+import { CloudSyncPanel } from './components/CloudSyncPanel';
 import {
   getLegacyCustomSpreadNameMap,
   normalizeLegacyCustomSpreads,
@@ -162,6 +163,8 @@ function AppContent() {
     handleEditReading,
     toggleTag,
     isCloudSyncPaused,
+    cloudSyncInfo,
+    handleManualCloudSync,
     syncNotice,
     clearSyncNotice,
   } = useReadings(session, isAuthLoading);
@@ -829,59 +832,18 @@ function AppContent() {
           <ChevronRight size={14} className="text-forest-muted group-hover:translate-x-1 transition-transform" />
         </button>
 
-        <section className="rounded-2xl bg-forest-bg/70 border border-forest-accent/10 p-4 space-y-3">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-[10px] text-forest-muted font-bold uppercase tracking-widest">数据保险箱</p>
-              <p className="text-sm text-forest-ink font-bold mt-1">
-                {session ? '云端身份已连接' : '访客本机暂存'}
-              </p>
-            </div>
-            <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${
-              session
-                ? (isCloudSyncPaused ? 'bg-amber-100 text-amber-600' : 'bg-forest-accent/10 text-forest-accent')
-                : 'bg-forest-muted/10 text-forest-muted'
-            }`}>
-              {session && !isCloudSyncPaused ? <CheckCircle size={18} /> : <AlertTriangle size={18} />}
-            </div>
-          </div>
-
-          <div className="rounded-xl bg-white/70 border border-forest-accent/5 p-3">
-            <p className={`text-xs font-bold ${isCloudSyncPaused ? 'text-amber-700' : 'text-forest-accent'}`}>
-              {session
-                ? (isCloudSyncPaused ? '云端暂不可用，本机记录已保留' : '云端同步保护已开启')
-                : '登录后可跨设备同步典籍'}
-            </p>
-            <p className="mt-1 text-[10px] leading-relaxed text-forest-muted">
-              {session
-                ? '典籍会合并云端与本机记录，不会因为新设备本地为空就覆盖云端。'
-                : '当前记录只保存在这台设备，登录后再合并到云端。'}
-            </p>
-          </div>
-
-          <div className="grid grid-cols-3 gap-2 text-center">
-            <div className="rounded-xl bg-white/70 border border-forest-accent/5 p-2">
-              <p className="font-serif text-lg font-bold text-forest-accent">{readingCount}</p>
-              <p className="text-[9px] font-bold text-forest-muted">典籍</p>
-            </div>
-            <div className="rounded-xl bg-white/70 border border-forest-accent/5 p-2">
-              <p className="font-serif text-lg font-bold text-forest-accent">{customSpreadCount}</p>
-              <p className="text-[9px] font-bold text-forest-muted">自建牌阵</p>
-            </div>
-            <div className="rounded-xl bg-white/70 border border-forest-accent/5 p-2">
-              <p className="font-serif text-lg font-bold text-forest-accent">{sidebarInsights.todayCount}</p>
-              <p className="text-[9px] font-bold text-forest-muted">今日</p>
-            </div>
-          </div>
-
-          <button
-            onClick={() => navigateFromSidebar(readingCount > 0 ? 'private' : 'add')}
-            className="w-full min-h-11 px-4 rounded-xl bg-forest-accent text-white text-sm font-bold hover:bg-forest-accent/90 transition-colors flex items-center justify-center gap-2"
-          >
-            {readingCount > 0 ? '进入典籍复盘' : '写第一条手记'}
-            <ChevronRight size={16} />
-          </button>
-        </section>
+        <CloudSyncPanel
+          session={session}
+          cloudSyncInfo={cloudSyncInfo}
+          isCloudSyncPaused={isCloudSyncPaused}
+          readingCount={readingCount}
+          customSpreadCount={customSpreadCount}
+          todayCount={sidebarInsights.todayCount}
+          onManualSync={handleManualCloudSync}
+          onLogin={() => { setShowAuthPage(true); closeSidebar(); }}
+          onOpenLibrary={() => navigateFromSidebar('private')}
+          onStartReading={() => navigateFromSidebar('add')}
+        />
 
         <section className="space-y-2">
           <p className="text-[10px] text-forest-muted font-bold px-2 uppercase tracking-widest">备份与恢复</p>
