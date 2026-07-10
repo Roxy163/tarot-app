@@ -33,6 +33,19 @@ const yearlyMobilePositions = [
   { x: 50, y: 49 },
 ];
 
+const celticDisplayPositions = [
+  { x: 36, y: 47 },
+  { x: 36, y: 47 },
+  { x: 36, y: 73 },
+  { x: 14, y: 47 },
+  { x: 36, y: 21 },
+  { x: 58, y: 47 },
+  { x: 84, y: 78 },
+  { x: 84, y: 58 },
+  { x: 84, y: 38 },
+  { x: 84, y: 18 },
+];
+
 const useElementWidth = <T extends HTMLElement>() => {
   const ref = useRef<T | null>(null);
   const [width, setWidth] = useState(0);
@@ -136,7 +149,9 @@ export const ReadingSpreadDisplay: React.FC<ReadingSpreadDisplayProps> = ({
     ? Math.min(1, availableDisplayWidth / Math.max(1, rawGridWidth + 16))
     : 1;
   const readableScaleFloor = spreadViewportWidth > 0 && spreadViewportWidth < 640
-    ? formData.layoutType === 'yearly'
+    ? isFreeLayout
+      ? 0.5
+      : formData.layoutType === 'yearly'
       ? 0.82
       : isCelticCross
         ? 0.62
@@ -172,7 +187,7 @@ export const ReadingSpreadDisplay: React.FC<ReadingSpreadDisplayProps> = ({
   ]);
 
   return (
-    <div ref={spreadViewportRef} className="space-y-4">
+    <div ref={spreadViewportRef} className="space-y-3 sm:space-y-4">
       <AnimatePresence>
         {showUpdatePrompt && (
           <motion.div 
@@ -208,6 +223,7 @@ export const ReadingSpreadDisplay: React.FC<ReadingSpreadDisplayProps> = ({
       {isFreeLayout ? (
         <div className="w-full overflow-hidden pb-2">
           <div
+            data-testid="free-layout-spread-preview"
             className="relative mx-auto rounded-2xl border border-forest-accent/10 bg-forest-bg/30"
             style={{
               width: (freeLayoutFrame?.width || FREE_LAYOUT_CANVAS_WIDTH) * mobileDisplayScale,
@@ -260,13 +276,13 @@ export const ReadingSpreadDisplay: React.FC<ReadingSpreadDisplayProps> = ({
         </div>
       ) : isYearlyRadialLayout ? (
         <div className="w-full overflow-hidden pb-2" data-testid="yearly-radial-spread">
-          <div className="relative mx-auto aspect-square w-full max-w-[280px] rounded-3xl border border-forest-accent/10 bg-forest-bg/20 sm:max-w-[520px]">
+          <div className="relative mx-auto aspect-square w-full max-w-[292px] rounded-3xl border border-forest-accent/10 bg-forest-bg/20 sm:max-w-[520px]">
             <div className="pointer-events-none absolute inset-[18%] rounded-full border border-dashed border-forest-accent/12" />
             <div className="pointer-events-none absolute left-1/2 top-1/2 h-px w-[72%] -translate-x-1/2 bg-forest-accent/10" />
             <div className="pointer-events-none absolute left-1/2 top-1/2 h-[72%] w-px -translate-y-1/2 bg-forest-accent/10" />
             {cardSlots.map((slot, index) => {
               const point = yearlyMobilePositions[index] || yearlyMobilePositions[yearlyMobilePositions.length - 1];
-              const slotScale = spreadViewportWidth > 0 && spreadViewportWidth < 640 ? 0.68 : 0.82;
+              const slotScale = spreadViewportWidth > 0 && spreadViewportWidth < 640 ? 0.72 : 0.82;
 
               return (
                 <div
@@ -293,6 +309,61 @@ export const ReadingSpreadDisplay: React.FC<ReadingSpreadDisplayProps> = ({
                     onRemove={removeSlot}
                     allowRemove={allowSlotRemoval}
                   />
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      ) : isCelticCross ? (
+        <div className="w-full overflow-hidden pb-2" data-testid="celtic-cross-spread">
+          <div className="relative mx-auto aspect-[5/6] w-full max-w-[360px] rounded-3xl border border-forest-accent/10 bg-forest-bg/20 sm:max-w-[520px]">
+            <div className="pointer-events-none absolute left-[36%] top-[47%] h-[74%] w-px -translate-y-1/2 bg-forest-accent/10" />
+            <div className="pointer-events-none absolute left-[14%] right-[30%] top-[47%] h-px bg-forest-accent/10" />
+            <div className="pointer-events-none absolute bottom-[12%] right-[16%] top-[8%] w-px bg-forest-accent/10" />
+            {cardSlots.map((slot, index) => {
+              if (index === 1) return null;
+
+              const point = celticDisplayPositions[index] || celticDisplayPositions[0];
+              const slotScale = spreadViewportWidth > 0 && spreadViewportWidth < 640 ? 0.72 : 0.9;
+              const slotsAtPoint = index === 0 && cardSlots[1]
+                ? [
+                    { ...slot, idx: 0 },
+                    { ...cardSlots[1], idx: 1 },
+                  ]
+                : [{ ...slot, idx: index }];
+              const isCenterStack = index === 0 && slotsAtPoint.length > 1;
+
+              return (
+                <div
+                  key={`${slot.label || index}-${index}`}
+                  className="absolute z-10"
+                  data-testid={isCenterStack ? 'celtic-center-stack' : index === 2 ? 'celtic-foundation-slot' : undefined}
+                  style={{
+                    left: `${point.x}%`,
+                    top: `${point.y}%`,
+                    transform: `translate(-50%, -50%) scale(${slotScale})`,
+                    transformOrigin: 'center center',
+                    zIndex: isCenterStack ? 40 : index === 2 ? 15 : 20,
+                  }}
+                >
+                  {slotsAtPoint.map((stackedSlot, stackIndex) => (
+                    <ReadingSlot
+                      key={stackedSlot.idx}
+                      slot={stackedSlot}
+                      index={stackedSlot.idx}
+                      isActive={activeSlotIndex === stackedSlot.idx}
+                      isCelticCenter={isCenterStack}
+                      stackIndex={stackIndex}
+                      isSmall
+                      showSlotNumbers={showSlotNumbers}
+                      onSlotClick={onSlotClick}
+                      onLongPressStart={handleLongPressStart}
+                      onLongPressEnd={handleLongPressEnd}
+                      onRemove={removeSlot}
+                      allowRemove={allowSlotRemoval}
+                      onCycle={isCenterStack ? handleCycleSlot : undefined}
+                    />
+                  ))}
                 </div>
               );
             })}

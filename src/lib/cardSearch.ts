@@ -1,10 +1,10 @@
 import { TarotCardMetadata } from '../types';
 
 const SUIT_ALIASES: Record<string, string[]> = {
-  wa: ['权杖', '魔杖', '火杖', '杖'],
-  cu: ['圣杯', '杯', '水杯'],
-  sw: ['宝剑', '剑', '长剑', '风剑'],
-  pe: ['星币', '金币', '钱币', '硬币', '五角星', '土币'],
+  wa: ['权杖', '魔杖', '火杖', '杖', '火元素'],
+  cu: ['圣杯', '杯', '水杯', '杯子', '水元素'],
+  sw: ['宝剑', '剑', '长剑', '风剑', '空气', '风元素'],
+  pe: ['星币', '金币', '钱币', '硬币', '五角星', '土币', '土元素'],
 };
 
 const RANK_ALIASES: Record<string, string[]> = {
@@ -18,10 +18,15 @@ const RANK_ALIASES: Record<string, string[]> = {
   '08': ['八', '8', 'eight'],
   '09': ['九', '9', 'nine'],
   '10': ['十', '10', 'ten'],
-  pa: ['侍从', '侍者', '男仆', '公主', 'page'],
+  pa: ['侍从', '侍者', '侍卫', '仆从', '男仆', '公主', 'page'],
   kn: ['骑士', 'knight'],
-  qu: ['王后', '皇后', '女王', 'queen'],
-  ki: ['国王', '皇帝', '王', 'king'],
+  qu: ['王后', '女王', 'queen'],
+  ki: ['国王', '王', 'king'],
+};
+
+const RANK_COMBO_ONLY_ALIASES: Record<string, string[]> = {
+  qu: ['皇后'],
+  ki: ['皇帝'],
 };
 
 const MAJOR_ALIASES: Record<string, string[]> = {
@@ -72,6 +77,10 @@ const CATEGORY_ALIASES = new Set([
   '小阿尔卡纳',
   '小牌',
 ].map(normalizeCardSearchText));
+const EXACT_MAJOR_NAME_QUERIES: Record<string, string> = {
+  皇帝: 'ar04',
+  皇后: 'ar03',
+};
 
 export const getCardSearchAliases = (card: TarotCardMetadata) => {
   const aliases = [card.id, card.name, card.english];
@@ -85,10 +94,11 @@ export const getCardSearchAliases = (card: TarotCardMetadata) => {
     const rankKey = card.id.slice(2);
     const suitAliases = SUIT_ALIASES[suitKey] || [];
     const rankAliases = RANK_ALIASES[rankKey] || [];
+    const comboOnlyRankAliases = RANK_COMBO_ONLY_ALIASES[rankKey] || [];
 
     aliases.push(...suitAliases, ...rankAliases);
     suitAliases.forEach(suit => {
-      rankAliases.forEach(rank => {
+      [...rankAliases, ...comboOnlyRankAliases].forEach(rank => {
         aliases.push(`${suit}${rank}`, `${rank}${suit}`);
       });
     });
@@ -100,6 +110,11 @@ export const getCardSearchAliases = (card: TarotCardMetadata) => {
 export const cardMatchesSearch = (card: TarotCardMetadata, search: string) => {
   const query = normalizeCardSearchText(search);
   if (!query) return true;
+
+  const exactMajorId = EXACT_MAJOR_NAME_QUERIES[query];
+  if (exactMajorId) {
+    return card.id === exactMajorId;
+  }
 
   if ((query.includes('大阿尔卡纳') || query.startsWith('大阿')) && !card.id.startsWith('ar')) {
     return false;

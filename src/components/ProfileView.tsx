@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState, useRef } from 'react';
-import { Sparkles, Edit3, X, Calendar, BookOpen, Award, Lock, Copy, LogOut, Camera, HelpCircle } from 'lucide-react';
+import { Sparkles, Edit3, Calendar, BookOpen, Award, Copy, LogOut, Camera, HelpCircle } from 'lucide-react';
 import { FeatureGuide } from './FeatureGuide';
 import { TarotReading, TarotCardMetadata, UserProfile } from '../types';
 import { AvatarCropModal } from './AvatarCropModal';
@@ -47,13 +47,13 @@ const DefaultTarotAvatar = () => (
   </div>
 );
 
-export function ProfileView({ 
-  authorName, 
-  readings, 
-  cardMetadata, 
-  onTagClick, 
-  onEditReading, 
-  onDeleteReading, 
+export function ProfileView({
+  authorName,
+  readings,
+  cardMetadata,
+  onTagClick,
+  onEditReading,
+  onDeleteReading,
   onTogglePublic,
   onUpdateProfile,
   profile,
@@ -70,19 +70,19 @@ export function ProfileView({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const noticeTimerRef = useRef<number | null>(null);
   const canEditProfile = !!profile;
-  
+
   const [editName, setEditName] = useState(profile?.display_name || profile?.nickname || authorName);
   const [editBio, setEditBio] = useState(profile?.bio || profile?.signature || '研习覃思，洞见未来');
 
   const authorReadings = useMemo(() => readings.filter(r => {
     // 阁主本人查看自己的印鉴：通过 userId 强匹配
     if (profile && r.userId === profile.id) return true;
-    
+
     // 如果是匹配作者名（用于其他公开用户的视角）
     const nameMatch = r.authorName === authorName || (authorName === '研习阁主' && !r.authorName);
     return nameMatch;
   }), [authorName, profile, readings]);
-  
+
   const publicReadingsCount = authorReadings.filter(r => r.isPublic).length;
 
   const getRank = (count: number) => {
@@ -158,193 +158,210 @@ export function ProfileView({
     return `${date.getFullYear()}年${date.getMonth() + 1}月${date.getDate()}日`;
   };
 
-  const latestReading = authorReadings.length > 0 ? authorReadings[0] : null;
+  const sortedAuthorReadings = useMemo(() => (
+    [...authorReadings].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+  ), [authorReadings]);
+
+  const latestReading = sortedAuthorReadings.length > 0 ? sortedAuthorReadings[0] : null;
+  const displayName = profile?.display_name || profile?.nickname || authorName;
+  const displayBio = profile?.bio || profile?.signature || '研习覃思，洞见未来';
+  const totalCards = authorReadings.reduce((sum, reading) => sum + (reading.cards?.length || 0), 0);
+  const aiReadingsCount = authorReadings.filter(r => r.isAiProcessed).length;
+  const stats = [
+    { label: '阁中典籍', value: authorReadings.length, hint: '已保存手记' },
+    { label: '灵见手札', value: aiReadingsCount, hint: '参与 AI 解析' },
+    { label: '公开案例', value: publicReadingsCount, hint: '分享至广场' },
+    { label: '研习成果', value: `${totalCards} 牌`, hint: '累计记录牌面' }
+  ];
 
   return (
     <>
-      <div className="space-y-12 pb-32 animate-in fade-in duration-700">
-      {/* 顶部居中心空间 */}
-      <div className="flex flex-col items-center text-center space-y-8 pt-8">
-        {/* 头像区域 */}
-        <div className="relative">
-          <div 
-            onClick={() => canEditProfile && !isUploading && fileInputRef.current?.click()}
-            onKeyDown={(event) => {
-              if (!canEditProfile || isUploading) return;
-              if (event.key === 'Enter' || event.key === ' ') {
-                event.preventDefault();
-                fileInputRef.current?.click();
-              }
-            }}
-            role={canEditProfile ? 'button' : undefined}
-            tabIndex={canEditProfile ? 0 : undefined}
-            aria-label={canEditProfile ? '头像区域，点击更换头像' : undefined}
-            className={`w-40 h-40 rounded-full bg-forest-bg border-8 border-white shadow-[0_20px_50px_rgba(44,54,44,0.15)] overflow-hidden transition-all duration-500 relative group ${canEditProfile ? 'cursor-pointer hover:scale-105' : ''}`}
-          >
-            {profile?.avatar_url ? (
-              <img src={profile.avatar_url} alt="阁主头像" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
-            ) : (
-              <DefaultTarotAvatar />
-            )}
-            
-            {canEditProfile && (
-              <div className="absolute inset-0 hidden bg-forest-ink/40 sm:flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-300">
-                <Camera className="text-white" size={32} />
-              </div>
-            )}
-
-            {isUploading && (
-              <div className="absolute inset-0 bg-white/80 backdrop-blur-sm flex items-center justify-center">
-                <div className="w-8 h-8 border-3 border-forest-accent border-t-transparent rounded-full animate-spin" />
-              </div>
-            )}
-          </div>
-          {canEditProfile && (
-            <input 
-              type="file" 
-              ref={fileInputRef} 
-              onChange={handleFileSelect} 
-              accept="image/*" 
-              className="hidden" 
-            />
-          )}
-
-          {canEditProfile && (
-            <button
-              type="button"
-              onClick={() => !isUploading && fileInputRef.current?.click()}
-              className="absolute bottom-5 right-2 flex h-10 w-10 items-center justify-center rounded-full border-2 border-white bg-forest-accent text-white shadow-xl transition-transform active:scale-95 sm:hidden"
-              aria-label="更换头像"
-            >
-              <Camera size={16} />
-            </button>
-          )}
-          
-          <div className="absolute -bottom-2 left-1/2 -translate-x-1/2 bg-forest-accent text-white px-5 py-1.5 rounded-full text-xs font-bold shadow-xl border-2 border-white whitespace-nowrap">
-            {rank}
-          </div>
-        </div>
-
-        {/* 昵称与签名 */}
-        <div className="space-y-4 w-full max-w-2xl px-6">
-          {isEditingName && canEditProfile ? (
-            <div className="flex items-center gap-2 justify-center">
-              <input 
-                autoFocus
-                className="text-4xl font-serif text-forest-ink bg-white border-b-3 border-forest-accent outline-none text-center px-4 py-1 max-w-xs"
-                value={editName}
-                onChange={e => setEditName(e.target.value)}
-                onBlur={async () => {
-                  setIsEditingName(false);
-                  if (editName !== (profile?.display_name || profile?.nickname)) {
-                    await onUpdateProfile({ display_name: editName });
-                  }
-                }}
-                onKeyDown={e => e.key === 'Enter' && (e.currentTarget as any).blur()}
-              />
-            </div>
-          ) : (
-            <div className="flex items-center gap-4 justify-center group">
-              <h2 className="text-4xl md:text-5xl font-serif text-forest-ink font-bold tracking-tight">
-                {profile?.display_name || profile?.nickname || authorName}
-              </h2>
-              {canEditProfile && (
-                <button 
-                  onClick={() => setIsEditingName(true)}
-                  aria-label="编辑昵称"
-                  className="p-2 text-forest-muted opacity-100 sm:opacity-0 sm:group-hover:opacity-100 hover:text-forest-accent hover:bg-forest-accent/5 rounded-xl transition-all"
+      <div className="space-y-5 pb-28 animate-in fade-in duration-700" data-testid="profile-dashboard">
+        <section
+          className="relative overflow-hidden rounded-[2rem] border border-forest-border bg-white/90 p-4 shadow-sm sm:p-5"
+          data-testid="profile-dashboard-card"
+        >
+          <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_12%_18%,rgba(121,162,127,0.12),transparent_34%),radial-gradient(circle_at_92%_10%,rgba(222,197,135,0.18),transparent_30%)]" />
+          <div className="relative grid gap-4 lg:grid-cols-[auto_minmax(0,1fr)_auto] lg:items-center">
+            <div className="flex items-center gap-4">
+              <div className="relative shrink-0">
+                <div
+                  onClick={() => canEditProfile && !isUploading && fileInputRef.current?.click()}
+                  onKeyDown={(event) => {
+                    if (!canEditProfile || isUploading) return;
+                    if (event.key === 'Enter' || event.key === ' ') {
+                      event.preventDefault();
+                      fileInputRef.current?.click();
+                    }
+                  }}
+                  role={canEditProfile ? 'button' : undefined}
+                  tabIndex={canEditProfile ? 0 : undefined}
+                  aria-label={canEditProfile ? '头像区域，点击更换头像' : undefined}
+                  className={`relative h-20 w-20 overflow-hidden rounded-full border-4 border-white bg-forest-bg shadow-[0_12px_28px_rgba(44,54,44,0.14)] transition-all duration-300 sm:h-24 sm:w-24 ${canEditProfile ? 'cursor-pointer hover:scale-[1.03]' : ''}`}
                 >
-                  <Edit3 size={20} />
-                </button>
-              )}
-            </div>
-          )}
+                  {profile?.avatar_url ? (
+                    <img src={profile.avatar_url} alt="阁主头像" className="h-full w-full object-cover" referrerPolicy="no-referrer" />
+                  ) : (
+                    <DefaultTarotAvatar />
+                  )}
 
-          <div className="relative group max-w-lg mx-auto">
-            {isEditingBio && canEditProfile ? (
-              <textarea 
-                className="w-full text-lg text-center text-forest-muted font-kai italic bg-white border-2 border-forest-accent/10 rounded-2xl px-6 py-4 outline-none focus:ring-8 focus:ring-forest-accent/5 resize-none h-24 shadow-inner"
-                value={editBio}
-                onChange={e => setEditBio(e.target.value)}
-                onBlur={async () => {
-                  setIsEditingBio(false);
-                  if (editBio !== (profile?.bio || profile?.signature)) {
-                    await onUpdateProfile({ bio: editBio });
-                  }
-                }}
-                autoFocus
-              />
-            ) : (
-              <div className="flex items-center justify-center gap-3">
-                <p className="text-xl text-forest-muted font-kai italic opacity-80 leading-relaxed px-10">
-                  “ {profile?.bio || profile?.signature || '研习覃思，洞见未来'} ”
-                </p>
+                  {canEditProfile && (
+                    <div className="absolute inset-0 hidden items-center justify-center bg-forest-ink/35 opacity-0 transition-opacity duration-300 hover:opacity-100 sm:flex">
+                      <Camera className="text-white" size={24} />
+                    </div>
+                  )}
+
+                  {isUploading && (
+                    <div className="absolute inset-0 flex items-center justify-center bg-white/80 backdrop-blur-sm">
+                      <div className="h-7 w-7 animate-spin rounded-full border-3 border-forest-accent border-t-transparent" />
+                    </div>
+                  )}
+                </div>
+
                 {canEditProfile && (
-                  <button 
-                    onClick={() => setIsEditingBio(true)}
-                    aria-label="编辑签名"
-                    className="p-2 text-forest-muted opacity-100 sm:opacity-0 sm:group-hover:opacity-100 hover:text-forest-accent hover:bg-forest-accent/5 rounded-xl transition-all absolute right-0 top-0"
+                  <button
+                    type="button"
+                    onClick={() => !isUploading && fileInputRef.current?.click()}
+                    className="absolute -bottom-1 -right-1 flex h-9 w-9 items-center justify-center rounded-full border-2 border-white bg-forest-accent text-white shadow-lg transition-transform active:scale-95"
+                    aria-label="更换头像"
                   >
-                    <Edit3 size={18} />
+                    <Camera size={15} />
                   </button>
                 )}
               </div>
+
+              <div className="min-w-0 flex-1 space-y-2">
+                <span className="inline-flex min-h-[28px] items-center rounded-full bg-forest-accent/10 px-3 text-xs font-bold text-forest-accent">
+                  {rank}
+                </span>
+                {isEditingName && canEditProfile ? (
+                  <input
+                    autoFocus
+                    className="w-full max-w-sm rounded-2xl border border-forest-accent/20 bg-white px-3 py-2 font-serif text-2xl font-bold text-forest-ink outline-none focus:ring-4 focus:ring-forest-accent/10"
+                    value={editName}
+                    onChange={e => setEditName(e.target.value)}
+                    onBlur={async () => {
+                      setIsEditingName(false);
+                      if (editName !== (profile?.display_name || profile?.nickname)) {
+                        await onUpdateProfile({ display_name: editName });
+                      }
+                    }}
+                    onKeyDown={e => e.key === 'Enter' && (e.currentTarget as any).blur()}
+                  />
+                ) : (
+                  <div className="group flex min-w-0 items-center gap-2">
+                    <h2 className="truncate font-serif text-2xl font-bold tracking-tight text-forest-ink sm:text-3xl">
+                      {displayName}
+                    </h2>
+                    {canEditProfile && (
+                      <button
+                        onClick={() => setIsEditingName(true)}
+                        aria-label="编辑昵称"
+                        className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-forest-muted transition-all hover:bg-forest-accent/10 hover:text-forest-accent"
+                      >
+                        <Edit3 size={17} />
+                      </button>
+                    )}
+                  </div>
+                )}
+
+                <div className="group relative max-w-2xl">
+                  {isEditingBio && canEditProfile ? (
+                    <textarea
+                      className="h-20 w-full resize-none rounded-2xl border border-forest-accent/15 bg-white px-4 py-3 text-sm leading-relaxed text-forest-muted outline-none focus:ring-4 focus:ring-forest-accent/10"
+                      value={editBio}
+                      onChange={e => setEditBio(e.target.value)}
+                      onBlur={async () => {
+                        setIsEditingBio(false);
+                        if (editBio !== (profile?.bio || profile?.signature)) {
+                          await onUpdateProfile({ bio: editBio });
+                        }
+                      }}
+                      autoFocus
+                    />
+                  ) : (
+                    <div className="flex items-start gap-2">
+                      <p className="line-clamp-2 text-sm leading-relaxed text-forest-muted">
+                        {displayBio}
+                      </p>
+                      {canEditProfile && (
+                        <button
+                          onClick={() => setIsEditingBio(true)}
+                          aria-label="编辑签名"
+                          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-forest-muted transition-all hover:bg-forest-accent/10 hover:text-forest-accent"
+                        >
+                          <Edit3 size={15} />
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {canEditProfile && (
+              <input
+                type="file"
+                ref={fileInputRef}
+                onChange={handleFileSelect}
+                accept="image/*"
+                className="hidden"
+              />
             )}
-          </div>
-        </div>
 
-        {/* 阁主编号展示 */}
-          {canEditProfile && (
-            <div className="flex flex-col items-center gap-4 pt-2">
-          <div className="flex items-center gap-3 px-6 py-3 bg-white rounded-3xl border border-forest-border shadow-sm group hover:shadow-md transition-shadow">
-            <span className="text-[10px] text-forest-muted font-bold tracking-[0.2em] uppercase opacity-60">阁主编号</span>
-            <code className="text-base font-mono font-bold text-forest-accent tracking-wider">
-              {tarotId}
-            </code>
-            <button 
-              onClick={handleCopyId}
-              className="text-forest-muted hover:text-forest-accent transition-colors p-1"
-              title="复制编号"
-            >
-              <Copy size={16} />
-            </button>
-          </div>
+            <div className="grid gap-2 sm:grid-cols-2 lg:w-64 lg:grid-cols-1">
+              {canEditProfile && (
+                <div className="flex min-h-[44px] items-center justify-between gap-3 rounded-2xl border border-forest-border bg-white/75 px-3 py-2">
+                  <div className="min-w-0">
+                    <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-forest-muted/70">阁主编号</p>
+                    <code className="block truncate font-mono text-sm font-bold tracking-wide text-forest-accent">
+                      {tarotId}
+                    </code>
+                  </div>
+                  <button
+                    onClick={handleCopyId}
+                    className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-forest-muted transition-colors hover:bg-forest-accent/10 hover:text-forest-accent"
+                    title="复制编号"
+                    aria-label="复制阁主编号"
+                  >
+                    <Copy size={16} />
+                  </button>
+                </div>
+              )}
 
-          <div className="flex gap-6">
-            <div className="flex items-center gap-2.5 text-xs text-forest-muted font-bold px-4 py-2 bg-forest-bg/50 rounded-full border border-forest-border/50">
-              <Calendar size={14} className="text-forest-accent" />
-              <span>入阁时日：{formatDate()}</span>
-            </div>
-            <div className="flex items-center gap-2.5 text-xs text-forest-muted font-bold px-4 py-2 bg-forest-bg/50 rounded-full border border-forest-border/50">
-              <BookOpen size={14} className="text-forest-accent" />
-              <span>手记累积：{authorReadings.length} 条</span>
-            </div>
-          </div>
-            </div>
-          )}
+              <div className="grid grid-cols-2 gap-2">
+                <div className="flex min-h-[44px] items-center gap-2 rounded-2xl border border-forest-border/60 bg-forest-bg/45 px-3 py-2 text-xs font-bold text-forest-muted">
+                  <Calendar size={15} className="shrink-0 text-forest-accent" />
+                  <span className="truncate">{formatDate()}</span>
+                </div>
+                <div className="flex min-h-[44px] items-center gap-2 rounded-2xl border border-forest-border/60 bg-forest-bg/45 px-3 py-2 text-xs font-bold text-forest-muted">
+                  <BookOpen size={15} className="shrink-0 text-forest-accent" />
+                  <span>{authorReadings.length} 条手记</span>
+                </div>
+              </div>
 
-          <div className="flex gap-3">
-            {/* 功能介绍入口 */}
-            <button 
-              onClick={() => setIsGuideOpen(true)}
-              className="flex items-center gap-2 px-4 py-3 bg-forest-bg/50 text-forest-accent rounded-full text-sm font-bold hover:bg-forest-accent/10 transition-all border border-forest-border/50"
-            >
-              <HelpCircle size={16} />
-              功能介绍
-            </button>
-            
-            {/* 登出按钮 */}
-            {onLogout && canEditProfile && (
-              <button 
-                onClick={onLogout}
-                className="flex items-center gap-2 px-4 py-3 bg-forest-accent/10 text-forest-accent rounded-full text-sm font-bold hover:bg-forest-accent/20 transition-all"
-              >
-                <LogOut size={16} />
-                封印离阁
-              </button>
-            )}
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  onClick={() => setIsGuideOpen(true)}
+                  className="flex min-h-[44px] items-center justify-center gap-2 rounded-2xl border border-forest-border/70 bg-white/70 px-3 py-2 text-sm font-bold text-forest-accent transition-all hover:bg-forest-accent/10"
+                >
+                  <HelpCircle size={16} />
+                  功能介绍
+                </button>
+
+                {onLogout && canEditProfile && (
+                  <button
+                    onClick={onLogout}
+                    className="flex min-h-[44px] items-center justify-center gap-2 rounded-2xl bg-forest-accent/10 px-3 py-2 text-sm font-bold text-forest-accent transition-all hover:bg-forest-accent/20"
+                  >
+                    <LogOut size={16} />
+                    封印离阁
+                  </button>
+                )}
+              </div>
+            </div>
           </div>
-        </div>
+        </section>
 
         <FeatureGuide isOpen={isGuideOpen} onClose={() => setIsGuideOpen(false)} />
 
@@ -355,64 +372,60 @@ export function ProfileView({
       )}
 
       {/* 数据概览 */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-6 px-4 max-w-5xl mx-auto">
-        {[
-          { label: '阁中典籍', value: authorReadings.length },
-          { label: '灵见手札', value: authorReadings.filter(r => r.isAiProcessed).length },
-          { label: '公开案例', value: publicReadingsCount },
-          { label: '研习成果', value: authorReadings.reduce((sum, r) => sum + (r.cards?.length || 0), 0) + ' 牌' }
-        ].map((stat, idx) => (
-          <div key={idx} className="bg-white p-6 sm:p-8 rounded-[2.5rem] border border-forest-border text-center shadow-sm hover:translate-y-[-6px] hover:shadow-2xl transition-all duration-500 group relative overflow-hidden">
-            <div className="absolute top-0 left-0 w-full h-1 bg-forest-accent/10 group-hover:h-full transition-all duration-500 -z-10" />
-            <p className="text-3xl sm:text-4xl font-serif text-forest-accent font-bold mb-2">{stat.value}</p>
-            <p className="text-[10px] text-forest-muted uppercase tracking-[0.3em] font-bold">{stat.label}</p>
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+        {stats.map((stat) => (
+          <div key={stat.label} className="group relative overflow-hidden rounded-2xl border border-forest-border bg-white/85 p-4 shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:shadow-md">
+            <div className="absolute right-3 top-3 h-8 w-8 rounded-full bg-forest-accent/8 transition-transform duration-300 group-hover:scale-125" />
+            <p className="relative mb-1 font-serif text-2xl font-bold text-forest-accent sm:text-3xl">{stat.value}</p>
+            <p className="relative text-xs font-bold text-forest-ink">{stat.label}</p>
+            <p className="relative mt-1 text-[11px] text-forest-muted">{stat.hint}</p>
           </div>
         ))}
       </div>
 
       {/* 底部功能组合入口 */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-10 px-4 max-w-6xl mx-auto">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1.25fr)_minmax(280px,0.75fr)]">
         {/* 典籍快照 */}
-        <div className="space-y-6">
-          <div className="flex items-center justify-between px-4">
-            <h3 className="text-2xl font-serif text-forest-ink flex items-center gap-3 font-bold">
-              <BookOpen size={26} className="text-forest-accent" />
-              📜 最近研习
+        <section className="rounded-[2rem] border border-forest-border bg-white/88 p-4 shadow-sm sm:p-5">
+          <div className="mb-4 flex items-center justify-between gap-3">
+            <h3 className="flex items-center gap-2 font-serif text-xl font-bold text-forest-ink">
+              <BookOpen size={22} className="text-forest-accent" />
+              最近研习
             </h3>
             {authorReadings.length > 0 && (
-              <button 
+              <button
                 onClick={onViewAll}
-                className="text-sm text-forest-accent font-bold hover:underline px-3 py-1 flex items-center gap-1 group"
+                className="min-h-[40px] rounded-full bg-forest-accent/10 px-4 text-sm font-bold text-forest-accent transition-colors hover:bg-forest-accent/15"
               >
-                查看全部 <X size={16} className="rotate-45 group-hover:scale-125 transition-transform" />
+                查看全部
               </button>
             )}
           </div>
-          
-          <div className="bg-white p-10 rounded-[3rem] border border-forest-border shadow-sm min-h-[240px] flex flex-col justify-center relative overflow-hidden group hover:shadow-lg transition-all duration-500">
-            <div className="absolute top-0 right-0 p-6 opacity-[0.03] group-hover:scale-110 transition-transform duration-700">
-              <BookOpen size={160} />
+
+          <div className="relative min-h-[168px] overflow-hidden rounded-3xl border border-forest-border/70 bg-forest-bg/35 p-4 transition-all duration-300 hover:bg-forest-bg/45 sm:p-5">
+            <div className="pointer-events-none absolute -right-5 -top-8 opacity-[0.05]">
+              <BookOpen size={140} />
             </div>
 
             {latestReading ? (
-              <div className="space-y-6 relative z-10">
-                <div className="flex items-center justify-between">
-                  <span className="text-[11px] font-bold text-forest-muted uppercase tracking-[0.2em] bg-forest-bg/80 px-5 py-2 rounded-full border border-forest-border/40">
+              <div className="relative z-10 space-y-4">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="rounded-full border border-forest-border/50 bg-white/70 px-3 py-1.5 text-[11px] font-bold text-forest-muted">
                     {new Date(latestReading.date).toLocaleDateString('zh-CN', { year: 'numeric', month: 'long', day: 'numeric' })}
                   </span>
                   {latestReading.isAiProcessed && (
-                    <div className="flex items-center gap-1.5 text-[11px] text-forest-accent font-bold">
+                    <span className="flex items-center gap-1.5 rounded-full bg-forest-accent/10 px-3 py-1.5 text-[11px] font-bold text-forest-accent">
                       <Sparkles size={14} className="animate-pulse" /> 灵见已存
-                    </div>
+                    </span>
                   )}
                 </div>
-                <div className="space-y-4">
-                  <p className="text-2xl font-serif text-forest-ink line-clamp-1 font-bold leading-tight">
+                <div className="space-y-3">
+                  <p className="line-clamp-2 font-serif text-2xl font-bold leading-tight text-forest-ink">
                     {latestReading.question || '未命名的研习'}
                   </p>
                   <div className="flex gap-2 flex-wrap">
                     {latestReading.cards.slice(0, 3).map((card, i) => (
-                      <span key={i} className="text-xs text-forest-muted bg-forest-bg px-4 py-1.5 rounded-xl border border-forest-border/30">
+                      <span key={i} className="rounded-xl border border-forest-border/40 bg-white/80 px-3 py-1.5 text-xs text-forest-muted">
                         {card.name}
                       </span>
                     ))}
@@ -423,40 +436,48 @@ export function ProfileView({
                 </div>
               </div>
             ) : (
-              <div className="text-center py-10 space-y-6">
-                <div className="w-24 h-24 bg-forest-bg rounded-full flex items-center justify-center mx-auto border border-forest-border group-hover:rotate-12 transition-transform duration-500">
-                  <Sparkles size={40} className="text-forest-muted/20" />
+              <div className="flex min-h-[132px] items-center gap-4">
+                <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl border border-forest-border bg-white/70">
+                  <Sparkles size={26} className="text-forest-muted/25" />
                 </div>
-                <p className="text-sm text-forest-muted font-medium">执印入阁，留下你的第一篇手记。</p>
+                <div className="space-y-1">
+                  <p className="font-serif text-xl font-bold text-forest-ink">还没有手记</p>
+                  <p className="text-sm text-forest-muted">执印入阁，留下你的第一篇研习。</p>
+                </div>
               </div>
             )}
           </div>
-        </div>
+        </section>
 
         {/* 阁中成就（占位） */}
-        <div className="space-y-6">
-          <div className="flex items-center justify-between px-4">
-            <h3 className="text-2xl font-serif text-forest-ink flex items-center gap-3 font-bold">
-              <Award size={26} className="text-forest-accent" />
-              🎖️ 研习成就
+        <section className="rounded-[2rem] border border-forest-border bg-white/88 p-4 shadow-sm sm:p-5">
+          <div className="mb-4 flex items-center justify-between gap-3">
+            <h3 className="flex items-center gap-2 font-serif text-xl font-bold text-forest-ink">
+              <Award size={22} className="text-forest-accent" />
+              研习成就
             </h3>
           </div>
-          <div className="bg-white p-10 rounded-[3rem] border border-forest-border shadow-sm min-h-[240px] flex flex-col justify-center relative overflow-hidden group">
-            <div className="grid grid-cols-3 gap-6 filter grayscale opacity-20 group-hover:opacity-40 transition-all duration-700">
-               {[1, 2, 3].map(i => (
-                 <div key={i} className="aspect-square rounded-[2rem] bg-forest-bg flex items-center justify-center border-2 border-dashed border-forest-border">
-                   <Lock size={24} className="text-forest-muted/30" />
-                 </div>
-               ))}
+          <div className="space-y-3 rounded-3xl border border-forest-border/70 bg-forest-bg/35 p-4">
+            <div className="flex items-center gap-3">
+              {[1, 2, 3].map(i => (
+                <div key={i} className="flex h-14 flex-1 items-center justify-center rounded-2xl border border-dashed border-forest-border bg-white/55">
+                  <Award size={18} className="text-forest-muted/25" />
+                </div>
+              ))}
             </div>
-            <p className="text-center text-[10px] text-forest-muted mt-8 font-bold tracking-[0.4em] uppercase">成就系统筹备中</p>
+            <div className="rounded-2xl bg-white/65 px-4 py-3">
+              <p className="text-sm font-bold text-forest-ink">成就系统筹备中</p>
+              <p className="mt-1 text-xs leading-relaxed text-forest-muted">
+                未来会根据手记、复盘和注疏积累点亮成就。
+              </p>
+            </div>
           </div>
-        </div>
+        </section>
       </div>
     </div>
 
     {cropImage && (
-      <AvatarCropModal 
+      <AvatarCropModal
         image={cropImage}
         isOpen={isCropModalOpen}
         onClose={() => {

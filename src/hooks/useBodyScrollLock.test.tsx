@@ -39,4 +39,64 @@ describe('useBodyScrollLock', () => {
     second.rerender({ locked: false });
     expect(document.body.style.overflow).toBe('');
   });
+
+  it('prevents wheel scrolling from leaking to the page while locked', () => {
+    const { rerender } = renderHook(({ locked }) => useBodyScrollLock(locked), {
+      initialProps: { locked: true },
+    });
+
+    const lockedWheel = new WheelEvent('wheel', {
+      bubbles: true,
+      cancelable: true,
+      deltaY: 120,
+    });
+    document.dispatchEvent(lockedWheel);
+
+    expect(lockedWheel.defaultPrevented).toBe(true);
+
+    rerender({ locked: false });
+
+    const releasedWheel = new WheelEvent('wheel', {
+      bubbles: true,
+      cancelable: true,
+      deltaY: 120,
+    });
+    document.dispatchEvent(releasedWheel);
+
+    expect(releasedWheel.defaultPrevented).toBe(false);
+  });
+
+  it('allows inner overlay scrolling but contains it at the edge', () => {
+    const scroller = document.createElement('div');
+    scroller.style.overflowY = 'auto';
+    Object.defineProperty(scroller, 'clientHeight', { configurable: true, value: 100 });
+    Object.defineProperty(scroller, 'scrollHeight', { configurable: true, value: 300 });
+    document.body.appendChild(scroller);
+
+    const { rerender } = renderHook(({ locked }) => useBodyScrollLock(locked), {
+      initialProps: { locked: true },
+    });
+
+    scroller.scrollTop = 80;
+    const insideWheel = new WheelEvent('wheel', {
+      bubbles: true,
+      cancelable: true,
+      deltaY: 40,
+    });
+    scroller.dispatchEvent(insideWheel);
+
+    expect(insideWheel.defaultPrevented).toBe(false);
+
+    scroller.scrollTop = 200;
+    const edgeWheel = new WheelEvent('wheel', {
+      bubbles: true,
+      cancelable: true,
+      deltaY: 40,
+    });
+    scroller.dispatchEvent(edgeWheel);
+
+    expect(edgeWheel.defaultPrevented).toBe(true);
+
+    rerender({ locked: false });
+  });
 });

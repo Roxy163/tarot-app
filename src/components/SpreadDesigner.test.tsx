@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { SpreadDesigner } from './SpreadDesigner';
 import { SpreadDefinition } from '../types';
 
@@ -46,7 +46,19 @@ const renderDesigner = (overrides = {}) => {
   return props;
 };
 
+const setViewportWidth = (width: number) => {
+  Object.defineProperty(window, 'innerWidth', {
+    configurable: true,
+    value: width,
+  });
+};
+
 describe('SpreadDesigner', () => {
+  afterEach(() => {
+    setViewportWidth(1024);
+    vi.restoreAllMocks();
+  });
+
   it('keeps the main save action visible in the workbench header', () => {
     renderDesigner({ currentSpread: '', isEditingSession: true });
 
@@ -141,6 +153,20 @@ describe('SpreadDesigner', () => {
     expect(screen.getByTestId('free-layout-pending-slot')).toBeInTheDocument();
     expect(onUpdateSlots).not.toHaveBeenCalled();
     expect(onStartNewSession).not.toHaveBeenCalled();
+  });
+
+  it('keeps mobile free canvas behind a start step until the user begins editing', async () => {
+    setViewportWidth(390);
+    const user = userEvent.setup();
+
+    renderDesigner();
+
+    expect(screen.getByTestId('spread-workbench-mobile-setup')).toBeInTheDocument();
+    expect(screen.queryByTestId('free-layout-canvas')).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: '开始摆放' }));
+
+    expect(screen.getByTestId('free-layout-canvas')).toBeInTheDocument();
   });
 
   it('exposes the free layout save mode choice', async () => {

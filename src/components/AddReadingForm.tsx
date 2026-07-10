@@ -1,4 +1,4 @@
-import React, { useState, useEffect, FormEvent } from 'react';
+import React, { useState, useEffect, FormEvent, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Sparkles, Layers, User, MessageSquare, RotateCcw, BookOpen, X, Settings, Save, Hash, Orbit, Home, Wind, Info } from 'lucide-react';
 import { CardKeywordMemory, SpreadDefinition, TarotCardMetadata, ReadingSlotData, TarotReading, ReadingFormData } from '../types';
@@ -138,6 +138,7 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
   const [spreadNameNotice, setSpreadNameNotice] = useState('');
   const [submitNotice, setSubmitNotice] = useState('');
   const [pendingDeleteSpreadNames, setPendingDeleteSpreadNames] = useState<string[]>([]);
+  const readingDetailRef = useRef<HTMLDivElement | null>(null);
   useBodyScrollLock(Boolean(showRestoreConfirm || spreadSaveConflict));
 
   const {
@@ -188,6 +189,8 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
     setActiveInfluenceKey(checked ? 'numerologyInfluence' : null);
   };
   const activeInfluenceField = influenceFields.find(field => field.key === activeInfluenceKey);
+  const hasInfluenceValues = influenceFields.some(field => formData[field.key]?.trim());
+  const shouldShowInfluenceTools = expandInfluenceByDefault || activeInfluenceKey !== null || hasInfluenceValues;
   const scrollFocusedFieldIntoView = (event: React.FocusEvent<HTMLElement>) => {
     if (typeof window === 'undefined' || window.innerWidth >= 768) return;
     const target = event.currentTarget;
@@ -195,6 +198,16 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
     window.setTimeout(() => {
       target.scrollIntoView({ block: 'center', inline: 'nearest', behavior: 'smooth' });
     }, 120);
+  };
+  const scrollReadingDetailIntoView = () => {
+    if (typeof window === 'undefined' || window.innerWidth >= 768) return;
+    const detailTop = readingDetailRef.current?.getBoundingClientRect().top;
+    if (detailTop === undefined) return;
+
+    window.scrollTo({
+      top: Math.max(0, window.scrollY + detailTop - 96),
+      behavior: 'smooth',
+    });
   };
 
   useEffect(() => {
@@ -284,6 +297,7 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
       updateCardSlotsWithHistory(newSlots);
     }
     setShowPicker(false);
+    window.setTimeout(scrollReadingDetailIntoView, 260);
   };
 
   const toggleReverse = (index: number, e: React.MouseEvent) => {
@@ -565,7 +579,7 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
   const itemClasses = currentTemplate.itemClasses;
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-6 rounded-3xl border border-forest-border bg-white p-4 pb-[calc(2rem+env(safe-area-inset-bottom))] shadow-sm sm:space-y-8 sm:p-10">
+    <form onSubmit={handleSubmit} className="space-y-4 rounded-2xl border border-forest-border bg-white p-3 pb-[calc(5.5rem+env(safe-area-inset-bottom))] shadow-sm sm:space-y-8 sm:rounded-3xl sm:p-10">
       {editingCorrespondence && (
         <CardCorrespondenceEditor 
           card={editingCorrespondence.card}
@@ -876,26 +890,28 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
 
 
       {/* Card Metadata & Main Display */}
-      <ReadingDetailView 
-        activeSlotIndex={activeSlotIndex}
-        cardSlots={cardSlots}
-        cardMetadata={cardMetadata}
-        cardKeywordMemory={cardKeywordMemory}
-        cardInterpretations={cardInterpretations}
-        question={formData.question}
-        spread={formData.spread}
-        category={formData.category}
-        combinationContext={formData.combination}
-        isLoggedIn={isLoggedIn}
-        userId={userId}
-        isMultiCard={isMultiCard}
-        isDailyMode={isDailyMode}
-        onToggleReverse={toggleReverse}
-        onSetCardInterpretations={setCardInterpretations}
-        onSetActiveSlotIndex={setActiveSlotIndex}
-        onSetShowPicker={setShowPicker}
-        onUpdateCardSlotsWithHistory={updateCardSlotsWithHistory}
-      />
+      <div ref={readingDetailRef} className="scroll-mt-24">
+        <ReadingDetailView
+          activeSlotIndex={activeSlotIndex}
+          cardSlots={cardSlots}
+          cardMetadata={cardMetadata}
+          cardKeywordMemory={cardKeywordMemory}
+          cardInterpretations={cardInterpretations}
+          question={formData.question}
+          spread={formData.spread}
+          category={formData.category}
+          combinationContext={formData.combination}
+          isLoggedIn={isLoggedIn}
+          userId={userId}
+          isMultiCard={isMultiCard}
+          isDailyMode={isDailyMode}
+          onToggleReverse={toggleReverse}
+          onSetCardInterpretations={setCardInterpretations}
+          onSetActiveSlotIndex={setActiveSlotIndex}
+          onSetShowPicker={setShowPicker}
+          onUpdateCardSlotsWithHistory={updateCardSlotsWithHistory}
+        />
+      </div>
 
       {isMultiCard && (
         <FoldableSection 
@@ -915,41 +931,55 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
         </FoldableSection>
       )}
 
-      <div className="space-y-3">
-        <div className="flex items-center justify-between gap-3 px-1">
-          <p className="text-xs font-bold text-forest-accent">补充解读视角（可选）</p>
-          <label className="min-h-12 px-2 -mr-2 flex items-center gap-2 text-[10px] font-bold text-forest-muted cursor-pointer rounded-xl hover:bg-forest-accent/5 transition-colors">
-            <input
-              type="checkbox"
-              className="accent-forest-accent w-5 h-5"
-              checked={expandInfluenceByDefault}
-              onChange={e => handleToggleInfluenceDefault(e.target.checked)}
-            />
-            <span>默认展开</span>
-          </label>
+      <div className="space-y-2.5 rounded-2xl border border-forest-accent/5 bg-forest-accent/[0.03] p-2.5 sm:space-y-3 sm:p-0 sm:border-0 sm:bg-transparent">
+        <div className="flex items-center justify-between gap-2 px-1">
+          <div>
+            <p className="text-xs font-bold text-forest-accent">补充解读视角（可选）</p>
+            <p className="mt-0.5 hidden text-[10px] text-forest-muted sm:block">灵数、星座、宫位、元素，需要时再补充。</p>
+          </div>
+          <div className="flex shrink-0 items-center gap-1.5">
+            <button
+              type="button"
+              onClick={() => setActiveInfluenceKey(shouldShowInfluenceTools ? null : 'numerologyInfluence')}
+              className="min-h-10 rounded-xl bg-white px-3 text-[11px] font-bold text-forest-accent shadow-sm ring-1 ring-forest-accent/10 transition-colors hover:bg-forest-accent/5 sm:hidden"
+            >
+              {shouldShowInfluenceTools ? '收起' : '展开'}
+            </button>
+            <label className={`${shouldShowInfluenceTools ? 'flex' : 'hidden sm:flex'} min-h-10 items-center gap-1.5 rounded-xl px-1.5 text-[10px] font-bold text-forest-muted transition-colors hover:bg-forest-accent/5`}>
+              <input
+                type="checkbox"
+                className="h-4 w-4 accent-forest-accent"
+                checked={expandInfluenceByDefault}
+                onChange={e => handleToggleInfluenceDefault(e.target.checked)}
+              />
+              <span>默认展开</span>
+            </label>
+          </div>
         </div>
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-          {influenceFields.map(field => {
-            const isActive = activeInfluenceKey === field.key;
-            const hasValue = !!formData[field.key]?.trim();
+        {shouldShowInfluenceTools && (
+          <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-4 sm:gap-2">
+            {influenceFields.map(field => {
+              const isActive = activeInfluenceKey === field.key;
+              const hasValue = !!formData[field.key]?.trim();
 
-            return (
-              <button
-                key={field.key}
-                type="button"
-                onClick={() => setActiveInfluenceKey(isActive ? null : field.key)}
-                className={`min-h-12 px-3 py-2 rounded-xl border text-xs font-bold flex items-center justify-center gap-1.5 transition-all ${
-                  isActive
-                    ? 'bg-forest-accent text-white border-forest-accent shadow-sm'
-                    : 'bg-forest-accent/5 text-forest-accent border-forest-accent/5 hover:bg-forest-accent/10'
-                }`}
-              >
-                <span>{field.title}</span>
-                {hasValue && <span className={`w-1.5 h-1.5 rounded-full ${isActive ? 'bg-white' : 'bg-forest-accent'}`} />}
-              </button>
-            );
-          })}
-        </div>
+              return (
+                <button
+                  key={field.key}
+                  type="button"
+                  onClick={() => setActiveInfluenceKey(isActive ? null : field.key)}
+                  className={`min-h-11 rounded-xl border px-2 py-1.5 text-[11px] font-bold flex items-center justify-center gap-1.5 transition-all sm:min-h-12 sm:px-3 sm:py-2 sm:text-xs ${
+                    isActive
+                      ? 'bg-forest-accent text-white border-forest-accent shadow-sm'
+                      : 'bg-white text-forest-accent border-forest-accent/5 hover:bg-forest-accent/10'
+                  }`}
+                >
+                  <span>{field.title}</span>
+                  {hasValue && <span className={`h-1.5 w-1.5 rounded-full ${isActive ? 'bg-white' : 'bg-forest-accent'}`} />}
+                </button>
+              );
+            })}
+          </div>
+        )}
 
         <AnimatePresence mode="wait">
           {activeInfluenceField && (
@@ -980,49 +1010,72 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
         </AnimatePresence>
       </div>
 
-      <div className="space-y-4">
-        {formData.isForClient && (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 p-4 bg-forest-accent/5 rounded-2xl border border-forest-accent/5">
-            <div className="space-y-1.5">
-              <label className="text-sm font-bold text-forest-accent flex items-center gap-2 px-1"><User size={14} /> 客户姓名</label>
-              <input className="w-full px-4 py-2 bg-white border border-forest-accent/5 rounded-xl focus:ring-2 focus:ring-forest-accent/20 text-sm" placeholder="输入客户称呼..." value={formData.clientName} onFocus={scrollFocusedFieldIntoView} onChange={e => setFormData({...formData, clientName: e.target.value})} />
-            </div>
-            <div className="space-y-1.5">
-              <label className="text-sm font-bold text-forest-accent flex items-center gap-2 px-1"><MessageSquare size={14} /> 客户反馈</label>
-              <input className="w-full px-4 py-2 bg-white border border-forest-accent/5 rounded-xl focus:ring-2 focus:ring-forest-accent/20 text-sm" placeholder="客户的真实反馈..." value={formData.clientFeedback} onFocus={scrollFocusedFieldIntoView} onChange={e => setFormData({...formData, clientFeedback: e.target.value})} />
-            </div>
+      {formData.isForClient && (
+        <div className="grid grid-cols-1 gap-3 rounded-2xl border border-forest-accent/5 bg-forest-accent/5 p-4 md:grid-cols-2">
+          <div className="space-y-1.5">
+            <label className="text-sm font-bold text-forest-accent flex items-center gap-2 px-1"><User size={14} /> 客户姓名</label>
+            <input className="w-full px-4 py-2 bg-white border border-forest-accent/5 rounded-xl focus:ring-2 focus:ring-forest-accent/20 text-sm" placeholder="输入客户称呼..." value={formData.clientName} onFocus={scrollFocusedFieldIntoView} onChange={e => setFormData({...formData, clientName: e.target.value})} />
           </div>
-        )}
+          <div className="space-y-1.5">
+            <label className="text-sm font-bold text-forest-accent flex items-center gap-2 px-1"><MessageSquare size={14} /> 客户反馈</label>
+            <input className="w-full px-4 py-2 bg-white border border-forest-accent/5 rounded-xl focus:ring-2 focus:ring-forest-accent/20 text-sm" placeholder="客户的真实反馈..." value={formData.clientFeedback} onFocus={scrollFocusedFieldIntoView} onChange={e => setFormData({...formData, clientFeedback: e.target.value})} />
+          </div>
+        </div>
+      )}
 
-        <FoldableSection 
-          icon={MessageSquare} 
-          title="📌 添加复盘（可选）" 
-          isOpen={showFeedback} 
+      {submitNotice && (
+        <div className="rounded-2xl border border-red-100 bg-red-50 px-4 py-3 text-sm font-medium text-red-600">
+          {submitNotice}
+        </div>
+      )}
+
+      <button
+        type="submit"
+        disabled={isLoading}
+        className="flex min-h-12 w-full items-center justify-center gap-2 rounded-2xl bg-forest-accent px-4 py-3 font-bold text-white shadow-lg transition-all hover:bg-forest-accent/90 active:scale-[0.98] disabled:opacity-50 sm:min-h-14 sm:gap-3 sm:py-5"
+      >
+        {isLoading ? (
+          <><motion.div animate={{ rotate: 360 }} transition={{ repeat: Infinity, duration: 1, ease: "linear" }}><Sparkles size={20} /></motion.div> 灵光引路中...</>
+        ) : (
+          <>
+            {isLoggedIn ? <BookOpen size={22} /> : <Save size={22} />}
+            <span className="text-base sm:text-lg">
+              {initialData ? (isLoggedIn ? '📖 保存修改' : '💾 保存修改') : (isLoggedIn ? '📖 录入灵见手帖' : '💾 保存到本地')}
+            </span>
+          </>
+        )}
+      </button>
+
+      <div className="space-y-3 sm:space-y-4">
+        <FoldableSection
+          icon={MessageSquare}
+          title="📌 添加复盘（可选）"
+          isOpen={showFeedback}
           onToggle={() => setShowFeedback(!showFeedback)}
         >
-          <textarea 
-            rows={4} 
-            className="w-full px-4 py-3 bg-white border border-forest-accent/5 rounded-xl focus:ring-2 focus:ring-forest-accent/20 text-sm" 
-            placeholder="记录你对这次占卜的自我评价或后续验证..." 
-            value={formData.userFeedback} 
+          <textarea
+            rows={4}
+            className="w-full px-4 py-3 bg-white border border-forest-accent/5 rounded-xl focus:ring-2 focus:ring-forest-accent/20 text-sm"
+            placeholder="记录你对这次占卜的自我评价或后续验证..."
+            value={formData.userFeedback}
             onFocus={scrollFocusedFieldIntoView}
-            onChange={e => setFormData({...formData, userFeedback: e.target.value})} 
+            onChange={e => setFormData({...formData, userFeedback: e.target.value})}
           />
         </FoldableSection>
 
-        <FoldableSection 
-          icon={Settings} 
-          title="⚙️ 高级选项" 
-          isOpen={showAdvanced} 
+        <FoldableSection
+          icon={Settings}
+          title="⚙️ 高级选项"
+          isOpen={showAdvanced}
           onToggle={() => setShowAdvanced(!showAdvanced)}
         >
           <div className="flex flex-wrap items-center gap-6 pt-2">
             <label className="flex items-center gap-2 cursor-pointer text-sm text-forest-muted group">
-              <input type="checkbox" className="accent-forest-accent w-4 h-4" checked={formData.isPublic} onChange={e => setFormData({...formData, isPublic: e.target.checked})} /> 
+              <input type="checkbox" className="accent-forest-accent w-4 h-4" checked={formData.isPublic} onChange={e => setFormData({...formData, isPublic: e.target.checked})} />
               <span className="group-hover:text-forest-accent transition-colors">公开到研习广场</span>
             </label>
             <label className="flex items-center gap-2 cursor-pointer text-sm text-forest-muted group">
-              <input type="checkbox" className="accent-forest-accent w-4 h-4" checked={formData.isAnonymous} onChange={e => setFormData({...formData, isAnonymous: e.target.checked})} /> 
+              <input type="checkbox" className="accent-forest-accent w-4 h-4" checked={formData.isAnonymous} onChange={e => setFormData({...formData, isAnonymous: e.target.checked})} />
               <span className="group-hover:text-forest-accent transition-colors">匿名研习</span>
             </label>
             <label className="flex items-center gap-2 cursor-pointer text-sm font-bold text-forest-accent group text-nowrap">
@@ -1030,7 +1083,7 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
                 const willProcess = e.target.checked;
                 setFormData({...formData, skipAi: !willProcess});
                 localStorage.setItem('tarot_ai_preference', willProcess ? 'process' : 'skip');
-              }} /> 
+              }} />
               <span className="group-hover:scale-105 transition-transform">参与AI深度解析</span>
             </label>
           </div>
@@ -1044,29 +1097,6 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
           </div>
         </FoldableSection>
       </div>
-
-      {submitNotice && (
-        <div className="rounded-2xl border border-red-100 bg-red-50 px-4 py-3 text-sm font-medium text-red-600">
-          {submitNotice}
-        </div>
-      )}
-
-      <button 
-        type="submit" 
-        disabled={isLoading} 
-        className="w-full py-5 bg-forest-accent text-white rounded-2xl font-bold flex items-center justify-center gap-3 shadow-xl active:scale-[0.98] transition-all hover:bg-forest-accent/90 disabled:opacity-50"
-      >
-        {isLoading ? (
-          <><motion.div animate={{ rotate: 360 }} transition={{ repeat: Infinity, duration: 1, ease: "linear" }}><Sparkles size={20} /></motion.div> 灵光引路中...</>
-        ) : (
-          <>
-            {isLoggedIn ? <BookOpen size={22} /> : <Save size={22} />}
-            <span className="text-lg">
-              {initialData ? (isLoggedIn ? '📖 保存修改' : '💾 保存修改') : (isLoggedIn ? '📖 录入灵见手帖' : '💾 保存到本地')}
-            </span>
-          </>
-        )}
-      </button>
       
       {/* Spacing */}
       <div className="h-4" />

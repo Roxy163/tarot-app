@@ -37,6 +37,11 @@ describe('AddReadingForm spread designer flow', () => {
   });
 
   afterEach(() => {
+    Object.defineProperty(window, 'innerWidth', {
+      configurable: true,
+      writable: true,
+      value: 1024,
+    });
     vi.restoreAllMocks();
   });
 
@@ -223,6 +228,7 @@ describe('AddReadingForm spread designer flow', () => {
     expect(spreadSelect.querySelector('optgroup[label="自定义牌阵 (1)"]')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '编辑当前牌阵 单牌阵' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '新建自定义牌阵' })).toBeInTheDocument();
+    expect(screen.getByTestId('spread-control-bar').firstElementChild).toHaveClass('sm:flex');
   });
 
   it('does not expose the quick add-position button for official spreads', async () => {
@@ -250,5 +256,26 @@ describe('AddReadingForm spread designer flow', () => {
     renderForm();
 
     expect(screen.queryByRole('button', { name: /移除第 1 个位置/ })).not.toBeInTheDocument();
+  });
+
+  it('brings the selected-card detail into view after choosing a card on mobile', async () => {
+    const user = userEvent.setup();
+    const scrollTo = vi.fn();
+    Object.defineProperty(window, 'innerWidth', {
+      configurable: true,
+      writable: true,
+      value: 390,
+    });
+    window.scrollTo = scrollTo;
+
+    renderForm();
+
+    await user.click(screen.getByRole('button', { name: '1 主牌' }));
+    await user.click(screen.getByRole('button', { name: '愚者 愚者' }));
+
+    expect(screen.getByPlaceholderText('记录关于“主牌”的直觉与洞察...')).toBeInTheDocument();
+    await waitFor(() => {
+      expect(scrollTo).toHaveBeenCalledWith(expect.objectContaining({ behavior: 'smooth' }));
+    });
   });
 });

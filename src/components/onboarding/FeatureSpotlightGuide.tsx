@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { ArrowRight, Check, X } from 'lucide-react';
-import { useBodyScrollLock } from '../../hooks/useBodyScrollLock';
 
 export interface FeatureSpotlightStep {
   target: string;
@@ -37,15 +36,13 @@ export const FeatureSpotlightGuide: React.FC<FeatureSpotlightGuideProps> = ({
   steps,
   onFinish,
 }) => {
-  useBodyScrollLock(isOpen);
-
   const [stepIndex, setStepIndex] = useState(0);
   const [targetRect, setTargetRect] = useState<TargetRect | null>(null);
   const [viewportSize, setViewportSize] = useState(getViewportSize);
   const step = steps[stepIndex];
   const viewport = viewportSize;
   const isMobile = viewport.width < 640;
-  const mobileNoteWidth = step.mobileNote?.startsWith('right') ? 176 : 220;
+  const mobileNoteWidth = step.mobileNote?.startsWith('right') ? 164 : 196;
 
   useEffect(() => {
     if (!isOpen || !step?.target) return;
@@ -114,9 +111,9 @@ export const FeatureSpotlightGuide: React.FC<FeatureSpotlightGuideProps> = ({
   const targetRight = targetRect ? targetRect.left + targetRect.width : targetCenterX;
   const targetBottom = targetRect ? targetRect.top + targetRect.height : targetCenterY;
   const viewportMargin = isMobile ? 18 : 32;
-  const noteGap = isMobile ? 34 : 104;
+  const noteGap = isMobile ? 28 : 104;
   const noteWidth = Math.min(isMobile ? mobileNoteWidth : 330, viewport.width - viewportMargin * 2);
-  const estimatedNoteHeight = isMobile ? 106 : 132;
+  const estimatedNoteHeight = isMobile ? 150 : 132;
   const spaceAbove = targetRect ? targetRect.top : targetCenterY;
   const spaceBelow = targetRect ? viewport.height - targetBottom : viewport.height - targetCenterY;
   const spaceLeft = targetRect ? targetRect.left : targetCenterX;
@@ -130,30 +127,47 @@ export const FeatureSpotlightGuide: React.FC<FeatureSpotlightGuideProps> = ({
         : 'below';
   const canPlaceMobileRight = Boolean(targetRect && targetRight + 18 + noteWidth <= viewport.width - viewportMargin);
   const canPlaceMobileLeft = Boolean(targetRect && targetRect.left - 18 - noteWidth >= viewportMargin);
-  const preferredMobilePlacement: NotePlacement | null = targetRect && isMobile && step.mobileNote?.startsWith('right')
-    ? canPlaceMobileRight
-      ? 'right'
-      : canPlaceMobileLeft
-        ? 'left'
-        : 'above'
-    : targetRect && isMobile && step.mobileNote === 'below-center'
-      ? 'below'
-      : null;
+  const mobileBlankPlacement: NotePlacement | null = targetRect && isMobile
+    ? spaceAbove >= estimatedNoteHeight + noteGap + viewportMargin && spaceAbove >= spaceBelow * 0.72
+      ? 'above'
+      : spaceBelow >= estimatedNoteHeight + noteGap + viewportMargin
+        ? 'below'
+        : null
+    : null;
+  const preferredMobilePlacement: NotePlacement | null = mobileBlankPlacement
+    || (targetRect && isMobile && step.mobileNote?.startsWith('right')
+      ? canPlaceMobileRight
+        ? 'right'
+        : canPlaceMobileLeft
+          ? 'left'
+          : 'above'
+      : targetRect && isMobile && step.mobileNote === 'below-center'
+        ? 'below'
+        : null);
   const effectiveNotePlacement = preferredMobilePlacement || notePlacement;
   const preferredMobileLeft = targetRect && isMobile && preferredMobilePlacement === 'right'
     ? targetRight + 18
     : targetRect && isMobile && preferredMobilePlacement === 'left'
       ? targetRect.left - noteWidth - 18
       : null;
-  const preferredMobileTop = targetRect && isMobile && step.mobileNote === 'right-top'
+  const preferredMobileTop = targetRect
+    && isMobile
+    && (preferredMobilePlacement === 'right' || preferredMobilePlacement === 'left')
+    && step.mobileNote === 'right-top'
     ? clamp(
         targetRect.top - estimatedNoteHeight - 22,
         viewportMargin,
         Math.max(viewportMargin, viewport.height - estimatedNoteHeight - viewportMargin),
       )
-    : targetRect && isMobile && step.mobileNote === 'right-middle'
+    : targetRect
+      && isMobile
+      && (preferredMobilePlacement === 'right' || preferredMobilePlacement === 'left')
+      && step.mobileNote === 'right-middle'
       ? clamp(targetCenterY - estimatedNoteHeight / 2, viewportMargin, Math.max(viewportMargin, viewport.height - estimatedNoteHeight - viewportMargin))
-    : targetRect && isMobile && step.mobileNote === 'below-center'
+    : targetRect
+      && isMobile
+      && preferredMobilePlacement === 'below'
+      && step.mobileNote === 'below-center'
       ? clamp(targetBottom + 18, viewportMargin, Math.max(viewportMargin, viewport.height - estimatedNoteHeight - viewportMargin))
       : null;
   const noteLeft = preferredMobileLeft ?? (targetRect

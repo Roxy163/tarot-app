@@ -54,6 +54,7 @@ describe('ReadingCard', () => {
 
     const challengeCard = screen.getByAltText('皇帝').closest('.rotate-90');
 
+    expect(screen.getByTestId('reading-card-celtic-preview')).toBeInTheDocument();
     expect(challengeCard).toBeInTheDocument();
     expect(screen.getByText('挑战')).toBeInTheDocument();
   });

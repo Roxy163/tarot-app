@@ -988,7 +988,7 @@ export const FreeLayoutEditor: React.FC<FreeLayoutEditorProps> = ({
   }, [updateCanvasScale]);
 
   return (
-    <div ref={rootRef} className="w-full max-w-[900px] space-y-3">
+    <div ref={rootRef} className="w-full max-w-[900px] space-y-2 sm:space-y-3">
       <ConfirmDialog
         isOpen={showClearConfirm}
         title="清空位置"
@@ -1003,16 +1003,15 @@ export const FreeLayoutEditor: React.FC<FreeLayoutEditorProps> = ({
         onClose={() => setShowClearConfirm(false)}
       />
 
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex items-center gap-2">
-          <span className="text-xs font-bold text-forest-accent">自由画布模式</span>
+      <div className="flex items-center gap-2 overflow-x-auto pb-0.5 custom-scrollbar-hide">
+        <div className="flex shrink-0 items-center gap-2">
+          <span className="text-xs font-bold text-forest-accent">自由画布</span>
           <span className="px-2 py-0.5 bg-forest-pink/10 text-forest-pink rounded-full text-[9px] font-bold">
-            自由摆放
+            摆放
           </span>
         </div>
-        <div className="flex items-center gap-2">
-          <div className="flex flex-wrap items-center gap-1.5">
-            <div className="flex min-h-11 sm:min-h-10 items-center rounded-xl bg-forest-bg p-0.5">
+        <div className="flex shrink-0 items-center gap-1.5">
+            <div className="flex min-h-11 sm:min-h-10 shrink-0 items-center rounded-xl bg-forest-bg p-0.5">
               <button
                 type="button"
                 onClick={() => setInteractionMode('place')}
@@ -1041,7 +1040,7 @@ export const FreeLayoutEditor: React.FC<FreeLayoutEditorProps> = ({
             <button
               type="button"
               onClick={() => updateCanvasScale(prev => prev + 0.1)}
-              className="flex min-h-11 sm:min-h-10 min-w-11 sm:min-w-10 items-center justify-center rounded-xl bg-forest-accent/10 text-forest-accent transition-all hover:bg-forest-accent/20"
+              className="flex min-h-11 sm:min-h-10 min-w-11 sm:min-w-10 shrink-0 items-center justify-center rounded-xl bg-forest-accent/10 text-forest-accent transition-all hover:bg-forest-accent/20"
               title="放大画布"
               aria-label="放大画布"
             >
@@ -1050,7 +1049,7 @@ export const FreeLayoutEditor: React.FC<FreeLayoutEditorProps> = ({
             <button
               type="button"
               onClick={() => updateCanvasScale(prev => prev - 0.1)}
-              className="flex min-h-11 sm:min-h-10 min-w-11 sm:min-w-10 items-center justify-center rounded-xl bg-forest-accent/10 text-forest-accent transition-all hover:bg-forest-accent/20"
+              className="flex min-h-11 sm:min-h-10 min-w-11 sm:min-w-10 shrink-0 items-center justify-center rounded-xl bg-forest-accent/10 text-forest-accent transition-all hover:bg-forest-accent/20"
               title="缩小画布"
               aria-label="缩小画布"
             >
@@ -1059,7 +1058,7 @@ export const FreeLayoutEditor: React.FC<FreeLayoutEditorProps> = ({
             <button
               type="button"
               onClick={resetView}
-              className="flex min-h-11 sm:min-h-10 min-w-11 sm:min-w-10 items-center justify-center rounded-xl bg-forest-accent/10 text-forest-accent transition-all hover:bg-forest-accent/20"
+              className="flex min-h-11 sm:min-h-10 min-w-11 sm:min-w-10 shrink-0 items-center justify-center rounded-xl bg-forest-accent/10 text-forest-accent transition-all hover:bg-forest-accent/20"
               title="重置视图"
               aria-label="重置视图"
             >
@@ -1068,7 +1067,7 @@ export const FreeLayoutEditor: React.FC<FreeLayoutEditorProps> = ({
             <button
               type="button"
               onClick={() => setShowGrid(!showGrid)}
-              className={`min-h-11 sm:min-h-10 rounded-xl px-2.5 text-[10px] font-bold transition-all ${
+              className={`min-h-11 sm:min-h-10 shrink-0 rounded-xl px-2.5 text-[10px] font-bold transition-all ${
                 showGrid ? 'bg-forest-accent/10 text-forest-accent' : 'bg-gray-100 text-gray-400'
               }`}
             >
@@ -1077,7 +1076,7 @@ export const FreeLayoutEditor: React.FC<FreeLayoutEditorProps> = ({
             <button
               type="button"
               onClick={() => setSnapEnabled(!snapEnabled)}
-              className={`min-h-11 sm:min-h-10 rounded-xl px-2.5 text-[10px] font-bold transition-all ${
+              className={`min-h-11 sm:min-h-10 shrink-0 rounded-xl px-2.5 text-[10px] font-bold transition-all ${
                 snapEnabled ? 'bg-amber-100 text-amber-600' : 'bg-gray-100 text-gray-400'
               }`}
             >
@@ -1087,7 +1086,7 @@ export const FreeLayoutEditor: React.FC<FreeLayoutEditorProps> = ({
               type="button"
               onClick={handleClearAll}
               disabled={cardSlots.length === 0}
-              className={`flex min-h-11 sm:min-h-10 items-center gap-1 rounded-xl px-2.5 text-[10px] font-bold transition-all ${
+              className={`flex min-h-11 sm:min-h-10 shrink-0 items-center gap-1 rounded-xl px-2.5 text-[10px] font-bold transition-all ${
                 cardSlots.length === 0
                   ? 'cursor-not-allowed bg-gray-100 text-gray-300'
                   : 'bg-red-100 text-red-600 hover:bg-red-200'
@@ -1096,7 +1095,6 @@ export const FreeLayoutEditor: React.FC<FreeLayoutEditorProps> = ({
               <Trash2 size={10} />
               清空
             </button>
-          </div>
         </div>
       </div>
 

@@ -34,6 +34,10 @@ const useContainerWidth = <T extends HTMLElement>() => {
   return { ref, width };
 };
 
+const isMobileViewport = () => (
+  typeof window !== 'undefined' && window.innerWidth < 640
+);
+
 interface SpreadDesignerProps {
   spreads: SpreadDefinition[];
   currentSpread: string;
@@ -107,6 +111,9 @@ export const SpreadDesigner: React.FC<SpreadDesignerProps> = ({
 
   const [editMode, setEditMode] = useState<'grid' | 'free'>(layoutType === 'free' ? 'free' : 'grid');
   const [selectedCustomSpreadNames, setSelectedCustomSpreadNames] = useState<string[]>([]);
+  const [isMobileWorkbench, setIsMobileWorkbench] = useState(isMobileViewport);
+  const [isWorkspaceOpen, setIsWorkspaceOpen] = useState(() => !isMobileViewport());
+  const [showCustomManager, setShowCustomManager] = useState(() => !isMobileViewport());
   const { ref: designerPreviewRef, width: designerPreviewWidth } = useContainerWidth<HTMLDivElement>();
   const longPressDeleteTimerRef = useRef<number | null>(null);
   const longPressTriggeredRef = useRef(false);
@@ -114,6 +121,22 @@ export const SpreadDesigner: React.FC<SpreadDesignerProps> = ({
   useEffect(() => {
     setEditMode(layoutType === 'free' ? 'free' : 'grid');
   }, [layoutType]);
+
+  useEffect(() => {
+    const updateResponsiveState = () => {
+      const nextIsMobile = isMobileViewport();
+      setIsMobileWorkbench(nextIsMobile);
+
+      if (!nextIsMobile) {
+        setIsWorkspaceOpen(true);
+        setShowCustomManager(true);
+      }
+    };
+
+    updateResponsiveState();
+    window.addEventListener('resize', updateResponsiveState);
+    return () => window.removeEventListener('resize', updateResponsiveState);
+  }, []);
 
   useEffect(() => () => {
     if (longPressDeleteTimerRef.current) {
@@ -204,6 +227,9 @@ export const SpreadDesigner: React.FC<SpreadDesignerProps> = ({
       onSelectSpread(selectedSpread);
     }
     onSetDesignActiveSlot(-1);
+    if (isMobileWorkbench) {
+      setIsWorkspaceOpen(false);
+    }
   };
 
   return (
@@ -211,7 +237,7 @@ export const SpreadDesigner: React.FC<SpreadDesignerProps> = ({
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: 20 }}
-      className="fixed inset-0 z-[520] flex items-center justify-center bg-forest-ink/40 p-2 backdrop-blur-sm overscroll-contain sm:p-4"
+      className="fixed inset-0 z-[520] flex items-start justify-center bg-forest-ink/40 p-2 backdrop-blur-sm overscroll-contain sm:items-center sm:p-4"
       onClick={(e) => { if (e.target === e.currentTarget && onClose) onClose(); }}
     >
       <motion.div 
@@ -266,8 +292,8 @@ export const SpreadDesigner: React.FC<SpreadDesignerProps> = ({
           </div>
         </div>
 
-        <div className="space-y-3 p-3 sm:space-y-4 sm:p-4">
-          <div className="grid gap-2 rounded-2xl border border-forest-accent/10 bg-forest-bg/40 p-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
+        <div className="space-y-2.5 p-2.5 sm:space-y-4 sm:p-4">
+          <div className="grid grid-cols-[minmax(0,1fr)_auto] items-end gap-2 rounded-2xl border border-forest-accent/10 bg-forest-bg/40 p-2">
             <div className="space-y-0.5">
               <label htmlFor="spread-template-select" className="text-[9px] font-bold uppercase tracking-wider text-forest-muted">
                 模板
@@ -299,37 +325,63 @@ export const SpreadDesigner: React.FC<SpreadDesignerProps> = ({
 
             <button
               type="button"
+              aria-label="新建空白"
               onClick={() => {
                 onUpdateNewSpreadName('');
                 onSetDesignActiveSlot(-1);
                 onStartNewSession?.();
+                if (isMobileWorkbench) {
+                  setIsWorkspaceOpen(false);
+                }
               }}
-              className="flex min-h-11 sm:min-h-10 items-center justify-center gap-1.5 rounded-xl border border-forest-accent/15 bg-white px-3 py-2 text-sm font-bold text-forest-accent transition-all hover:bg-forest-accent/5 sm:justify-start"
+              className="flex min-h-11 items-center justify-center gap-1.5 rounded-xl border border-forest-accent/15 bg-white px-3 py-2 text-xs font-bold text-forest-accent transition-all hover:bg-forest-accent/5 sm:min-h-10 sm:justify-start sm:text-sm"
             >
               <Plus size={16} />
-              新建空白
+              <span className="sm:hidden">空白</span>
+              <span className="hidden sm:inline">新建空白</span>
             </button>
           </div>
 
           {customSpreads.length > 0 && (
+            isMobileWorkbench && !showCustomManager ? (
+              <button
+                type="button"
+                onClick={() => setShowCustomManager(true)}
+                className="flex min-h-11 w-full items-center justify-between rounded-2xl border border-forest-accent/10 bg-white px-3 py-2 text-left text-xs font-bold text-forest-accent shadow-sm shadow-forest-accent/5"
+              >
+                <span>管理自建牌阵</span>
+                <span className="rounded-full bg-forest-accent/10 px-2 py-1 text-[10px]">{customSpreads.length} 个</span>
+              </button>
+            ) : (
             <div className="rounded-2xl border border-forest-accent/10 bg-white p-2.5 shadow-sm shadow-forest-accent/5">
               <div className="mb-2 flex items-center justify-between gap-3">
                 <div>
                   <p className="text-[10px] font-bold uppercase tracking-wider text-forest-accent">自建牌阵管理</p>
                   <p className="text-[10px] text-forest-muted">点选可批量删除，长按单项也可删除。</p>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => onDeleteSpreads?.(selectedCustomSpreadNames)}
-                  disabled={selectedCustomSpreadNames.length === 0}
-                  className={`min-h-11 rounded-xl px-3 py-2 text-xs font-bold transition-all sm:min-h-10 ${
-                    selectedCustomSpreadNames.length === 0
-                      ? 'cursor-not-allowed bg-gray-100 text-gray-300'
-                      : 'bg-red-100 text-red-600 hover:bg-red-200'
-                  }`}
-                >
-                  删除选中 {selectedCustomSpreadNames.length > 0 ? selectedCustomSpreadNames.length : ''}
-                </button>
+                <div className="flex shrink-0 items-center gap-1.5">
+                  {isMobileWorkbench && (
+                    <button
+                      type="button"
+                      onClick={() => setShowCustomManager(false)}
+                      className="min-h-11 rounded-xl px-3 py-2 text-xs font-bold text-forest-muted transition-colors hover:bg-forest-bg sm:min-h-10"
+                    >
+                      收起
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => onDeleteSpreads?.(selectedCustomSpreadNames)}
+                    disabled={selectedCustomSpreadNames.length === 0}
+                    className={`min-h-11 rounded-xl px-3 py-2 text-xs font-bold transition-all sm:min-h-10 ${
+                      selectedCustomSpreadNames.length === 0
+                        ? 'cursor-not-allowed bg-gray-100 text-gray-300'
+                        : 'bg-red-100 text-red-600 hover:bg-red-200'
+                    }`}
+                  >
+                    删除选中 {selectedCustomSpreadNames.length > 0 ? selectedCustomSpreadNames.length : ''}
+                  </button>
+                </div>
               </div>
               <div className="flex gap-2 overflow-x-auto custom-scrollbar-hide pb-1">
                 {customSpreads.map(spread => {
@@ -359,6 +411,7 @@ export const SpreadDesigner: React.FC<SpreadDesignerProps> = ({
                 })}
               </div>
             </div>
+            )
           )}
 
           <div className="rounded-2xl border border-forest-accent/10 bg-white p-2 shadow-sm shadow-forest-accent/5">
@@ -457,93 +510,121 @@ export const SpreadDesigner: React.FC<SpreadDesignerProps> = ({
             )}
           </div>
 
-          <div className="rounded-2xl border border-forest-accent/10 bg-forest-bg/20 p-2">
-            <div ref={designerPreviewRef} className="flex w-full justify-center overflow-hidden pb-2">
-              {editMode === 'free' ? (
-                <FreeLayoutEditor
-                  cardSlots={cardSlots}
-                  designActiveSlot={designActiveSlot}
-                  onSetDesignActiveSlot={(idx) => onSetDesignActiveSlot(idx, true)}
-                  onRemoveSlot={onRemoveSlot}
-                  onSwapSlotIndex={onSwapSlotIndex}
-                  onUpdateSlots={(slots) => {
-                    onUpdateSlots?.(slots);
-                  }}
-                />
-              ) : (
-                <div
-                  className="mx-auto"
-                  style={{
-                    width: designerRawGridWidth * designerScale,
-                    minHeight: gridRows * designerBaseSlotWidth * 1.75 * designerScale,
-                  }}
-                >
-                <div
-                  className={`grid ${designerGridGapClass} p-2 rounded-2xl border border-forest-accent/10 bg-white/70`}
-                  style={{
-                    gridTemplateColumns: `repeat(${gridCols}, max-content)`,
-                    width: 'max-content',
-                    transform: `scale(${designerScale})`,
-                    transformOrigin: 'top center',
-                  }}
-                >
-                  {Array.from({ length: gridCols * gridRows }).map((_, i) => {
-                    const row = Math.floor(i / gridCols) + 1;
-                    const col = (i % gridCols) + 1;
-                    const posStr = `col-start-${col} row-start-${row}`;
-                    const slotIndices = cardSlots.map((slot, idx) => {
-                      const slotPos = slot.position || (itemClasses[idx] || '');
-                      return slotPos === posStr ? idx : -1;
-                    }).filter(idx => idx !== -1);
-                    const isCelticCenter = isCelticCross && posStr === 'col-start-2 row-start-2';
-                    const hasSlots = slotIndices.length > 0;
-
-                    return (
-                      <div key={posStr} className={`relative aspect-[2/3.5] ${designerSlotSizeClass}`}>
-                        <div className={`absolute inset-0 rounded-xl border-2 transition-all pointer-events-none ${
-                          hasSlots
-                            ? designActiveSlot === slotIndices[0] ? 'border-forest-accent/40 bg-forest-accent/5' : 'border-forest-accent/10'
-                            : 'border-transparent hover:border-forest-accent/20 hover:bg-forest-accent/5'
-                        }`} />
-
-                        <div className="w-full h-full relative flex items-center justify-center">
-                          {hasSlots ? (
-                            slotIndices.map((idx: number, sIdx: number) => (
-                              <DesignerSlot
-                                key={idx}
-                                idx={idx}
-                                totalSlots={cardSlots.length}
-                                isActive={designActiveSlot === idx}
-                                slot={{...cardSlots[idx], isStacked: slotIndices.length > 1}}
-                                isCelticCenter={isCelticCenter && slotIndices.length > 1}
-                                stackIndex={sIdx}
-                                onSetActive={(idx) => onSetDesignActiveSlot(idx, true)}
-                                onUpdateLabel={onUpdateSlotLabel}
-                                onSwapSlotIndex={onSwapSlotIndex}
-                                onRemove={onRemoveSlot}
-                              />
-                            ))
-                          ) : (
-                            <button
-                              type="button"
-                              onClick={() => handleSlotClick(col, row)}
-                              aria-label={`在第 ${row} 行第 ${col} 列创建位置`}
-                              className="flex h-full w-full items-center justify-center rounded-lg border border-dashed border-forest-accent/10 transition-all hover:border-forest-accent/30 hover:bg-white/50"
-                            >
-                              <Plus size={14} className="text-forest-accent/30" />
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })}
+          {isMobileWorkbench && !isWorkspaceOpen ? (
+            <div
+              className="rounded-2xl border border-forest-accent/10 bg-forest-bg/40 p-3 shadow-sm shadow-forest-accent/5"
+              data-testid="spread-workbench-mobile-setup"
+            >
+              <div className="flex items-start gap-3">
+                <div className="rounded-2xl bg-white p-2 text-forest-accent shadow-sm">
+                  {editMode === 'free' ? <Sparkles size={18} /> : <Grid3X3 size={18} />}
                 </div>
+                <div className="min-w-0 flex-1">
+                  <p className="font-serif text-sm font-bold text-forest-ink">
+                    {editMode === 'free' ? '自由摆放' : '网格编辑'}
+                  </p>
+                  <p className="mt-1 text-xs leading-relaxed text-forest-muted">
+                    {newSpreadName.trim() || currentSpread || '未命名牌阵'} · {cardSlots.length} 个位置
+                  </p>
                 </div>
-              )}
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsWorkspaceOpen(true)}
+                className="mt-3 flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-forest-accent px-4 py-2 text-sm font-bold text-white shadow-lg shadow-forest-accent/15 transition-all active:scale-[0.98]"
+              >
+                {editMode === 'free' ? '开始摆放' : '开始编辑'}
+              </button>
             </div>
-          </div>
+          ) : (
+            <div className="rounded-2xl border border-forest-accent/10 bg-forest-bg/20 p-2">
+              <div ref={designerPreviewRef} className="flex w-full justify-center overflow-hidden pb-2">
+                {editMode === 'free' ? (
+                  <FreeLayoutEditor
+                    cardSlots={cardSlots}
+                    designActiveSlot={designActiveSlot}
+                    onSetDesignActiveSlot={(idx) => onSetDesignActiveSlot(idx, true)}
+                    onRemoveSlot={onRemoveSlot}
+                    onSwapSlotIndex={onSwapSlotIndex}
+                    onUpdateSlots={(slots) => {
+                      onUpdateSlots?.(slots);
+                    }}
+                  />
+                ) : (
+                  <div
+                    className="mx-auto"
+                    style={{
+                      width: designerRawGridWidth * designerScale,
+                      minHeight: gridRows * designerBaseSlotWidth * 1.75 * designerScale,
+                    }}
+                  >
+                  <div
+                    className={`grid ${designerGridGapClass} p-2 rounded-2xl border border-forest-accent/10 bg-white/70`}
+                    style={{
+                      gridTemplateColumns: `repeat(${gridCols}, max-content)`,
+                      width: 'max-content',
+                      transform: `scale(${designerScale})`,
+                      transformOrigin: 'top center',
+                    }}
+                  >
+                    {Array.from({ length: gridCols * gridRows }).map((_, i) => {
+                      const row = Math.floor(i / gridCols) + 1;
+                      const col = (i % gridCols) + 1;
+                      const posStr = `col-start-${col} row-start-${row}`;
+                      const slotIndices = cardSlots.map((slot, idx) => {
+                        const slotPos = slot.position || (itemClasses[idx] || '');
+                        return slotPos === posStr ? idx : -1;
+                      }).filter(idx => idx !== -1);
+                      const isCelticCenter = isCelticCross && posStr === 'col-start-2 row-start-2';
+                      const hasSlots = slotIndices.length > 0;
 
-          {editMode === 'free' && onUpdateFreeLayoutSaveMode && (
+                      return (
+                        <div key={posStr} className={`relative aspect-[2/3.5] ${designerSlotSizeClass}`}>
+                          <div className={`absolute inset-0 rounded-xl border-2 transition-all pointer-events-none ${
+                            hasSlots
+                              ? designActiveSlot === slotIndices[0] ? 'border-forest-accent/40 bg-forest-accent/5' : 'border-forest-accent/10'
+                              : 'border-transparent hover:border-forest-accent/20 hover:bg-forest-accent/5'
+                          }`} />
+
+                          <div className="w-full h-full relative flex items-center justify-center">
+                            {hasSlots ? (
+                              slotIndices.map((idx: number, sIdx: number) => (
+                                <DesignerSlot
+                                  key={idx}
+                                  idx={idx}
+                                  totalSlots={cardSlots.length}
+                                  isActive={designActiveSlot === idx}
+                                  slot={{...cardSlots[idx], isStacked: slotIndices.length > 1}}
+                                  isCelticCenter={isCelticCenter && slotIndices.length > 1}
+                                  stackIndex={sIdx}
+                                  onSetActive={(idx) => onSetDesignActiveSlot(idx, true)}
+                                  onUpdateLabel={onUpdateSlotLabel}
+                                  onSwapSlotIndex={onSwapSlotIndex}
+                                  onRemove={onRemoveSlot}
+                                />
+                              ))
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => handleSlotClick(col, row)}
+                                aria-label={`在第 ${row} 行第 ${col} 列创建位置`}
+                                className="flex h-full w-full items-center justify-center rounded-lg border border-dashed border-forest-accent/10 transition-all hover:border-forest-accent/30 hover:bg-white/50"
+                              >
+                                <Plus size={14} className="text-forest-accent/30" />
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {editMode === 'free' && onUpdateFreeLayoutSaveMode && (!isMobileWorkbench || isWorkspaceOpen) && (
             <div className="rounded-2xl border border-forest-accent/10 bg-forest-accent/5 p-2.5">
               <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                 <p className="text-[10px] font-bold text-forest-accent">保存自由牌阵时</p>
@@ -575,7 +656,7 @@ export const SpreadDesigner: React.FC<SpreadDesignerProps> = ({
             </div>
           )}
 
-          <div className="-mx-6 -mb-6 rounded-b-[2rem] border-t border-forest-accent/10 bg-white/95 px-6 py-3 text-xs text-forest-muted backdrop-blur">
+          <div className="-mx-2.5 -mb-2.5 rounded-b-[1.5rem] border-t border-forest-accent/10 bg-white/95 px-4 py-2.5 text-xs text-forest-muted backdrop-blur sm:-mx-4 sm:-mb-4 sm:rounded-b-[2rem] sm:px-6 sm:py-3">
             <span>位置数量：{cardSlots.length}</span>
             {isCelticCross && <span className="ml-2 text-forest-accent">· 凯尔特十字模式</span>}
           </div>

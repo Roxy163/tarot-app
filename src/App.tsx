@@ -25,6 +25,7 @@ import {
 import { createTarotExportPdfBlob } from './lib/pdfExport';
 import { getAuthorDisplayName, syncReadingAuthorName } from './lib/readingAuthor';
 import { useBodyScrollLock } from './hooks/useBodyScrollLock';
+import { useMobileFocusScroll } from './hooks/useMobileFocusScroll';
 
 const loadCardMetadataManager = () => import('./components/CardMetadataManager');
 const loadReadingDetailModal = () => import('./components/ReadingDetailModal');
@@ -169,6 +170,7 @@ function AppContent() {
     clearSyncNotice,
   } = useReadings(session, isAuthLoading);
   useBodyScrollLock(isProcessing || showPromotionCeremony.isOpen);
+  useMobileFocusScroll();
 
   const [publicReadingsCache, setPublicReadingsCache] = useState<TarotReading[]>([]);
 

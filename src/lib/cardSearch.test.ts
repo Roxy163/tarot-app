@@ -12,6 +12,8 @@ describe('cardSearch', () => {
   it('matches common Chinese aliases for court cards', () => {
     expect(cardMatchesSearch(findCard('cupa'), '圣杯侍者')).toBe(true);
     expect(cardMatchesSearch(findCard('cupa'), '杯侍从')).toBe(true);
+    expect(cardMatchesSearch(findCard('cupa'), '杯子侍卫')).toBe(true);
+    expect(cardMatchesSearch(findCard('cupa'), '圣杯公主')).toBe(true);
     expect(cardMatchesSearch(findCard('peki'), '金币皇帝')).toBe(true);
   });
 
@@ -20,6 +22,11 @@ describe('cardSearch', () => {
     expect(cardMatchesSearch(findCard('ar04'), '大阿尔卡纳皇帝')).toBe(true);
     expect(cardMatchesSearch(findCard('ar00'), '大阿尔卡纳皇帝')).toBe(false);
     expect(cardMatchesSearch(findCard('peki'), '大阿尔卡纳皇帝')).toBe(false);
+    expect(cardMatchesSearch(findCard('peki'), '皇帝')).toBe(false);
+    expect(cardMatchesSearch(findCard('waki'), '皇帝')).toBe(false);
+    expect(cardMatchesSearch(findCard('ar03'), '皇后')).toBe(true);
+    expect(cardMatchesSearch(findCard('cuqu'), '皇后')).toBe(false);
+    expect(cardMatchesSearch(findCard('cuqu'), '圣杯皇后')).toBe(true);
   });
 
   it('still allows broad arcana category searches', () => {

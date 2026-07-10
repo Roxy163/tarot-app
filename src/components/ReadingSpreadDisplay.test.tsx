@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ReadingSpreadDisplay } from './ReadingSpreadDisplay';
 import { LAYOUT_TEMPLATES } from '../constants';
@@ -44,12 +44,13 @@ describe('ReadingSpreadDisplay', () => {
 
     const centerButton = screen.getByRole('button', { name: /现状/ });
     const challengeButton = screen.getByRole('button', { name: /挑战/ });
-    const lowerButton = screen.getByRole('button', { name: /基础/ });
-    const centerCell = centerButton.closest('.col-start-2.row-start-2');
-    const lowerCell = lowerButton.closest('.col-start-2.row-start-3');
+    const centerCell = screen.getByTestId('celtic-center-stack');
+    const lowerCell = screen.getByTestId('celtic-foundation-slot');
 
+    expect(screen.getByTestId('celtic-cross-spread')).toBeInTheDocument();
     expect(centerCell).toHaveStyle({ zIndex: '40' });
     expect(lowerCell).toHaveStyle({ zIndex: '15' });
+    expect(centerCell).toContainElement(centerButton);
     expect(centerCell).toContainElement(challengeButton);
   });
 
@@ -95,5 +96,49 @@ describe('ReadingSpreadDisplay', () => {
 
     expect(screen.getByTestId('yearly-radial-spread')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /底牌/ })).toBeInTheDocument();
+  });
+
+  it('fits free-layout spreads inside a mobile-width preview instead of clipping them', async () => {
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({
+      x: 0,
+      y: 0,
+      width: 360,
+      height: 480,
+      top: 0,
+      right: 360,
+      bottom: 480,
+      left: 0,
+      toJSON: () => ({}),
+    });
+    const freeSlots: ReadingSlotData[] = [
+      { name: '', isReversed: false, label: '起点', x: 0, y: 0, rotation: 0, scale: 1 },
+      { name: '', isReversed: false, label: '远处', x: 560, y: 260, rotation: 0, scale: 1 },
+    ];
+
+    render(
+      <ReadingSpreadDisplay
+        formData={{ layoutType: 'free', spread: '自由牌阵' }}
+        cardSlots={freeSlots}
+        activeSlotIndex={-1}
+        showSlotNumbers
+        gridCols={20}
+        itemClasses={[]}
+        currentTemplate={LAYOUT_TEMPLATES.custom}
+        showUpdatePrompt={null}
+        spreads={[]}
+        onSlotClick={vi.fn()}
+        handleLongPressStart={vi.fn()}
+        handleLongPressEnd={vi.fn()}
+        removeSlot={vi.fn()}
+        handleCycleSlot={vi.fn()}
+        onConfirmSync={vi.fn()}
+        onCancelSync={vi.fn()}
+      />,
+    );
+
+    await waitFor(() => {
+      const preview = screen.getByTestId('free-layout-spread-preview');
+      expect(parseFloat(preview.style.width)).toBeLessThanOrEqual(360);
+    });
   });
 });
