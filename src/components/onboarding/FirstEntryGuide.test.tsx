@@ -42,9 +42,9 @@ describe('FirstEntryGuide', () => {
     expect(await screen.findByRole('heading', { name: '抽牌手记' })).toBeInTheDocument();
     expect(screen.getByText('直觉与复盘')).toBeInTheDocument();
     expect(screen.getAllByRole('img')).toHaveLength(3);
-    expect(screen.getByRole('img', { name: '女祭司 The High Priestess' })).toHaveAttribute('src', expect.stringContaining('ar02.jpg'));
-    expect(screen.getByRole('img', { name: '隐士 The Hermit' })).toHaveAttribute('src', expect.stringContaining('ar09.jpg'));
-    expect(screen.getByRole('img', { name: '星币侍从 Page of Pentacles' })).toHaveAttribute('src', expect.stringContaining('pepa.jpg'));
+    expect(screen.getByRole('img', { name: '女祭司 The High Priestess' })).toHaveAttribute('src', expect.stringContaining('RWS_Tarot_02_High_Priestess.jpg'));
+    expect(screen.getByRole('img', { name: '隐士 The Hermit' })).toHaveAttribute('src', expect.stringContaining('RWS_Tarot_09_Hermit.jpg'));
+    expect(screen.getByRole('img', { name: '星币侍从 Page of Pentacles' })).toHaveAttribute('src', expect.stringContaining('Pents11.jpg'));
 
     await user.click(screen.getByRole('button', { name: '看进阶玩法' }));
     expect(await screen.findByRole('heading', { name: '牌阵工作台' })).toBeInTheDocument();
@@ -52,6 +52,6 @@ describe('FirstEntryGuide', () => {
 
     await user.click(screen.getByRole('button', { name: '看复盘方式' }));
     expect(await screen.findByRole('heading', { name: '典籍与牌义' })).toBeInTheDocument();
-    expect(screen.getByRole('img', { name: '星币侍从 Page of Pentacles' })).toHaveAttribute('src', expect.stringContaining('pepa.jpg'));
+    expect(screen.getByRole('img', { name: '星币侍从 Page of Pentacles' })).toHaveAttribute('src', expect.stringContaining('Pents11.jpg'));
   });
 });

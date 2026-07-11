@@ -4,6 +4,7 @@ import { ZoomIn, ZoomOut, RefreshCw, Share2, ChevronDown, ChevronUp, PencilLine,
 import { ReadingKeywordCandidate, TarotReading, TarotCardMetadata } from '../types';
 import { TAROT_CARDS, getCardImageUrl, LAYOUT_TEMPLATES } from '../constants';
 import { ConfirmDialog } from './ConfirmDialog';
+import { TarotCardImage } from './TarotCardImage';
 import {
   FREE_LAYOUT_CANVAS_HEIGHT,
   FREE_LAYOUT_CANVAS_WIDTH,
@@ -373,11 +374,11 @@ export const ReadingCard: React.FC<ReadingCardProps> = ({
                           {idx + 1}
                         </div>
                       )}
-                      <img
+                      <TarotCardImage
                         src={getCardImageUrl(cardData?.id || 'ar00')}
                         alt={card.name}
+                        name={cardData?.name || card.name}
                         className="w-full h-full object-contain bg-white"
-                        referrerPolicy="no-referrer"
                       />
                       <div className="absolute inset-x-0 bottom-0 bg-forest-text/70 text-white text-[8px] py-0.5 text-center font-sans">
                         {cardData?.name || card.name}
@@ -417,11 +418,11 @@ export const ReadingCard: React.FC<ReadingCardProps> = ({
                           {idx + 1}
                         </div>
                       )}
-                      <img
+                      <TarotCardImage
                         src={getCardImageUrl(cardData?.id || 'ar00')}
                         alt={card.name}
+                        name={cardData?.name || card.name}
                         className="w-full h-full object-contain bg-white"
-                        referrerPolicy="no-referrer"
                       />
                       <div className="absolute inset-x-0 bottom-0 bg-forest-text/70 text-white text-[8px] py-0.5 text-center font-sans">
                         {cardData?.name || card.name}
@@ -464,11 +465,11 @@ export const ReadingCard: React.FC<ReadingCardProps> = ({
                           {idx + 1}
                         </div>
                       )}
-                      <img
+                      <TarotCardImage
                         src={getCardImageUrl(cardData?.id || 'ar00')}
                         alt={card.name}
+                        name={cardData?.name || card.name}
                         className="w-full h-full object-contain bg-white"
-                        referrerPolicy="no-referrer"
                       />
                       <div className="absolute inset-x-0 bottom-0 bg-forest-text/70 text-white text-[8px] py-0.5 text-center font-sans">
                         {cardData?.name || card.name}
@@ -499,11 +500,11 @@ export const ReadingCard: React.FC<ReadingCardProps> = ({
                         {idx + 1}
                       </div>
                     )}
-                    <img
+                    <TarotCardImage
                       src={getCardImageUrl(cardData?.id || 'ar00')}
                       alt={card.name}
+                      name={cardData?.name || card.name}
                       className="w-full h-full object-contain bg-white"
-                      referrerPolicy="no-referrer"
                     />
                     <div className="absolute inset-x-0 bottom-0 bg-forest-text/70 text-white text-[8px] py-0.5 text-center font-sans">
                       {cardData?.name || card.name}
@@ -566,11 +567,11 @@ export const ReadingCard: React.FC<ReadingCardProps> = ({
 
           return (
             <div key={idx} className={`relative w-10 h-16 rounded-lg overflow-hidden border border-forest-accent/10 ${card.isReversed ? 'rotate-180' : ''} ${isRotated ? 'rotate-90' : ''}`}>
-              <img
+              <TarotCardImage
                 src={getCardImageUrl(cardData?.id || 'ar00')}
                 alt={card.name}
+                name={cardData?.name || card.name}
                 className="w-full h-full object-contain bg-forest-bg"
-                referrerPolicy="no-referrer"
               />
             </div>
           );

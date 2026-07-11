@@ -1,0 +1,29 @@
+{
+  "name": "塔罗研习阁",
+  "short_name": "研习阁",
+  "description": "塔罗手记、日运复盘与牌义注疏工具。",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#FDF8F0",
+  "theme_color": "#7CA982",
+  "icons": [
+    {
+      "src": "/app-icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/app-icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/app-icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

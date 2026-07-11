@@ -4,6 +4,7 @@ import { Archive, BookOpen, PenLine, Save, X } from 'lucide-react';
 import { DailyFortune } from '../types';
 import { TAROT_CARDS, getCardImageUrl } from '../constants';
 import { useBodyScrollLock } from '../hooks/useBodyScrollLock';
+import { TarotCardImage } from './TarotCardImage';
 
 interface DailyFortuneArchiveModalProps {
   fortunes: DailyFortune[];
@@ -130,11 +131,11 @@ export const DailyFortuneArchiveModal: React.FC<DailyFortuneArchiveModalProps> =
                         className="flex w-full items-center gap-3 p-3 text-left"
                       >
                         <div className={`h-20 w-14 shrink-0 overflow-hidden rounded-xl border border-forest-accent/15 bg-forest-bg shadow-sm ${fortune.isReversed ? 'rotate-180' : ''}`}>
-                          <img
+                          <TarotCardImage
                             src={getCardImageUrl(card?.id || 'ar00')}
                             alt={fortune.cardName}
+                            name={fortune.cardName}
                             className="h-full w-full object-cover"
-                            referrerPolicy="no-referrer"
                           />
                         </div>
                         <div className="min-w-0 flex-1">

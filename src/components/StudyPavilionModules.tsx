@@ -9,6 +9,7 @@ import {
 import { TarotReading, TarotCardMetadata } from '../types';
 import { TAROT_CARDS, getCardImageUrl } from '../constants';
 import { cardAnnotationService } from '../services/cardAnnotationService';
+import { TarotCardImage } from './TarotCardImage';
 
 interface StudyPavilionModulesProps {
   readings: TarotReading[];
@@ -152,11 +153,11 @@ export const StudyPavilionModules: React.FC<StudyPavilionModulesProps> = ({
         <div className="p-4 space-y-4">
           <div className="flex items-center gap-4">
             <div className="w-16 h-24 shrink-0 rounded-xl overflow-hidden bg-forest-bg border border-forest-border shadow-sm">
-              <img
+              <TarotCardImage
                 src={getCardImageUrl(quizCard.id)}
                 alt={quizCard.name}
+                name={quizCard.name}
                 className="w-full h-full object-cover"
-                referrerPolicy="no-referrer"
               />
             </div>
             <div className="min-w-0 flex-1">

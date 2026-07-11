@@ -9,6 +9,7 @@ import { cardMatchesSearch } from '../lib/cardSearch';
 import { cardAnnotationService } from '../services/cardAnnotationService';
 import { CardAnnotationEditor } from './CardAnnotationEditor';
 import { ConfirmDialog } from './ConfirmDialog';
+import { TarotCardImage } from './TarotCardImage';
 
 interface CardMetadataManagerProps {
   metadata: TarotCardMetadata[];
@@ -466,11 +467,11 @@ export function CardMetadataManager({ metadata, onUpdate, readings, cardKeywordM
                 onClick={() => setEditingCardId(editingCardId === card.id ? null : card.id)}
               >
                 <div className="w-16 h-24 bg-forest-bg rounded-xl overflow-hidden flex-shrink-0 border border-forest-accent/10 shadow-inner">
-                  <img 
+                  <TarotCardImage
                     src={getCardImageUrl(card.id)} 
                     alt={card.name} 
+                    name={card.name}
                     className="w-full h-full object-cover"
-                    referrerPolicy="no-referrer"
                   />
                 </div>
                 <div className="flex-1 min-w-0">

@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Mail, Lock, Send, Sparkles, ArrowRight, CloudOff, Home, Clock, CheckCircle, X, AlertCircle } from 'lucide-react';
+import { Mail, Lock, Send, Sparkles, ArrowRight, CloudOff, Home, Clock, CheckCircle, X, AlertCircle, Eye, EyeOff } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { checkIfMagicLink, confirmPasswordReset } from '../lib/firebase';
 import { normalizeEmailInput } from '../lib/emailInput';
@@ -13,12 +13,46 @@ interface AuthProps {
   onSignedOut?: () => void;
 }
 
+interface PasswordInputProps extends Omit<React.InputHTMLAttributes<HTMLInputElement>, 'type'> {
+  showPassword: boolean;
+  onToggle: () => void;
+  fieldLabel?: string;
+}
+
+const PasswordInput: React.FC<PasswordInputProps> = ({
+  showPassword,
+  onToggle,
+  fieldLabel = '密码',
+  className = '',
+  ...props
+}) => (
+  <div className="relative">
+    <input
+      {...props}
+      type={showPassword ? 'text' : 'password'}
+      className={`w-full rounded-xl border border-forest-accent/10 bg-forest-bg/30 py-3.5 pl-10 pr-12 text-sm outline-none transition-all focus:ring-2 focus:ring-forest-accent/20 ${className}`}
+    />
+    <Lock className="absolute left-3 top-1/2 -translate-y-1/2 text-forest-muted" size={16} />
+    <button
+      type="button"
+      onClick={onToggle}
+      className="absolute right-1 top-1/2 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-lg text-forest-muted hover:bg-forest-accent/10 hover:text-forest-accent"
+      aria-label={showPassword ? `隐藏${fieldLabel}` : `显示${fieldLabel}`}
+      title={showPassword ? `隐藏${fieldLabel}` : `显示${fieldLabel}`}
+    >
+      {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+    </button>
+  </div>
+);
+
 export const Auth: React.FC<AuthProps> = ({ onClose, onSignedOut }) => {
   const { session, isEmailVerified, lastLogin, signIn, signUp, signOut, resetPassword, updatePassword, sendVerificationEmail, refreshUser } = useAuth();
   
   const [authMode, setAuthMode] = useState<'login' | 'signup'>('login');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [visiblePasswordField, setVisiblePasswordField] = useState<string | null>(null);
+  const [isNewSignup, setIsNewSignup] = useState(false);
   const [loading, setLoading] = useState(false);
   const [authError, setAuthError] = useState<AuthErrorDisplay | null>(null);
   const [showResetPassword, setShowResetPassword] = useState(false);
@@ -39,7 +73,41 @@ export const Auth: React.FC<AuthProps> = ({ onClose, onSignedOut }) => {
   const [verificationLoading, setVerificationLoading] = useState(false);
   const [verificationMessage, setVerificationMessage] = useState('');
   const [verificationError, setVerificationError] = useState('');
+  const resetTimerRef = useRef<number | null>(null);
+  const changePasswordTimerRef = useRef<number | null>(null);
+  const closeTimerRef = useRef<number | null>(null);
+  const onCloseRef = useRef(onClose);
   useBodyScrollLock(showResetPassword || showSetNewPassword || showChangePassword);
+
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  }, [onClose]);
+
+  useEffect(() => {
+    if (!session || isNewSignup || !onCloseRef.current) return undefined;
+
+    closeTimerRef.current = window.setTimeout(() => onCloseRef.current?.(), 1500);
+    return () => {
+      if (closeTimerRef.current !== null) {
+        window.clearTimeout(closeTimerRef.current);
+        closeTimerRef.current = null;
+      }
+    };
+  }, [session, isNewSignup]);
+
+  useEffect(() => () => {
+    if (resetTimerRef.current !== null) window.clearTimeout(resetTimerRef.current);
+    if (changePasswordTimerRef.current !== null) window.clearTimeout(changePasswordTimerRef.current);
+    if (closeTimerRef.current !== null) window.clearTimeout(closeTimerRef.current);
+  }, []);
+
+  const scrollFocusedFieldIntoView = (event: React.FocusEvent<HTMLElement>) => {
+    if (typeof window === 'undefined' || window.innerWidth >= 768) return;
+    const target = event.currentTarget;
+    window.setTimeout(() => {
+      target.scrollIntoView({ block: 'center', inline: 'nearest', behavior: 'smooth' });
+    }, 140);
+  };
 
   const switchAuthMode = (nextMode: 'login' | 'signup') => {
     setAuthMode(nextMode);
@@ -86,6 +154,7 @@ export const Auth: React.FC<AuthProps> = ({ onClose, onSignedOut }) => {
 
     setLoading(true);
     setAuthError(null);
+    setIsNewSignup(false);
 
     try {
       await signIn(normalizedEmail, password);
@@ -104,12 +173,16 @@ export const Auth: React.FC<AuthProps> = ({ onClose, onSignedOut }) => {
 
     setLoading(true);
     setAuthError(null);
+    setIsNewSignup(true);
 
     try {
       await signUp(normalizedEmail, password);
-      if (onClose) onClose();
-      setVerificationMessage('验证邮件已发送，请前往邮箱完成验证。');
+      setVerificationMessage(`验证邮件已发送至 ${normalizedEmail}，请查收并完成验证。`);
+      setIsNewSignup(true);
+      setPassword('');
+      setVisiblePasswordField(null);
     } catch (err: any) {
+      setIsNewSignup(false);
       setAuthError(getAuthErrorDisplay(err, 'signup'));
     } finally {
       setLoading(false);
@@ -212,7 +285,7 @@ export const Auth: React.FC<AuthProps> = ({ onClose, onSignedOut }) => {
       window.history.replaceState({}, document.title, window.location.pathname);
       
       // 3秒后返回登录表单
-      setTimeout(() => {
+      resetTimerRef.current = window.setTimeout(() => {
         setShowSetNewPassword(false);
       }, 3000);
     } catch (err: any) {
@@ -250,7 +323,7 @@ export const Auth: React.FC<AuthProps> = ({ onClose, onSignedOut }) => {
       setConfirmNewPassword('');
       
       // 3秒后关闭弹窗
-      setTimeout(() => {
+      changePasswordTimerRef.current = window.setTimeout(() => {
         setShowChangePassword(false);
       }, 3000);
     } catch (err: any) {
@@ -261,7 +334,7 @@ export const Auth: React.FC<AuthProps> = ({ onClose, onSignedOut }) => {
   };
 
   return (
-    <div className="min-h-screen bg-forest-bg flex flex-col items-center justify-center p-4">
+    <div className="min-h-screen overflow-y-auto bg-forest-bg px-4 py-6 sm:flex sm:items-center sm:justify-center sm:py-8">
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
@@ -276,16 +349,20 @@ export const Auth: React.FC<AuthProps> = ({ onClose, onSignedOut }) => {
         >
           <div className="relative">
             <div className="absolute inset-0 bg-gradient-to-br from-forest-accent/5 to-forest-pink/5" />
-            <div className="relative p-8">
-              <div className="flex flex-col items-center mb-8">
-                <div className="w-16 h-16 rounded-full bg-gradient-to-br from-forest-accent to-forest-pink flex items-center justify-center text-forest-card font-serif text-2xl shadow-lg mb-4">
-                  <Sparkles size={24} />
-                </div>
-                <h1 className="font-serif text-xl font-bold text-forest-ink">
-                  {authMode === 'signup' ? '注册新号' : '执印入阁'}
+            <div className="relative p-5 sm:p-8">
+              <div className="mb-5 flex flex-col items-center sm:mb-8">
+                <img
+                  src="/app-icon.svg"
+                  alt="塔罗研习阁图标"
+                  className="mb-3 h-16 w-16 rounded-2xl shadow-lg shadow-forest-accent/10 sm:mb-4"
+                  draggable={false}
+                />
+                <p className="text-[9px] font-bold uppercase tracking-[0.24em] text-forest-accent">观牌，也观心</p>
+                <h1 className="mt-1 font-serif text-xl font-bold text-forest-ink">
+                  {authMode === 'signup' ? '注册塔罗研习阁' : '登录塔罗研习阁'}
                 </h1>
-                <p className="text-xs text-forest-muted mt-1">
-                  {authMode === 'signup' ? '创建你的塔罗研习阁印鉴' : '塔罗研习阁 · 身份验证'}
+                <p className="mt-1 text-xs text-forest-muted">
+                  {authMode === 'signup' ? '创建账号，开启云端同步' : '执印入阁，继续你的研习记录'}
                 </p>
               </div>
 
@@ -308,25 +385,14 @@ export const Auth: React.FC<AuthProps> = ({ onClose, onSignedOut }) => {
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: 0.3 }}
                   >
-                    <h2 className="font-serif text-lg font-bold text-forest-ink">印鉴已验证</h2>
-                    <p className="text-xs text-forest-muted mt-1">欢迎归来，研习阁主</p>
+                    <h2 className="font-serif text-lg font-bold text-forest-ink">
+                      {isNewSignup ? '账号已创建' : '印鉴已验证'}
+                    </h2>
+                    <p className="mt-1 text-xs text-forest-muted">
+                      {isNewSignup ? '完成邮箱验证后即可开启云端同步。' : '欢迎归来，研习阁主'}
+                    </p>
                   </motion.div>
                   
-                  <motion.div
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    transition={{ delay: 0.5 }}
-                  >
-                    <div className="text-xs text-forest-muted">正在返回研习阁...</div>
-                  </motion.div>
-                  
-                  {(() => {
-                    setTimeout(() => {
-                      if (onClose) onClose();
-                    }, 1500);
-                    return null;
-                  })()}
-
                   {!isEmailVerified ? (
                     <div className="bg-amber-50 border border-amber-100 rounded-2xl p-4 text-left space-y-3">
                       <div className="flex items-start gap-2">
@@ -391,7 +457,7 @@ export const Auth: React.FC<AuthProps> = ({ onClose, onSignedOut }) => {
                   </button>
                 </div>
               ) : (
-                <form onSubmit={authMode === 'signup' ? handleSignUp : handleLogin} className="space-y-5">
+                <form onSubmit={authMode === 'signup' ? handleSignUp : handleLogin} className="space-y-4 sm:space-y-5">
                   <div className="space-y-2">
                     <label className="text-xs font-bold text-forest-muted uppercase tracking-wider flex items-center gap-2">
                       <Mail size={12} /> 邮箱
@@ -408,6 +474,7 @@ export const Auth: React.FC<AuthProps> = ({ onClose, onSignedOut }) => {
                         spellCheck={false}
                         required
                         disabled={loading}
+                        onFocus={scrollFocusedFieldIntoView}
                         className="w-full pl-10 pr-4 py-3.5 bg-forest-bg/30 border border-forest-accent/10 rounded-xl focus:ring-2 focus:ring-forest-accent/20 transition-all outline-none text-sm"
                         placeholder="example@email.com"
                         value={email}
@@ -424,21 +491,20 @@ export const Auth: React.FC<AuthProps> = ({ onClose, onSignedOut }) => {
                     <label className="text-xs font-bold text-forest-muted uppercase tracking-wider flex items-center gap-2">
                       <Lock size={12} /> 密码
                     </label>
-                    <div className="relative">
-                      <input
-                        type="password"
-                        required
-                        disabled={loading}
-                        className="w-full pl-10 pr-4 py-3.5 bg-forest-bg/30 border border-forest-accent/10 rounded-xl focus:ring-2 focus:ring-forest-accent/20 transition-all outline-none text-sm"
-                        placeholder="至少6位字符"
-                        value={password}
-                        onChange={(e) => {
-                          setPassword(e.target.value);
-                          setAuthError(null);
-                        }}
-                      />
-                      <Lock className="absolute left-3 top-1/2 -translate-y-1/2 text-forest-muted" size={16} />
-                    </div>
+                    <PasswordInput
+                      value={password}
+                      onChange={(e) => {
+                        setPassword(e.target.value);
+                        setAuthError(null);
+                      }}
+                      placeholder="至少6位字符"
+                      required
+                      disabled={loading}
+                      autoComplete={authMode === 'signup' ? 'new-password' : 'current-password'}
+                      onFocus={scrollFocusedFieldIntoView}
+                      showPassword={visiblePasswordField === 'login'}
+                      onToggle={() => setVisiblePasswordField(current => current === 'login' ? null : 'login')}
+                    />
                   </div>
 
                   {authError && (
@@ -489,7 +555,7 @@ export const Auth: React.FC<AuthProps> = ({ onClose, onSignedOut }) => {
                     ) : (
                       <>
                         <Sparkles size={16} />
-                        {authMode === 'signup' ? '创建印鉴' : '执印入阁'}
+                        {authMode === 'signup' ? '注册' : '登录'}
                       </>
                     )}
                   </button>
@@ -497,7 +563,7 @@ export const Auth: React.FC<AuthProps> = ({ onClose, onSignedOut }) => {
                   <div className="pt-4 border-t border-forest-accent/5 space-y-3">
                     <div className="flex items-center justify-center gap-2">
                       <span className="text-xs text-forest-muted">
-                        {authMode === 'signup' ? '已有印鉴？' : '尚未执印入阁？'}
+                        {authMode === 'signup' ? '已有账号？' : '还没有账号？'}
                       </span>
                       <button
                         type="button"
@@ -703,36 +769,35 @@ export const Auth: React.FC<AuthProps> = ({ onClose, onSignedOut }) => {
                   <label className="text-xs font-bold text-forest-muted uppercase tracking-wider flex items-center gap-2">
                     <Lock size={12} /> 新密码
                   </label>
-                  <div className="relative">
-                    <input
-                      type="password"
-                      required
-                      disabled={loading}
-                      className="w-full pl-10 pr-4 py-3.5 bg-forest-bg/30 border border-forest-accent/10 rounded-xl focus:ring-2 focus:ring-forest-accent/20 transition-all outline-none text-sm"
-                      placeholder="至少6位字符"
-                      value={newPassword}
-                      onChange={(e) => setNewPassword(e.target.value)}
-                    />
-                    <Lock className="absolute left-3 top-1/2 -translate-y-1/2 text-forest-muted" size={16} />
-                  </div>
+                  <PasswordInput
+                    required
+                    disabled={loading}
+                    onFocus={scrollFocusedFieldIntoView}
+                    autoComplete="new-password"
+                    placeholder="至少6位字符"
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                    showPassword={visiblePasswordField === 'reset-new'}
+                    onToggle={() => setVisiblePasswordField(current => current === 'reset-new' ? null : 'reset-new')}
+                  />
                 </div>
 
                 <div className="space-y-2">
                   <label className="text-xs font-bold text-forest-muted uppercase tracking-wider flex items-center gap-2">
                     <Lock size={12} /> 确认密码
                   </label>
-                  <div className="relative">
-                    <input
-                      type="password"
-                      required
-                      disabled={loading}
-                      className="w-full pl-10 pr-4 py-3.5 bg-forest-bg/30 border border-forest-accent/10 rounded-xl focus:ring-2 focus:ring-forest-accent/20 transition-all outline-none text-sm"
-                      placeholder="再次输入密码"
-                      value={confirmPassword}
-                      onChange={(e) => setConfirmPassword(e.target.value)}
-                    />
-                    <Lock className="absolute left-3 top-1/2 -translate-y-1/2 text-forest-muted" size={16} />
-                  </div>
+                  <PasswordInput
+                    required
+                    disabled={loading}
+                    onFocus={scrollFocusedFieldIntoView}
+                    autoComplete="new-password"
+                    placeholder="再次输入密码"
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    fieldLabel="确认密码"
+                    showPassword={visiblePasswordField === 'reset-confirm'}
+                    onToggle={() => setVisiblePasswordField(current => current === 'reset-confirm' ? null : 'reset-confirm')}
+                  />
                 </div>
 
                 {resetError && (
@@ -817,54 +882,53 @@ export const Auth: React.FC<AuthProps> = ({ onClose, onSignedOut }) => {
                   <label className="text-xs font-bold text-forest-muted uppercase tracking-wider flex items-center gap-2">
                     <Lock size={12} /> 当前密码
                   </label>
-                  <div className="relative">
-                    <input
-                      type="password"
-                      required
-                      disabled={loading}
-                      className="w-full pl-10 pr-4 py-3.5 bg-forest-bg/30 border border-forest-accent/10 rounded-xl focus:ring-2 focus:ring-forest-accent/20 transition-all outline-none text-sm"
-                      placeholder="请输入当前密码"
-                      value={currentPassword}
-                      onChange={(e) => setCurrentPassword(e.target.value)}
-                    />
-                    <Lock className="absolute left-3 top-1/2 -translate-y-1/2 text-forest-muted" size={16} />
-                  </div>
+                  <PasswordInput
+                    required
+                    disabled={loading}
+                    onFocus={scrollFocusedFieldIntoView}
+                    autoComplete="current-password"
+                    placeholder="请输入当前密码"
+                    value={currentPassword}
+                    onChange={(e) => setCurrentPassword(e.target.value)}
+                    fieldLabel="当前密码"
+                    showPassword={visiblePasswordField === 'current'}
+                    onToggle={() => setVisiblePasswordField(current => current === 'current' ? null : 'current')}
+                  />
                 </div>
 
                 <div className="space-y-2">
                   <label className="text-xs font-bold text-forest-muted uppercase tracking-wider flex items-center gap-2">
                     <Lock size={12} /> 新密码
                   </label>
-                  <div className="relative">
-                    <input
-                      type="password"
-                      required
-                      disabled={loading}
-                      className="w-full pl-10 pr-4 py-3.5 bg-forest-bg/30 border border-forest-accent/10 rounded-xl focus:ring-2 focus:ring-forest-accent/20 transition-all outline-none text-sm"
-                      placeholder="至少6位字符"
-                      value={newPasswordForChange}
-                      onChange={(e) => setNewPasswordForChange(e.target.value)}
-                    />
-                    <Lock className="absolute left-3 top-1/2 -translate-y-1/2 text-forest-muted" size={16} />
-                  </div>
+                  <PasswordInput
+                    required
+                    disabled={loading}
+                    onFocus={scrollFocusedFieldIntoView}
+                    autoComplete="new-password"
+                    placeholder="至少6位字符"
+                    value={newPasswordForChange}
+                    onChange={(e) => setNewPasswordForChange(e.target.value)}
+                    showPassword={visiblePasswordField === 'change-new'}
+                    onToggle={() => setVisiblePasswordField(current => current === 'change-new' ? null : 'change-new')}
+                  />
                 </div>
 
                 <div className="space-y-2">
                   <label className="text-xs font-bold text-forest-muted uppercase tracking-wider flex items-center gap-2">
                     <Lock size={12} /> 确认新密码
                   </label>
-                  <div className="relative">
-                    <input
-                      type="password"
-                      required
-                      disabled={loading}
-                      className="w-full pl-10 pr-4 py-3.5 bg-forest-bg/30 border border-forest-accent/10 rounded-xl focus:ring-2 focus:ring-forest-accent/20 transition-all outline-none text-sm"
-                      placeholder="再次输入新密码"
-                      value={confirmNewPassword}
-                      onChange={(e) => setConfirmNewPassword(e.target.value)}
-                    />
-                    <Lock className="absolute left-3 top-1/2 -translate-y-1/2 text-forest-muted" size={16} />
-                  </div>
+                  <PasswordInput
+                    required
+                    disabled={loading}
+                    onFocus={scrollFocusedFieldIntoView}
+                    autoComplete="new-password"
+                    placeholder="再次输入新密码"
+                    value={confirmNewPassword}
+                    onChange={(e) => setConfirmNewPassword(e.target.value)}
+                    fieldLabel="确认新密码"
+                    showPassword={visiblePasswordField === 'change-confirm'}
+                    onToggle={() => setVisiblePasswordField(current => current === 'change-confirm' ? null : 'change-confirm')}
+                  />
                 </div>
 
                 {changePasswordError && (

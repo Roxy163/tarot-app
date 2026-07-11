@@ -26,6 +26,9 @@ import { createTarotExportPdfBlob } from './lib/pdfExport';
 import { getAuthorDisplayName, syncReadingAuthorName } from './lib/readingAuthor';
 import { useBodyScrollLock } from './hooks/useBodyScrollLock';
 import { useMobileFocusScroll } from './hooks/useMobileFocusScroll';
+import { BrandIntro } from './components/BrandIntro';
+
+const BRAND_INTRO_SEEN_KEY = 'tarot_brand_intro_seen';
 
 const loadCardMetadataManager = () => import('./components/CardMetadataManager');
 const loadReadingDetailModal = () => import('./components/ReadingDetailModal');
@@ -116,6 +119,7 @@ function AppContent() {
   // Migration Prompt
   const [showMigrationPrompt, setShowMigrationPrompt] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
+  const [showCloudLoadingNotice, setShowCloudLoadingNotice] = useState(false);
 
   // Smart Prompts
   const [snackbar, setSnackbar] = useState<SnackbarState>({ isOpen: false, message: '' });
@@ -125,6 +129,23 @@ function AppContent() {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [isDeletingAccount, setIsDeletingAccount] = useState(false);
   const [hasNavigatedOnLogin, setHasNavigatedOnLogin] = useState(false);
+  const [showBrandIntro, setShowBrandIntro] = useState(() => {
+    if (navigator.userAgent.toLowerCase().includes('jsdom')) return false;
+
+    try {
+      return window.sessionStorage.getItem(BRAND_INTRO_SEEN_KEY) !== 'true';
+    } catch {
+      return true;
+    }
+  });
+  const finishBrandIntro = useCallback(() => {
+    try {
+      window.sessionStorage.setItem(BRAND_INTRO_SEEN_KEY, 'true');
+    } catch {
+      // sessionStorage may be unavailable in strict privacy contexts.
+    }
+    setShowBrandIntro(false);
+  }, []);
   
   // Password Change Modal
   const [showPasswordModal, setShowPasswordModal] = useState(false);
@@ -371,6 +392,17 @@ function AppContent() {
       setActiveTab('profile');
     }
   }, [resetSignedOutView, session, hasNavigatedOnLogin, isAuthLoading]);
+
+  useEffect(() => {
+    if (!session?.uid || isAuthLoading) {
+      setShowCloudLoadingNotice(false);
+      return;
+    }
+
+    setShowCloudLoadingNotice(true);
+    const timer = window.setTimeout(() => setShowCloudLoadingNotice(false), 2400);
+    return () => window.clearTimeout(timer);
+  }, [session?.uid, isAuthLoading]);
 
   // Daily Proverb & First Entry Scroll
   useEffect(() => {
@@ -978,6 +1010,9 @@ function AppContent() {
 
   return (
     <>
+    <AnimatePresence>
+      {showBrandIntro && <BrandIntro onDone={finishBrandIntro} />}
+    </AnimatePresence>
     <div>
       <MainLayout
         activeTab={activeTab}
@@ -996,6 +1031,20 @@ function AppContent() {
         onShowAuth={() => setShowAuthPage(true)}
         sidebarContent={sidebarContent}
       >
+      <AnimatePresence>
+        {showCloudLoadingNotice && (
+          <motion.div
+            initial={{ opacity: 0, y: -8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -8 }}
+            className="mb-3 flex items-center gap-2 rounded-xl border border-forest-accent/10 bg-white/80 px-3 py-2 text-xs text-forest-muted shadow-sm"
+            role="status"
+          >
+            <Database size={14} className="shrink-0 text-forest-accent" />
+            正在读取云端典籍；本机记录会先保留，完成后自动合并。
+          </motion.div>
+        )}
+      </AnimatePresence>
       {/* Modals */}
       <Modal 
         isOpen={loginPrompt.isOpen} 

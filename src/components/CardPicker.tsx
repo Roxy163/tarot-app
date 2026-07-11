@@ -4,6 +4,7 @@ import { X } from 'lucide-react';
 import { TAROT_CARDS, getCardImageUrl } from '../constants';
 import { cardMatchesSearch } from '../lib/cardSearch';
 import { useBodyScrollLock } from '../hooks/useBodyScrollLock';
+import { TarotCardImage } from './TarotCardImage';
 
 interface CardPickerProps {
   onSelect: (card: typeof TAROT_CARDS[0], isReversed: boolean) => void;
@@ -106,11 +107,11 @@ export function CardPicker({
                 }`}
               >
                 <div className={`aspect-[2/3.5] w-full bg-forest-bg rounded-lg overflow-hidden border border-forest-accent/10 group-hover:border-forest-accent/30 ${isReversed ? 'rotate-180' : ''}`}>
-                  <img 
-                    src={getCardImageUrl(card.id)} 
+                  <TarotCardImage
+                    src={getCardImageUrl(card.id)}
                     alt={card.name}
+                    name={card.name}
                     className="w-full h-full object-cover"
-                    referrerPolicy="no-referrer"
                   />
                 </div>
                 <span className="w-full truncate text-center text-[9px] font-medium text-forest-ink sm:text-[10px]">

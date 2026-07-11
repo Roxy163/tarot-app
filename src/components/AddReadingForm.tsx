@@ -579,7 +579,7 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
   const itemClasses = currentTemplate.itemClasses;
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-4 rounded-2xl border border-forest-border bg-white p-3 pb-[calc(5.5rem+env(safe-area-inset-bottom))] shadow-sm sm:space-y-8 sm:rounded-3xl sm:p-10">
+    <form onSubmit={handleSubmit} className="space-y-3 rounded-2xl border border-forest-border bg-white p-3 pb-[calc(5.5rem+env(safe-area-inset-bottom))] shadow-sm sm:space-y-7 sm:rounded-3xl sm:p-10">
       {editingCorrespondence && (
         <CardCorrespondenceEditor 
           card={editingCorrespondence.card}

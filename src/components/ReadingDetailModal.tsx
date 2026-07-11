@@ -4,6 +4,7 @@ import { BookOpen, CheckCircle2, PencilLine, Sparkles, X } from 'lucide-react';
 import { TarotReading } from '../types';
 import { TAROT_CARDS, getCardImageUrl } from '../constants';
 import { useBodyScrollLock } from '../hooks/useBodyScrollLock';
+import { TarotCardImage } from './TarotCardImage';
 
 interface ReadingDetailModalProps {
   reading: TarotReading | null;
@@ -147,11 +148,11 @@ export const ReadingDetailModal: React.FC<ReadingDetailModalProps> = ({
                   return (
                     <article key={`${item.card.name}-${index}`} className="rounded-2xl border border-forest-accent/10 bg-white p-3 sm:p-4 flex gap-3">
                       <div className={`w-16 h-24 sm:w-20 sm:h-30 rounded-xl overflow-hidden border border-forest-accent/10 shadow-sm shrink-0 bg-forest-bg ${item.card.isReversed ? 'rotate-180' : ''}`}>
-                        <img
+                        <TarotCardImage
                           src={getCardImageUrl(item.cardData?.id || 'ar00')}
                           alt={item.card.name}
+                          name={item.card.name}
                           className="w-full h-full object-contain bg-white"
-                          referrerPolicy="no-referrer"
                         />
                       </div>
                       <div className="min-w-0 flex-1 space-y-2">

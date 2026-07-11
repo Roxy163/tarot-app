@@ -43,7 +43,7 @@ export const MainLayout: React.FC<MainLayoutProps> = ({
   useBodyScrollLock(isSidebarOpen);
 
   return (
-    <div className="min-h-screen bg-forest-bg flex flex-col max-w-4xl mx-auto px-4 py-6 sm:py-8 relative overflow-x-hidden">
+    <div className="min-h-screen bg-forest-bg flex flex-col max-w-4xl mx-auto px-4 py-6 sm:py-5 relative overflow-x-hidden">
       {/* Sidebar */}
       <AnimatePresence>
         {isSidebarOpen && (
@@ -70,7 +70,7 @@ export const MainLayout: React.FC<MainLayoutProps> = ({
         )}
       </AnimatePresence>
 
-      <header className="mb-8 sm:mb-12 text-center relative">
+      <header className="mb-5 sm:mb-6 text-center relative">
         <div className="absolute left-0 top-0">
           <button 
             onClick={() => setIsSidebarOpen(true)}
@@ -81,13 +81,26 @@ export const MainLayout: React.FC<MainLayoutProps> = ({
             <Menu size={20} />
           </button>
         </div>
-        <motion.h1 
-          initial={{ opacity: 0, y: -20 }} 
-          animate={{ opacity: 1, y: 0 }} 
-          className="text-3xl sm:text-5xl font-serif mb-2 text-forest-accent"
+        <motion.div
+          initial={{ opacity: 0, y: -16 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="mx-auto flex max-w-[260px] flex-col items-center gap-2 sm:max-w-none"
         >
-          塔罗研习阁
-        </motion.h1>
+          <img
+            src="/app-icon.svg"
+            alt="塔罗研习阁图标"
+            className="h-12 w-12 rounded-2xl shadow-lg shadow-forest-accent/10 sm:h-12 sm:w-12"
+            draggable={false}
+          />
+          <div className="space-y-0.5">
+            <h1 className="font-serif text-3xl text-forest-accent sm:text-3xl">
+              塔罗研习阁
+            </h1>
+            <p className="text-[11px] font-bold tracking-[0.18em] text-forest-muted">
+              观牌，也观心
+            </p>
+          </div>
+        </motion.div>
       </header>
 
       <main className="flex-1 pb-24">

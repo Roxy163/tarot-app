@@ -7,6 +7,7 @@ import { OFFICIAL_CARD_ANNOTATIONS } from '../constants/cardAnnotations';
 import { cardMatchesSearch } from '../lib/cardSearch';
 import { cardAnnotationService } from '../services/cardAnnotationService';
 import { useBodyScrollLock } from '../hooks/useBodyScrollLock';
+import { TarotCardImage } from './TarotCardImage';
 
 interface CardAnnotationEditorProps {
   isOpen: boolean;
@@ -369,11 +370,11 @@ export const CardAnnotationEditor: React.FC<CardAnnotationEditorProps> = ({
                       return (
                         <>
                           <div className="w-16 h-24 rounded-lg overflow-hidden shadow-lg border-2 border-forest-accent/20">
-                            <img 
-                              src={getCardImageUrl(card?.id || 'ar00')} 
-                              alt={card?.name}
+                            <TarotCardImage
+                              src={getCardImageUrl(card?.id || 'ar00')}
+                              alt={card?.name || '塔罗牌'}
+                              name={card?.name || '塔罗牌'}
                               className="w-full h-full object-cover"
-                              referrerPolicy="no-referrer"
                             />
                           </div>
                           <div className="min-w-0">

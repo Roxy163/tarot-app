@@ -47,7 +47,7 @@ describe('Auth', () => {
 
     await user.type(screen.getByPlaceholderText('example@email.com'), 'roxy@example.com');
     await user.type(screen.getByPlaceholderText('至少6位字符'), 'secret123');
-    await user.click(screen.getByRole('button', { name: '执印入阁' }));
+    await user.click(screen.getByRole('button', { name: '登录' }));
 
     expect(await screen.findByRole('alert')).toBeInTheDocument();
     expect(screen.getByText('网络没有连上认证服务')).toBeInTheDocument();
@@ -66,7 +66,7 @@ describe('Auth', () => {
 
     await user.type(screen.getByPlaceholderText('example@email.com'), 'roxy@example.com');
     await user.type(screen.getByPlaceholderText('至少6位字符'), 'wrong-pass');
-    await user.click(screen.getByRole('button', { name: '执印入阁' }));
+    await user.click(screen.getByRole('button', { name: '登录' }));
 
     expect(await screen.findByText('邮箱或密码不正确')).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: '找回密码' }));

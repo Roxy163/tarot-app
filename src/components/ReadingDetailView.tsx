@@ -6,6 +6,7 @@ import { TAROT_CARDS, getCardImageUrl } from '../constants';
 import { getAnnotationByCardId } from '../constants/cardAnnotations';
 import { CardNumerologyBadge } from './CardNumerologyBadge';
 import { suggestAiInspiration } from '../services/geminiService';
+import { TarotCardImage } from './TarotCardImage';
 
 interface ReadingDetailViewProps {
   activeSlotIndex: number;
@@ -172,11 +173,11 @@ export const ReadingDetailView: React.FC<ReadingDetailViewProps> = ({
                 {cardAtmosphereHint}
               </div>
             )}
-            <img
+            <TarotCardImage
               src={getCardImageUrl(cardData?.id || 'ar00')}
               alt={currentSlot.name}
+              name={currentSlot.name}
               className={`relative z-10 w-full h-full object-contain object-center transition-transform duration-300 ${currentSlot.isReversed ? 'rotate-180' : ''}`}
-              referrerPolicy="no-referrer"
             />
             <div className="absolute bottom-2 left-1/2 z-30 -translate-x-1/2 bg-white/90 backdrop-blur-sm text-[10px] font-bold px-3 py-1 rounded-full shadow-sm">
               {currentSlot.isReversed ? '逆位' : '正位'}

@@ -53,7 +53,7 @@ describe('DailyFortuneCard', () => {
     expect(screen.getByRole('button', { name: '洗牌' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '从洗好的牌组随机一张' })).not.toBeInTheDocument();
     expect(screen.getByText('现实牌')).toBeInTheDocument();
-    expect(screen.getByText('系统抽牌需先洗牌，再输入数字或随机一张；也可以把这里当作单牌牌义抽查。')).toBeInTheDocument();
+    expect(screen.getByText('洗牌后可输入数字或随机一张，也能用来抽查牌义。')).toBeInTheDocument();
 
     await user.click(screen.getByText('现实牌'));
     expect(screen.getByRole('heading', { name: '选择现实中抽到的牌' })).toBeInTheDocument();

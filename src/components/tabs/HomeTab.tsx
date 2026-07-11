@@ -66,7 +66,7 @@ export const HomeTab: React.FC<HomeTabProps> = ({
         <div className="relative space-y-3">
           <div className="inline-flex items-center gap-2 rounded-full bg-forest-accent/10 px-3 py-1 text-[10px] font-bold uppercase tracking-[0.18em] text-forest-accent">
             <Sparkles size={12} />
-            今日一问
+            观牌，也观心
           </div>
 
           <div className="space-y-1.5">
@@ -96,22 +96,22 @@ export const HomeTab: React.FC<HomeTabProps> = ({
         />
       </div>
 
-      <section className="grid gap-3 sm:grid-cols-2">
+      <section className="grid gap-2 sm:grid-cols-2">
         <button
           type="button"
           onClick={() => {
             onSearch('');
             onNavigate('private');
           }}
-          className="group flex min-h-[78px] items-center justify-between gap-3 rounded-2xl border border-forest-accent/10 bg-white/90 px-4 py-3 text-left shadow-sm transition-colors hover:border-forest-accent/30"
+          className="group flex min-h-[68px] items-center justify-between gap-3 rounded-2xl border border-forest-accent/10 bg-white/85 px-3 py-2.5 text-left shadow-sm transition-colors hover:border-forest-accent/30"
         >
           <div className="flex min-w-0 items-center gap-3">
-            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-forest-accent/10 text-forest-accent">
-              <Library size={17} />
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-forest-accent/10 text-forest-accent">
+              <Library size={16} />
             </span>
             <span className="min-w-0">
               <span className="block text-sm font-bold text-forest-ink">典籍复盘</span>
-              <span className="mt-1 block text-xs leading-relaxed text-forest-muted">
+              <span className="mt-0.5 block text-[11px] leading-relaxed text-forest-muted">
                 全部 {realReadings.length} 条 · 已复盘 {reviewedReadings.length} 条
               </span>
             </span>
@@ -127,15 +127,15 @@ export const HomeTab: React.FC<HomeTabProps> = ({
         <button
           type="button"
           onClick={() => onNavigate('metadata')}
-          className="group flex min-h-[78px] items-center justify-between gap-3 rounded-2xl border border-forest-accent/10 bg-white/90 px-4 py-3 text-left shadow-sm transition-colors hover:border-forest-accent/30"
+          className="group flex min-h-[68px] items-center justify-between gap-3 rounded-2xl border border-forest-accent/10 bg-white/85 px-3 py-2.5 text-left shadow-sm transition-colors hover:border-forest-accent/30"
         >
           <div className="flex min-w-0 items-center gap-3">
-            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-forest-accent/10 text-forest-accent">
-              <Edit3 size={17} />
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-forest-accent/10 text-forest-accent">
+              <Edit3 size={16} />
             </span>
             <span className="min-w-0">
               <span className="block text-sm font-bold text-forest-ink">牌义注疏</span>
-              <span className="mt-1 block text-xs leading-relaxed text-forest-muted">
+              <span className="mt-0.5 block text-[11px] leading-relaxed text-forest-muted">
                 批量修改单牌释义 · 已自定义 {modifiedAnnotationCount} 张
               </span>
             </span>

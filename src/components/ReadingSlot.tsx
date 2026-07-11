@@ -2,6 +2,7 @@ import React from 'react';
 import { Plus, X, Layers } from 'lucide-react';
 import { ReadingSlotData } from '../types';
 import { TAROT_CARDS, getCardImageUrl } from '../constants';
+import { TarotCardImage } from './TarotCardImage';
 
 interface ReadingSlotProps {
   slot: ReadingSlotData;
@@ -63,7 +64,7 @@ export const ReadingSlot: React.FC<ReadingSlotProps> = ({
                 {index + 1}
               </span>
             )}
-            <img src={getCardImageUrl(cardData?.id || 'ar00')} alt={slot.name} className="w-full h-full object-contain bg-forest-bg" referrerPolicy="no-referrer" />
+            <TarotCardImage src={getCardImageUrl(cardData?.id || 'ar00')} alt={slot.name} name={slot.name} className="w-full h-full object-contain bg-forest-bg" />
             <div className="absolute inset-x-0 bottom-0 bg-forest-text/60 text-white text-[7px] py-0.5 text-center font-sans">{slot.name}</div>
           </div>
         ) : (
