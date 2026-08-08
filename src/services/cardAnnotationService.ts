@@ -1,19 +1,51 @@
 import { CardAnnotation, UserAnnotationData } from '../types';
 import { OFFICIAL_CARD_ANNOTATIONS, getAnnotationByCardId } from '../constants/cardAnnotations';
+import { readJsonRecordWithBackup, writeJsonWithBackup } from '../lib/safeLocalStorage';
 
 const STORAGE_KEY = 'tarot_user_annotations';
 const CURRENT_VERSION = 1;
 
+const isRecord = (value: unknown): value is Record<string, unknown> => (
+  typeof value === 'object' && value !== null && !Array.isArray(value)
+);
+
+const isUserAnnotationData = (value: unknown): value is UserAnnotationData => (
+  isRecord(value)
+  && typeof value.userId === 'string'
+  && isRecord(value.annotations)
+  && typeof value.version === 'number'
+  && typeof value.lastUpdated === 'string'
+);
+
 class CardAnnotationService {
   private cache: UserAnnotationData | null = null;
+  private runtimeUserId: string | null = null;
+
+  private createUserId(): string {
+    return `user_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+  }
 
   private getUserId(): string {
-    const storedUserId = localStorage.getItem('tarot_user_id');
+    if (this.runtimeUserId) return this.runtimeUserId;
+
+    let storedUserId: string | null = null;
+    try {
+      storedUserId = localStorage.getItem('tarot_user_id');
+    } catch {
+      this.runtimeUserId = this.createUserId();
+      return this.runtimeUserId;
+    }
+
     if (!storedUserId) {
-      const newUserId = `user_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
-      localStorage.setItem('tarot_user_id', newUserId);
+      const newUserId = this.createUserId();
+      try {
+        localStorage.setItem('tarot_user_id', newUserId);
+      } catch {
+        this.runtimeUserId = newUserId;
+      }
       return newUserId;
     }
+
     return storedUserId;
   }
 
@@ -22,15 +54,10 @@ class CardAnnotationService {
       return this.cache;
     }
 
-    const stored = localStorage.getItem(STORAGE_KEY);
-    if (stored) {
-      try {
-        const data = JSON.parse(stored) as UserAnnotationData;
-        this.cache = data;
-        return data;
-      } catch (error) {
-        console.error('Failed to parse user annotation data:', error);
-      }
+    const stored = readJsonRecordWithBackup(STORAGE_KEY);
+    if (isUserAnnotationData(stored)) {
+      this.cache = stored;
+      return stored;
     }
 
     const newData: UserAnnotationData = {
@@ -47,7 +74,7 @@ class CardAnnotationService {
   private saveUserData(data: UserAnnotationData): void {
     data.lastUpdated = new Date().toISOString();
     data.version = CURRENT_VERSION;
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+    writeJsonWithBackup(STORAGE_KEY, data);
     this.cache = data;
   }
 
@@ -187,7 +214,11 @@ class CardAnnotationService {
   }
 
   public clearAllUserData(): void {
-    localStorage.removeItem(STORAGE_KEY);
+    try {
+      localStorage.removeItem(STORAGE_KEY);
+    } catch {
+      // 忽略存储失败；清理当前运行时缓存即可。
+    }
     this.cache = null;
   }
 }

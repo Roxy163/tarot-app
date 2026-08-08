@@ -1,5 +1,5 @@
 import React, { useRef, useEffect, useState, useCallback } from 'react';
-import { Stage, Layer, Rect, Transformer } from 'react-konva';
+import { Stage, Layer, Rect } from 'react-konva';
 import { useSpreadCanvasStore, getCardData, getCardImage } from '../../store/spreadCanvasStore';
 import { CardShape } from './CardShape';
 import { ContextMenu } from './ContextMenu';
@@ -24,12 +24,10 @@ export const Canvas: React.FC = () => {
     updateCard,
     flipCard,
     rotateCard,
-    scaleCard,
     setOffset,
     setScale,
     setDraggingCanvas,
     setDraggingCard,
-    showContextMenu,
     showContextMenuAt,
     hideContextMenu
   } = useSpreadCanvasStore();
@@ -138,12 +136,6 @@ export const Canvas: React.FC = () => {
     flipCard(id);
   };
 
-  const handleCardWheel = (id: string, e: React.WheelEvent) => {
-    e.stopPropagation();
-    const delta = e.deltaY > 0 ? -0.1 : 0.1;
-    scaleCard(id, delta);
-  };
-
   const handleCardShiftDrag = (id: string, startX: number, currentX: number) => {
     const delta = Math.round((currentX - startX) / 15) * 15;
     rotateCard(id, delta);
@@ -203,7 +195,6 @@ export const Canvas: React.FC = () => {
                 onDragStart={handleCardDragStart}
                 onDragEnd={(newX, newY) => handleCardDragEnd(card.id, newX, newY)}
                 onDoubleClick={() => handleCardDoubleClick(card.id)}
-                onWheel={(e) => handleCardWheel(card.id, e)}
                 onShiftDrag={(startX, currentX) => handleCardShiftDrag(card.id, startX, currentX)}
               />
             );

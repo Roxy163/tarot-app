@@ -1,17 +1,20 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { CardKeywordMemory, ReadingKeywordCandidate, TarotReading, SpreadDefinition, TarotCardMetadata } from '../types';
+import { CardKeywordMemory, QuizMemoryEntry, ReadingKeywordCandidate, TarotReading, SpreadDefinition, TarotCardMetadata } from '../types';
 import { INITIAL_READINGS, OFFICIAL_SPREADS } from '../constants';
 import { extractKeywords, recognizeCards, suggestReadingKeywords } from '../services/geminiService';
 import {
   getUserCardKeywordMemory,
   getUserCardMetadata,
+  getUserQuizMemory,
   getUserReadings,
   getUserSpreads,
   replaceUserReadings,
   saveUserCardKeywordMemory,
   saveUserCardMetadata,
+  saveUserQuizMemory,
   saveUserSpreads,
 } from '../lib/firebaseData';
+import { getFriendlyCloudSyncError, isFirebaseOfflineError } from '../lib/firebaseErrors';
 import {
   getLegacyCustomSpreadNameMap,
   normalizeLegacyReadingSpreadNames,
@@ -19,12 +22,22 @@ import {
 import {
   mergeCardMetadataSources,
   mergeKeywordMemorySources,
+  mergeQuizMemorySources,
   getPersistableReadings,
   mergeReadingsForSignedInUser,
   mergeSpreadSources,
 } from '../lib/readingSessionMerge';
+import { readJsonArrayWithBackup, writeJsonWithBackup } from '../lib/safeLocalStorage';
 
 const CLOUD_SAVE_DEBOUNCE_MS = 1200;
+const USER_READINGS_STORAGE_KEY = 'tarot_readings';
+const GUEST_READINGS_STORAGE_KEY = 'tarot_guest_data';
+const SPREADS_STORAGE_KEY = 'tarot_spreads';
+const CARD_METADATA_STORAGE_KEY = 'tarot_card_metadata';
+const CARD_KEYWORD_MEMORY_STORAGE_KEY = 'tarot_card_keyword_memory';
+const QUIZ_MEMORY_STORAGE_KEY = 'tarot_quiz_memory';
+
+type CloudSnapshotKey = 'readings' | 'spreads' | 'cardMetadata' | 'cardKeywordMemory' | 'quizMemory';
 
 export type CloudSyncStatus = 'guest' | 'loading' | 'syncing' | 'synced' | 'error';
 
@@ -37,12 +50,19 @@ export interface CloudSyncInfo {
 }
 
 const getSyncStorageKey = (uid: string) => `tarot_last_cloud_sync_at_${uid}`;
+const getUserScopedStorageKey = (key: string, uid: string) => `${key}_${uid}`;
 
-const getReadableSyncError = (error: unknown) => (
-  error instanceof Error && error.message
-    ? error.message
-    : '云端暂时不可用，请稍后重试。'
-);
+const createCloudSnapshots = (): Record<CloudSnapshotKey, string> => ({
+  readings: '',
+  spreads: '',
+  cardMetadata: '',
+  cardKeywordMemory: '',
+  quizMemory: '',
+});
+
+const serializeCloudSnapshot = (value: unknown) => JSON.stringify(value);
+
+export const getReadableSyncError = getFriendlyCloudSyncError;
 
 const normalizeMemoryKeyword = (keyword: string) => keyword.trim().replace(/^#+/, '').replace(/\s+/g, '');
 
@@ -141,6 +161,7 @@ export const useReadings = (
   const [spreads, setSpreads] = useState<SpreadDefinition[]>(OFFICIAL_SPREADS);
   const [cardMetadata, setCardMetadata] = useState<TarotCardMetadata[]>([]);
   const [cardKeywordMemory, setCardKeywordMemory] = useState<CardKeywordMemory[]>([]);
+  const [quizMemory, setQuizMemory] = useState<QuizMemoryEntry[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchTags, setSearchTags] = useState<string[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -157,12 +178,25 @@ export const useReadings = (
   });
   const pendingGuestReadingsSyncRef = useRef(false);
   const pendingDeletedReadingIdsRef = useRef<Set<string>>(new Set());
+  const cloudSyncedSnapshotsRef = useRef<Record<CloudSnapshotKey, string>>(createCloudSnapshots());
+
+  const markCloudSnapshot = useCallback((key: CloudSnapshotKey, value: unknown) => {
+    cloudSyncedSnapshotsRef.current[key] = serializeCloudSnapshot(value);
+  }, []);
+
+  const hasCloudSnapshotChanged = useCallback((key: CloudSnapshotKey, value: unknown) => (
+    cloudSyncedSnapshotsRef.current[key] !== serializeCloudSnapshot(value)
+  ), []);
 
   const markCloudSyncSuccess = useCallback((cloudReadingsCount?: number | null) => {
     if (!session?.uid) return;
 
     const syncedAt = new Date().toISOString();
-    localStorage.setItem(getSyncStorageKey(session.uid), syncedAt);
+    try {
+      localStorage.setItem(getSyncStorageKey(session.uid), syncedAt);
+    } catch (error) {
+      console.warn('Failed to persist cloud sync timestamp:', error);
+    }
     setCloudSyncInfo(prev => ({
       ...prev,
       status: 'synced',
@@ -184,15 +218,7 @@ export const useReadings = (
   }, []);
 
   const parseSavedArray = <T,>(key: string): T[] | null => {
-    const saved = localStorage.getItem(key);
-    if (!saved) return null;
-
-    try {
-      const parsed = JSON.parse(saved);
-      return Array.isArray(parsed) ? parsed : null;
-    } catch {
-      return null;
-    }
+    return readJsonArrayWithBackup<T>(key);
   };
 
   // 登录后从 Firebase 加载，访客模式使用本地数据。
@@ -209,22 +235,38 @@ export const useReadings = (
       setLoadedDataKey(null);
       setIsCloudSyncPaused(false);
       setSyncNotice(null);
-      const savedUserReadings = parseSavedArray<TarotReading>('tarot_readings') || [];
-      const savedGuestReadings = parseSavedArray<TarotReading>('tarot_guest_data') || [];
-      const savedSpreads = parseSavedArray<SpreadDefinition>('tarot_spreads') || [];
+      const savedUserReadings = session?.uid
+        ? parseSavedArray<TarotReading>(getUserScopedStorageKey(USER_READINGS_STORAGE_KEY, session.uid)) || []
+        : [];
+      const savedGuestReadings = parseSavedArray<TarotReading>(GUEST_READINGS_STORAGE_KEY) || [];
+      const savedSpreads = session?.uid
+        ? [
+            ...(parseSavedArray<SpreadDefinition>(getUserScopedStorageKey(SPREADS_STORAGE_KEY, session.uid)) || []),
+            ...(parseSavedArray<SpreadDefinition>(SPREADS_STORAGE_KEY) || []),
+          ]
+        : parseSavedArray<SpreadDefinition>(SPREADS_STORAGE_KEY) || [];
       const localSpreadNameMap = getLegacyCustomSpreadNameMap(savedSpreads, OFFICIAL_SPREADS);
       const localGuestReadings = normalizeLegacyReadingSpreadNames(savedGuestReadings, localSpreadNameMap);
       const localUserReadings = normalizeLegacyReadingSpreadNames(savedUserReadings, localSpreadNameMap);
       const localSpreads = mergeSpreadSources([savedSpreads], OFFICIAL_SPREADS);
-      const localMetadata = parseSavedArray<TarotCardMetadata>('tarot_card_metadata') || [];
-      const localKeywordMemory = parseSavedArray<CardKeywordMemory>('tarot_card_keyword_memory') || [];
+      const localMetadata = session?.uid
+        ? parseSavedArray<TarotCardMetadata>(getUserScopedStorageKey(CARD_METADATA_STORAGE_KEY, session.uid)) || []
+        : parseSavedArray<TarotCardMetadata>(CARD_METADATA_STORAGE_KEY) || [];
+      const localKeywordMemory = session?.uid
+        ? parseSavedArray<CardKeywordMemory>(getUserScopedStorageKey(CARD_KEYWORD_MEMORY_STORAGE_KEY, session.uid)) || []
+        : parseSavedArray<CardKeywordMemory>(CARD_KEYWORD_MEMORY_STORAGE_KEY) || [];
+      const localQuizMemory = session?.uid
+        ? parseSavedArray<QuizMemoryEntry>(getUserScopedStorageKey(QUIZ_MEMORY_STORAGE_KEY, session.uid)) || []
+        : parseSavedArray<QuizMemoryEntry>(QUIZ_MEMORY_STORAGE_KEY) || [];
       
       if (!session?.uid) {
         pendingGuestReadingsSyncRef.current = false;
+        cloudSyncedSnapshotsRef.current = createCloudSnapshots();
         setReadings(withExamplesOnlyWhenEmpty(exampleReadings, localGuestReadings));
         setSpreads(localSpreads);
         setCardMetadata(localMetadata);
         setCardKeywordMemory(localKeywordMemory);
+        setQuizMemory(localQuizMemory);
         setCloudSyncInfo({
           status: 'guest',
           lastSyncedAt: null,
@@ -245,11 +287,12 @@ export const useReadings = (
           lastError: null,
         }));
 
-        const [cloudReadings, cloudSpreads, cloudMetadata, cloudKeywordMemory] = await Promise.all([
+        const [cloudReadings, cloudSpreads, cloudMetadata, cloudKeywordMemory, cloudQuizMemory] = await Promise.all([
           getUserReadings(session.uid),
           getUserSpreads(session.uid),
           getUserCardMetadata(session.uid),
           getUserCardKeywordMemory(session.uid),
+          getUserQuizMemory(session.uid),
         ]);
 
         if (cancelled) return;
@@ -264,12 +307,25 @@ export const useReadings = (
         const mergedSpreads = mergeSpreadSources([cloudSpreads || [], savedSpreads], OFFICIAL_SPREADS);
         const mergedMetadata = mergeCardMetadataSources([cloudMetadata || [], localMetadata]);
         const mergedKeywordMemory = mergeKeywordMemorySources([cloudKeywordMemory || [], localKeywordMemory]);
+        const mergedQuizMemory = mergeQuizMemorySources([cloudQuizMemory || [], localQuizMemory]);
+        const persistableCloudReadings = getPersistableReadings(cloudReadingsNormalized);
+        const persistableMergedReadings = getPersistableReadings(mergedReadings);
+        const shouldPushMergedReadings = (
+          getPersistableReadings(localGuestReadings).length > 0
+          || serializeCloudSnapshot(persistableCloudReadings) !== serializeCloudSnapshot(persistableMergedReadings)
+        );
 
         pendingGuestReadingsSyncRef.current = getPersistableReadings(localGuestReadings).length > 0;
+        markCloudSnapshot('readings', shouldPushMergedReadings ? persistableCloudReadings : persistableMergedReadings);
+        markCloudSnapshot('spreads', mergedSpreads);
+        markCloudSnapshot('cardMetadata', mergedMetadata);
+        markCloudSnapshot('cardKeywordMemory', mergedKeywordMemory);
+        markCloudSnapshot('quizMemory', mergedQuizMemory);
         setReadings(withExamplesOnlyWhenEmpty(exampleReadings, mergedReadings));
         setSpreads(mergedSpreads);
         setCardMetadata(mergedMetadata);
         setCardKeywordMemory(mergedKeywordMemory);
+        setQuizMemory(mergedQuizMemory);
         const syncedAt = new Date().toISOString();
         localStorage.setItem(getSyncStorageKey(session.uid), syncedAt);
         setCloudSyncInfo(prev => ({
@@ -294,8 +350,16 @@ export const useReadings = (
         setSpreads(localSpreads);
         setCardMetadata(localMetadata);
         setCardKeywordMemory(localKeywordMemory);
+        setQuizMemory(localQuizMemory);
         setIsCloudSyncPaused(true);
-        setSyncNotice('云端同步暂时不可用，已切换为本地暂存，避免覆盖云端典籍。');
+        markCloudSnapshot('readings', getPersistableReadings(fallbackReadings));
+        markCloudSnapshot('spreads', localSpreads);
+        markCloudSnapshot('cardMetadata', localMetadata);
+        markCloudSnapshot('cardKeywordMemory', localKeywordMemory);
+        markCloudSnapshot('quizMemory', localQuizMemory);
+        if (!isFirebaseOfflineError(error)) {
+          setSyncNotice('云端同步暂时不可用，已切换为本地暂存，避免覆盖云端典籍。');
+        }
         markCloudSyncError(error);
       } finally {
         if (!cancelled) setLoadedDataKey(activeDataKey);
@@ -306,7 +370,7 @@ export const useReadings = (
     return () => {
       cancelled = true;
     };
-  }, [activeDataKey, exampleReadings, isAuthLoading, markCloudSyncError, session?.uid]);
+  }, [activeDataKey, exampleReadings, isAuthLoading, markCloudSnapshot, markCloudSyncError, session?.uid]);
 
   // 保存数据：登录用户写入 Firebase，访客写入本地。
   useEffect(() => {
@@ -316,10 +380,17 @@ export const useReadings = (
     const userReadings = readings.filter(r => !r.isExample);
 
     if (session?.uid) {
-      localStorage.setItem('tarot_readings', JSON.stringify(userReadings));
+      writeJsonWithBackup(getUserScopedStorageKey(USER_READINGS_STORAGE_KEY, session.uid), userReadings);
       if (isCloudSyncPaused) return;
 
       const deletedReadingIds = Array.from(pendingDeletedReadingIdsRef.current);
+      const shouldSaveReadings = (
+        pendingGuestReadingsSyncRef.current
+        || deletedReadingIds.length > 0
+        || hasCloudSnapshotChanged('readings', userReadings)
+      );
+      if (!shouldSaveReadings) return;
+
       const attemptedAt = new Date().toISOString();
       setCloudSyncInfo(prev => ({
         ...prev,
@@ -332,10 +403,11 @@ export const useReadings = (
           .then(result => {
             const privateChangeCount = result.privateReadingsWritten + result.privateReadingsDeleted;
             deletedReadingIds.forEach(id => pendingDeletedReadingIdsRef.current.delete(id));
+            markCloudSnapshot('readings', userReadings);
             markCloudSyncSuccess(result.totalReadings);
 
             if (pendingGuestReadingsSyncRef.current) {
-              localStorage.removeItem('tarot_guest_data');
+              localStorage.removeItem(GUEST_READINGS_STORAGE_KEY);
               pendingGuestReadingsSyncRef.current = false;
               setSyncNotice(`已将本机手记合并到云端典籍，共 ${result.totalReadings} 条。`);
               return;
@@ -359,17 +431,18 @@ export const useReadings = (
 
       return () => window.clearTimeout(timer);
     } else {
-      localStorage.setItem('tarot_guest_data', JSON.stringify(userReadings));
+      writeJsonWithBackup(GUEST_READINGS_STORAGE_KEY, userReadings);
     }
-  }, [activeDataKey, isAuthLoading, isCloudSyncPaused, loadedDataKey, markCloudSyncError, markCloudSyncSuccess, readings, session?.uid]);
+  }, [activeDataKey, hasCloudSnapshotChanged, isAuthLoading, isCloudSyncPaused, loadedDataKey, markCloudSnapshot, markCloudSyncError, markCloudSyncSuccess, readings, session?.uid]);
 
   useEffect(() => {
     if (isAuthLoading) return;
     if (loadedDataKey !== activeDataKey) return;
 
     if (session?.uid) {
-      localStorage.setItem('tarot_spreads', JSON.stringify(spreads));
+      writeJsonWithBackup(getUserScopedStorageKey(SPREADS_STORAGE_KEY, session.uid), spreads);
       if (isCloudSyncPaused) return;
+      if (!hasCloudSnapshotChanged('spreads', spreads)) return;
 
       setCloudSyncInfo(prev => ({
         ...prev,
@@ -379,28 +452,31 @@ export const useReadings = (
       }));
       const timer = window.setTimeout(() => {
         saveUserSpreads(session.uid, spreads)
-          .then(() => markCloudSyncSuccess())
+          .then(() => {
+            markCloudSnapshot('spreads', spreads);
+            markCloudSyncSuccess();
+          })
           .catch(error => {
             console.error('Failed to save spreads:', error);
             setIsCloudSyncPaused(true);
             markCloudSyncError(error);
-            setSyncNotice('牌阵云端保存失败，已先保存在本地。');
           });
       }, CLOUD_SAVE_DEBOUNCE_MS);
 
       return () => window.clearTimeout(timer);
     }
 
-    localStorage.setItem('tarot_spreads', JSON.stringify(spreads));
-  }, [activeDataKey, isAuthLoading, isCloudSyncPaused, loadedDataKey, markCloudSyncError, markCloudSyncSuccess, session?.uid, spreads]);
+    writeJsonWithBackup(SPREADS_STORAGE_KEY, spreads);
+  }, [activeDataKey, hasCloudSnapshotChanged, isAuthLoading, isCloudSyncPaused, loadedDataKey, markCloudSnapshot, markCloudSyncError, markCloudSyncSuccess, session?.uid, spreads]);
 
   useEffect(() => {
     if (isAuthLoading) return;
     if (loadedDataKey !== activeDataKey) return;
 
     if (session?.uid) {
-      localStorage.setItem('tarot_card_metadata', JSON.stringify(cardMetadata));
+      writeJsonWithBackup(getUserScopedStorageKey(CARD_METADATA_STORAGE_KEY, session.uid), cardMetadata);
       if (isCloudSyncPaused) return;
+      if (!hasCloudSnapshotChanged('cardMetadata', cardMetadata)) return;
 
       setCloudSyncInfo(prev => ({
         ...prev,
@@ -410,28 +486,31 @@ export const useReadings = (
       }));
       const timer = window.setTimeout(() => {
         saveUserCardMetadata(session.uid, cardMetadata)
-          .then(() => markCloudSyncSuccess())
+          .then(() => {
+            markCloudSnapshot('cardMetadata', cardMetadata);
+            markCloudSyncSuccess();
+          })
           .catch(error => {
             console.error('Failed to save card metadata:', error);
             setIsCloudSyncPaused(true);
             markCloudSyncError(error);
-            setSyncNotice('塔罗牌库云端保存失败，已先保存在本地。');
           });
       }, CLOUD_SAVE_DEBOUNCE_MS);
 
       return () => window.clearTimeout(timer);
     }
 
-    localStorage.setItem('tarot_card_metadata', JSON.stringify(cardMetadata));
-  }, [activeDataKey, cardMetadata, isAuthLoading, isCloudSyncPaused, loadedDataKey, markCloudSyncError, markCloudSyncSuccess, session?.uid]);
+    writeJsonWithBackup(CARD_METADATA_STORAGE_KEY, cardMetadata);
+  }, [activeDataKey, cardMetadata, hasCloudSnapshotChanged, isAuthLoading, isCloudSyncPaused, loadedDataKey, markCloudSnapshot, markCloudSyncError, markCloudSyncSuccess, session?.uid]);
 
   useEffect(() => {
     if (isAuthLoading) return;
     if (loadedDataKey !== activeDataKey) return;
 
     if (session?.uid) {
-      localStorage.setItem('tarot_card_keyword_memory', JSON.stringify(cardKeywordMemory));
+      writeJsonWithBackup(getUserScopedStorageKey(CARD_KEYWORD_MEMORY_STORAGE_KEY, session.uid), cardKeywordMemory);
       if (isCloudSyncPaused) return;
+      if (!hasCloudSnapshotChanged('cardKeywordMemory', cardKeywordMemory)) return;
 
       setCloudSyncInfo(prev => ({
         ...prev,
@@ -441,20 +520,56 @@ export const useReadings = (
       }));
       const timer = window.setTimeout(() => {
         saveUserCardKeywordMemory(session.uid, cardKeywordMemory)
-          .then(() => markCloudSyncSuccess())
+          .then(() => {
+            markCloudSnapshot('cardKeywordMemory', cardKeywordMemory);
+            markCloudSyncSuccess();
+          })
           .catch(error => {
             console.error('Failed to save card keyword memory:', error);
             setIsCloudSyncPaused(true);
             markCloudSyncError(error);
-            setSyncNotice('个人牌义记忆云端保存失败，已先保存在本地。');
           });
       }, CLOUD_SAVE_DEBOUNCE_MS);
 
       return () => window.clearTimeout(timer);
     }
 
-    localStorage.setItem('tarot_card_keyword_memory', JSON.stringify(cardKeywordMemory));
-  }, [activeDataKey, cardKeywordMemory, isAuthLoading, isCloudSyncPaused, loadedDataKey, markCloudSyncError, markCloudSyncSuccess, session?.uid]);
+    writeJsonWithBackup(CARD_KEYWORD_MEMORY_STORAGE_KEY, cardKeywordMemory);
+  }, [activeDataKey, cardKeywordMemory, hasCloudSnapshotChanged, isAuthLoading, isCloudSyncPaused, loadedDataKey, markCloudSnapshot, markCloudSyncError, markCloudSyncSuccess, session?.uid]);
+
+  useEffect(() => {
+    if (isAuthLoading) return;
+    if (loadedDataKey !== activeDataKey) return;
+
+    if (session?.uid) {
+      writeJsonWithBackup(getUserScopedStorageKey(QUIZ_MEMORY_STORAGE_KEY, session.uid), quizMemory);
+      if (isCloudSyncPaused) return;
+      if (!hasCloudSnapshotChanged('quizMemory', quizMemory)) return;
+
+      setCloudSyncInfo(prev => ({
+        ...prev,
+        status: 'syncing',
+        lastAttemptAt: new Date().toISOString(),
+        lastError: null,
+      }));
+      const timer = window.setTimeout(() => {
+        saveUserQuizMemory(session.uid, quizMemory)
+          .then(() => {
+            markCloudSnapshot('quizMemory', quizMemory);
+            markCloudSyncSuccess();
+          })
+          .catch(error => {
+            console.error('Failed to save quiz memory:', error);
+            setIsCloudSyncPaused(true);
+            markCloudSyncError(error);
+          });
+      }, CLOUD_SAVE_DEBOUNCE_MS);
+
+      return () => window.clearTimeout(timer);
+    }
+
+    writeJsonWithBackup(QUIZ_MEMORY_STORAGE_KEY, quizMemory);
+  }, [activeDataKey, hasCloudSnapshotChanged, isAuthLoading, isCloudSyncPaused, loadedDataKey, markCloudSnapshot, markCloudSyncError, markCloudSyncSuccess, quizMemory, session?.uid]);
 
   const handleManualCloudSync = useCallback(async () => {
     if (!session?.uid) {
@@ -472,11 +587,12 @@ export const useReadings = (
     }));
 
     try {
-      const [cloudReadings, cloudSpreads, cloudMetadata, cloudKeywordMemory] = await Promise.all([
+      const [cloudReadings, cloudSpreads, cloudMetadata, cloudKeywordMemory, cloudQuizMemory] = await Promise.all([
         getUserReadings(uid),
         getUserSpreads(uid),
         getUserCardMetadata(uid),
         getUserCardKeywordMemory(uid),
+        getUserQuizMemory(uid),
       ]);
 
       const cloudSpreadNameMap = getLegacyCustomSpreadNameMap(cloudSpreads, OFFICIAL_SPREADS);
@@ -489,6 +605,7 @@ export const useReadings = (
       const mergedSpreads = mergeSpreadSources([cloudSpreads || [], spreads], OFFICIAL_SPREADS);
       const mergedMetadata = mergeCardMetadataSources([cloudMetadata || [], cardMetadata]);
       const mergedKeywordMemory = mergeKeywordMemorySources([cloudKeywordMemory || [], cardKeywordMemory]);
+      const mergedQuizMemory = mergeQuizMemorySources([cloudQuizMemory || [], quizMemory]);
       const deletedReadingIds = Array.from(pendingDeletedReadingIdsRef.current);
 
       const [readingSyncResult] = await Promise.all([
@@ -496,15 +613,22 @@ export const useReadings = (
         saveUserSpreads(uid, mergedSpreads),
         saveUserCardMetadata(uid, mergedMetadata),
         saveUserCardKeywordMemory(uid, mergedKeywordMemory),
+        saveUserQuizMemory(uid, mergedQuizMemory),
       ]);
 
       deletedReadingIds.forEach(id => pendingDeletedReadingIdsRef.current.delete(id));
       pendingGuestReadingsSyncRef.current = false;
-      localStorage.removeItem('tarot_guest_data');
+      localStorage.removeItem(GUEST_READINGS_STORAGE_KEY);
       setReadings(withExamplesOnlyWhenEmpty(exampleReadings, mergedReadings));
       setSpreads(mergedSpreads);
       setCardMetadata(mergedMetadata);
       setCardKeywordMemory(mergedKeywordMemory);
+      setQuizMemory(mergedQuizMemory);
+      markCloudSnapshot('readings', getPersistableReadings(mergedReadings));
+      markCloudSnapshot('spreads', mergedSpreads);
+      markCloudSnapshot('cardMetadata', mergedMetadata);
+      markCloudSnapshot('cardKeywordMemory', mergedKeywordMemory);
+      markCloudSnapshot('quizMemory', mergedQuizMemory);
       markCloudSyncSuccess(readingSyncResult.totalReadings);
       setSyncNotice(`云端同步完成：典籍 ${readingSyncResult.totalReadings} 条。`);
     } catch (error) {
@@ -518,7 +642,9 @@ export const useReadings = (
     cardMetadata,
     exampleReadings,
     markCloudSyncError,
+    markCloudSnapshot,
     markCloudSyncSuccess,
+    quizMemory,
     readings,
     session?.uid,
     spreads,
@@ -531,6 +657,7 @@ export const useReadings = (
         ...newReading,
         cards: newReading.cards || [],
         keywords: newReading.keywords || (editingReading?.keywords || ['塔罗', '研习']),
+        manualTags: newReading.manualTags || editingReading?.manualTags || [],
         slotLabels: newReading.cards?.length > 0 
           ? newReading.cards.map((s: any) => s.label)
           : (newReading.cardInput ? [/* placeholder */] : []),
@@ -707,6 +834,8 @@ export const useReadings = (
     cardMetadata,
     setCardMetadata,
     cardKeywordMemory,
+    quizMemory,
+    setQuizMemory,
     searchQuery,
     setSearchQuery,
     searchTags,

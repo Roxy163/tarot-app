@@ -8,15 +8,14 @@ const baseProps = {
     { name: '愚者', isReversed: false, label: '主牌' },
   ],
   cardMetadata: [],
-  cardKeywordMemory: [],
   cardInterpretations: [''],
-  question: '我今天需要看见什么？',
-  spread: '单牌阵',
+  cardQuestions: [''],
   isLoggedIn: false,
   isMultiCard: false,
   isDailyMode: false,
   onToggleReverse: vi.fn(),
   onSetCardInterpretations: vi.fn(),
+  onSetCardQuestions: vi.fn(),
   onSetActiveSlotIndex: vi.fn(),
   onSetShowPicker: vi.fn(),
   onUpdateCardSlotsWithHistory: vi.fn(),
@@ -35,5 +34,6 @@ describe('ReadingDetailView', () => {
     expect(screen.getByRole('button', { name: '正逆位' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '重新选牌' })).toBeInTheDocument();
     expect(noteBox).toBeInTheDocument();
+    expect(screen.getByLabelText('牌面疑问：主牌')).toBeInTheDocument();
   });
 });

@@ -1,5 +1,5 @@
 import { OFFICIAL_SPREADS } from '../constants';
-import { CardKeywordMemory, CardKeywordMemoryEntry, SpreadDefinition, TarotCardMetadata, TarotReading } from '../types';
+import { CardKeywordMemory, CardKeywordMemoryEntry, QuizMemoryAttempt, QuizMemoryEntry, SpreadDefinition, TarotCardMetadata, TarotReading } from '../types';
 import { getReadingVersionTime, pickNewestReading } from './readingCloudSync';
 import { normalizeLegacyCustomSpreads } from './spreadPersistence';
 
@@ -149,4 +149,56 @@ export const mergeKeywordMemorySources = (
   });
 
   return Array.from(memoryByCard.values()).sort((a, b) => a.cardName.localeCompare(b.cardName));
+};
+
+const mergeQuizAttempts = (
+  attemptSources: Array<QuizMemoryAttempt[] | undefined>,
+) => {
+  const attemptsById = new Map<string, QuizMemoryAttempt>();
+
+  attemptSources.flatMap(source => source || []).forEach(attempt => {
+    if (!attempt?.createdAt) return;
+    const id = attempt.id || `${attempt.createdAt}-${attempt.modeLabel}-${attempt.prompt}-${attempt.selectedLabel}`;
+    attemptsById.set(id, { ...attempt, id });
+  });
+
+  return Array.from(attemptsById.values())
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+    .slice(0, 12);
+};
+
+export const mergeQuizMemorySources = (
+  memorySources: QuizMemoryEntry[][],
+) => {
+  const memoryByCard = new Map<string, QuizMemoryEntry>();
+
+  memorySources.flat().forEach(entry => {
+    if (!entry?.cardId) return;
+
+    const previous = memoryByCard.get(entry.cardId);
+    if (!previous) {
+      memoryByCard.set(entry.cardId, { ...entry, attempts: [...(entry.attempts || [])] });
+      return;
+    }
+
+    const entryIsNewer = new Date(entry.updatedAt || 0).getTime() >= new Date(previous.updatedAt || 0).getTime();
+
+    memoryByCard.set(entry.cardId, {
+      ...previous,
+      ...entry,
+      cardName: entry.cardName || previous.cardName,
+      practiceCount: Math.max(previous.practiceCount || 0, entry.practiceCount || 0),
+      unfamiliarCount: Math.max(previous.unfamiliarCount || 0, entry.unfamiliarCount || 0),
+      wrongCount: Math.max(previous.wrongCount || 0, entry.wrongCount || 0),
+      repeated: entryIsNewer ? Boolean(entry.repeated) : Boolean(previous.repeated),
+      attempts: mergeQuizAttempts([previous.attempts, entry.attempts]),
+      lastPracticedAt: getLaterDate(previous.lastPracticedAt, entry.lastPracticedAt),
+      createdAt: getEarlierDate(previous.createdAt, entry.createdAt),
+      updatedAt: getLaterDate(previous.updatedAt, entry.updatedAt),
+    });
+  });
+
+  return Array.from(memoryByCard.values()).sort((a, b) => (
+    b.updatedAt.localeCompare(a.updatedAt) || a.cardName.localeCompare(b.cardName)
+  ));
 };

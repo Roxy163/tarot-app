@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   Archive,
@@ -13,12 +14,19 @@ import {
   Sun,
   X,
 } from 'lucide-react';
-import { DailyFortune } from '../types';
+import { DailyFortune, DailyFortuneReflectionParts } from '../types';
 import { TAROT_CARDS, getCardImageUrl } from '../constants';
 import { CardPicker } from './CardPicker';
 import { DailyFortuneArchiveModal } from './DailyFortuneArchiveModal';
 import { TarotCardImage } from './TarotCardImage';
+import { AutoResizeTextarea } from './ui/AutoResizeTextarea';
 import { useBodyScrollLock } from '../hooks/useBodyScrollLock';
+import {
+  getDailyReflectionParts,
+  hasDailyReflectionContent,
+  NO_OBVIOUS_DAILY_MATCH_TEXT,
+} from '../lib/dailyFortuneReflection';
+import { markPwaInstallPromptReady } from '../hooks/usePwaInstallPrompt';
 
 interface FortuneChoice {
   cardNumber: number;
@@ -29,14 +37,18 @@ interface FortuneChoice {
 interface DailyFortuneCardProps {
   fortune: DailyFortune | null;
   fortunes: DailyFortune[];
+  ownerName?: string;
+  embedded?: boolean;
   onGenerateWithNumber: (cardNumber: number, cardIndex?: number, replaceExisting?: boolean) => DailyFortune | null | void;
   onCreateFromCard: (
     cardId: string,
     isReversed: boolean,
     source: NonNullable<DailyFortune['source']>
   ) => DailyFortune | null | void;
-  onArchive: (id: string, reflection?: string) => void;
-  onUpdateReflection: (id: string, reflection: string) => void;
+  onUpdateCard: (fortuneId: string, cardId: string, isReversed: boolean) => void;
+  onArchive: (id: string, reflection?: string | DailyFortuneReflectionParts) => void;
+  onUpdateReflection: (id: string, reflection: string | DailyFortuneReflectionParts) => void;
+  onSaveToCardAnnotation: (id: string, note?: string) => void;
 }
 
 const FortuneCardBack = ({
@@ -94,23 +106,76 @@ const getSourceLabel = (source?: DailyFortune['source']) => (
   source === 'physical-draw' ? '现实抽牌' : '系统抽牌'
 );
 
+const DailyReflectionBlocks = ({ fortune }: { fortune: DailyFortune }) => {
+  const parts = getDailyReflectionParts(fortune);
+  const hasInitialImpression = Boolean(parts.initialImpression);
+  const hasDailyReview = Boolean(parts.dailyReview);
+
+  if (!hasInitialImpression && !hasDailyReview) {
+    return (
+      <p className="mt-2 rounded-2xl bg-forest-bg/45 px-3 py-2 text-xs leading-relaxed text-forest-muted">
+        还没写下今天的第一眼感受。可以先记一点，晚上再回看。
+      </p>
+    );
+  }
+
+  const blocks = [
+    {
+      label: '第一直觉',
+      value: parts.initialImpression,
+    },
+    {
+      label: '今日回看',
+      value: parts.dailyReview,
+    },
+  ].filter(block => block.value);
+
+  return (
+    <div className="mt-2 grid gap-2 sm:grid-cols-2">
+      {blocks.map(block => (
+        <div
+          key={block.label}
+          className="rounded-2xl border border-white/60 bg-white/28 p-2.5"
+        >
+          <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-forest-accent">{block.label}</p>
+          <p className="mt-1 whitespace-pre-wrap text-sm leading-relaxed text-forest-ink">
+            {block.value}
+          </p>
+        </div>
+      ))}
+    </div>
+  );
+};
+
+const getDailyReflectionActionLabel = (fortune: DailyFortune) => {
+  const parts = getDailyReflectionParts(fortune);
+  if (parts.initialImpression && !parts.dailyReview) return '补写今日回看';
+  if (parts.initialImpression || parts.dailyReview || fortune.archivedAt) return '继续补写';
+  return '记录日运手札';
+};
+
 export const DailyFortuneCard: React.FC<DailyFortuneCardProps> = ({
   fortune,
   fortunes,
+  ownerName,
+  embedded = false,
   onGenerateWithNumber,
   onCreateFromCard,
+  onUpdateCard,
   onArchive,
   onUpdateReflection,
+  onSaveToCardAnnotation,
 }) => {
   const [cardNumber, setCardNumber] = useState('');
   const [showNumberInput, setShowNumberInput] = useState(false);
   const [shufflePhase, setShufflePhase] = useState<'idle' | 'shuffling' | 'selected' | 'revealed'>('idle');
   const [shuffleCount, setShuffleCount] = useState(0);
   const [fortuneChoice, setFortuneChoice] = useState<FortuneChoice | null>(null);
-  const [showCardPicker, setShowCardPicker] = useState(false);
+  const [cardPickerMode, setCardPickerMode] = useState<'create' | 'replace' | null>(null);
   const [showArchiveDialog, setShowArchiveDialog] = useState(false);
   const [showArchiveZone, setShowArchiveZone] = useState(false);
-  const [archiveText, setArchiveText] = useState('');
+  const [archiveInitialImpression, setArchiveInitialImpression] = useState('');
+  const [archiveDailyReview, setArchiveDailyReview] = useState('');
   const [editingFortuneId, setEditingFortuneId] = useState<string | null>(null);
   const [isRedrawing, setIsRedrawing] = useState(false);
   const shuffleIntervalRef = useRef<number | null>(null);
@@ -125,15 +190,20 @@ export const DailyFortuneCard: React.FC<DailyFortuneCardProps> = ({
     [fortunes]
   );
   const reviewedFortuneCount = useMemo(
-    () => archivedFortunes.filter(item => item.reflection?.trim()).length,
+    () => archivedFortunes.filter(hasDailyReflectionContent).length,
     [archivedFortunes]
   );
   const cardData = fortune ? getCardData(fortune.cardName) : null;
+  const canAdjustPhysicalCard = fortune?.source === 'physical-draw';
   const editingFortune = (
     editingFortuneId
       ? [fortune, ...archivedFortunes].filter(Boolean).find(item => item?.id === editingFortuneId)
       : fortune
   ) || null;
+  const compactKeywords = fortune ? fortune.keywords.slice(0, 2) : [];
+  const containerClassName = embedded
+    ? 'w-full overflow-hidden rounded-[1.35rem] border border-white/70 bg-white/44 shadow-none backdrop-blur-sm'
+    : 'w-full overflow-hidden rounded-[1.25rem] border border-forest-accent/15 bg-gradient-to-br from-white via-forest-bg/75 to-forest-accent/10 shadow-sm shadow-forest-accent/5';
 
   const clearShuffleTimers = () => {
     if (shuffleIntervalRef.current !== null) {
@@ -226,34 +296,51 @@ export const DailyFortuneCard: React.FC<DailyFortuneCardProps> = ({
   const handlePhysicalCardSelect = (card: typeof TAROT_CARDS[0], isReversed: boolean) => {
     clearShuffleTimers();
     setIsRedrawing(false);
-    onCreateFromCard(card.id, isReversed, 'physical-draw');
-    setShowCardPicker(false);
+    if (cardPickerMode === 'replace' && fortune) {
+      onUpdateCard(fortune.id, card.id, isReversed);
+    } else {
+      onCreateFromCard(card.id, isReversed, 'physical-draw');
+    }
+    setCardPickerMode(null);
     setShufflePhase('revealed');
     setFortuneChoice(null);
   };
 
+  const handleTogglePhysicalDirection = () => {
+    if (!fortune) return;
+    onUpdateCard(fortune.id, cardData?.id || fortune.cardName, !fortune.isReversed);
+  };
+
   const openArchiveDialog = (target: DailyFortune) => {
+    const reflectionParts = getDailyReflectionParts(target);
     setEditingFortuneId(target.id);
-    setArchiveText(target.reflection || '');
+    setArchiveInitialImpression(reflectionParts.initialImpression);
+    setArchiveDailyReview(reflectionParts.dailyReview);
     setShowArchiveDialog(true);
   };
 
   const closeArchiveDialog = () => {
     setShowArchiveDialog(false);
     setEditingFortuneId(null);
-    setArchiveText('');
+    setArchiveInitialImpression('');
+    setArchiveDailyReview('');
   };
 
   const handleSaveArchive = () => {
     if (!editingFortune) return;
+    const reflectionParts = {
+      initialImpression: archiveInitialImpression,
+      dailyReview: archiveDailyReview,
+    };
 
     if (editingFortune.archivedAt) {
-      onUpdateReflection(editingFortune.id, archiveText.trim());
+      onUpdateReflection(editingFortune.id, reflectionParts);
     } else {
-      onArchive(editingFortune.id, archiveText.trim());
+      onArchive(editingFortune.id, reflectionParts);
     }
 
     closeArchiveDialog();
+    markPwaInstallPromptReady('daily-fortune-archive');
   };
 
   return (
@@ -261,27 +348,141 @@ export const DailyFortuneCard: React.FC<DailyFortuneCardProps> = ({
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
-        className="w-full overflow-hidden rounded-[1.25rem] border border-forest-accent/15 bg-gradient-to-br from-white via-forest-bg/75 to-forest-accent/10 shadow-sm shadow-forest-accent/5"
+        className={containerClassName}
       >
         {fortune && !isRedrawing ? (
+          embedded ? (
+            <div className="p-2">
+              <div className="flex gap-2.5">
+                <motion.div
+                  initial={{ rotateY: 180, opacity: 0 }}
+                  animate={{ rotateY: 0, opacity: 1 }}
+                  transition={{ duration: 0.8, type: 'spring' }}
+                  className="relative h-[4.4rem] w-12 shrink-0 overflow-hidden rounded-xl border border-forest-accent/15 bg-forest-bg"
+                >
+                  <TarotCardImage
+                    src={getCardImageUrl(cardData?.id || 'ar00')}
+                    alt={fortune.cardName}
+                    name={fortune.cardName}
+                    loading="eager"
+                    fetchPriority="high"
+                    className={`h-full w-full bg-forest-bg object-contain ${fortune.isReversed ? 'rotate-180' : ''}`}
+                  />
+                  <div className={`absolute right-1 top-1 rounded-full px-1.5 py-0.5 text-[7px] font-bold ${
+                    fortune.isReversed ? 'bg-red-500/80 text-white' : 'bg-green-500/80 text-white'
+                  }`}>
+                    {fortune.isReversed ? '逆' : '正'}
+                  </div>
+                </motion.div>
+
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <h3 className="font-serif text-lg font-bold leading-tight text-forest-ink">{fortune.cardName}</h3>
+                    <span className="rounded-full bg-forest-accent/10 px-2 py-0.5 text-[10px] font-bold text-forest-accent">
+                      {getSourceLabel(fortune.source)}
+                    </span>
+                    <span className="rounded-full bg-forest-bg px-2 py-0.5 text-[10px] font-bold text-forest-accent">
+                      {fortune.isReversed ? '逆位' : '正位'}
+                    </span>
+                  </div>
+                  <p className="mt-1 line-clamp-1 text-xs leading-relaxed text-forest-text/80">{fortune.interpretation}</p>
+                  <div className="mt-1 flex flex-wrap gap-1">
+                    {compactKeywords.map((kw, idx) => (
+                      <span key={idx} className="rounded-full bg-forest-accent/10 px-2 py-0.5 text-[10px] font-medium text-forest-accent">
+                        {kw}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {canAdjustPhysicalCard && (
+                <div className="mt-2 grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={handleTogglePhysicalDirection}
+                    aria-label={fortune.isReversed ? '切换为正位' : '切换为逆位'}
+                    className="flex min-h-11 items-center justify-center gap-1.5 rounded-full border border-forest-accent/8 bg-white/42 px-3 text-[11px] font-bold text-forest-ink transition-all hover:border-forest-accent/25 hover:bg-white/70"
+                  >
+                    <RefreshCw size={13} />
+                    {fortune.isReversed ? '改正位' : '改逆位'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setCardPickerMode('replace')}
+                    className="flex min-h-11 items-center justify-center gap-1.5 rounded-full bg-forest-pink/10 px-3 text-[11px] font-bold text-forest-pink transition-all hover:bg-forest-pink/16"
+                  >
+                    <PenLine size={13} />
+                    更换牌
+                  </button>
+                </div>
+              )}
+
+              <div className="mt-2 rounded-2xl border border-white/60 bg-white/24 p-2">
+                <div className="flex items-start gap-2">
+                  <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-xl bg-forest-accent/10 text-forest-accent">
+                    {fortune.archivedAt ? <CheckCircle2 size={16} /> : <PenLine size={16} />}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <p className="font-serif text-sm font-bold leading-tight text-forest-ink">今天这张牌，看见了什么？</p>
+                      {fortune.archivedAt && (
+                        <span className="rounded-full bg-forest-accent/10 px-2 py-0.5 text-[10px] font-bold text-forest-accent">
+                          已归档
+                        </span>
+                      )}
+                    </div>
+                    <p className="mt-0.5 text-[10px] leading-relaxed text-forest-muted">
+                      先记第一直觉，晚一点补今日回看。
+                    </p>
+                    <DailyReflectionBlocks fortune={fortune} />
+                  </div>
+                </div>
+
+                <div className="mt-2 grid grid-cols-[minmax(0,1fr)_auto] gap-2">
+                  <button
+                    type="button"
+                    onClick={() => openArchiveDialog(fortune)}
+                    className={`flex min-h-11 w-full items-center justify-center gap-2 rounded-full px-4 text-xs font-bold transition-all ${
+                      fortune.archivedAt
+                        ? 'bg-forest-accent/10 text-forest-accent hover:bg-forest-accent/15'
+                        : 'bg-forest-accent/90 text-white hover:bg-forest-accent'
+                    }`}
+                  >
+                    {fortune.archivedAt ? <PenLine size={15} /> : <Archive size={15} />}
+                    {getDailyReflectionActionLabel(fortune)}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setShowArchiveZone(true)}
+                    data-tour="daily-review"
+                    className="flex min-h-11 items-center justify-center gap-1.5 rounded-full border border-forest-accent/8 bg-white/42 px-3 text-xs font-bold text-forest-accent hover:border-forest-accent/25 hover:bg-white/70"
+                    aria-label="打开日运复盘"
+                  >
+                    <BookOpen size={15} />
+                    复盘
+                  </button>
+                </div>
+              </div>
+
+              {!fortune.archivedAt && (
+                <button
+                  onClick={handleStartRedraw}
+                  className="mt-2 flex min-h-10 w-full items-center justify-center gap-2 rounded-xl bg-white/28 px-3 text-xs text-forest-ink transition-all hover:bg-white/62"
+                >
+                  <RefreshCw size={14} />
+                  <span>重新抽一张日运</span>
+                </button>
+              )}
+            </div>
+          ) : (
           <div className="p-3 sm:p-4">
             <div className="mb-2 flex items-center justify-between gap-3">
               <div className="flex items-center gap-2">
                 <Sun className="text-forest-accent" size={16} />
                 <span className="text-xs font-bold uppercase tracking-[0.15em] text-forest-accent">日运抽牌</span>
               </div>
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => setShowArchiveZone(true)}
-                  className="flex min-h-9 items-center justify-center gap-1.5 rounded-full border border-forest-accent/10 bg-white/70 px-3 text-[10px] font-bold text-forest-accent hover:border-forest-accent/30 hover:bg-white"
-                  aria-label="打开日运复盘"
-                >
-                  <BookOpen size={13} />
-                  日运复盘
-                </button>
-                <span className="hidden text-[10px] text-forest-muted sm:inline">{fortune.date}</span>
-              </div>
+              <span className="hidden text-[10px] text-forest-muted sm:inline">{fortune.date}</span>
             </div>
 
             <div className="flex gap-3">
@@ -289,13 +490,15 @@ export const DailyFortuneCard: React.FC<DailyFortuneCardProps> = ({
                 initial={{ rotateY: 180, opacity: 0 }}
                 animate={{ rotateY: 0, opacity: 1 }}
                 transition={{ duration: 0.8, type: 'spring' }}
-                className={`relative h-20 w-14 shrink-0 overflow-hidden rounded-xl border border-forest-accent/20 shadow-md sm:h-28 sm:w-[4.7rem] ${fortune.isReversed ? 'rotate-180' : ''}`}
+                className="relative h-20 w-14 shrink-0 overflow-hidden rounded-xl border border-forest-accent/20 shadow-md sm:h-28 sm:w-[4.7rem]"
               >
                 <TarotCardImage
                   src={getCardImageUrl(cardData?.id || 'ar00')}
                   alt={fortune.cardName}
                   name={fortune.cardName}
-                  className="h-full w-full bg-forest-bg object-contain"
+                  loading="eager"
+                  fetchPriority="high"
+                  className={`h-full w-full bg-forest-bg object-contain ${fortune.isReversed ? 'rotate-180' : ''}`}
                 />
                 <div className={`absolute right-1 top-1 rounded-full px-1.5 py-0.5 text-[7px] font-bold ${
                   fortune.isReversed ? 'bg-red-500/80 text-white' : 'bg-green-500/80 text-white'
@@ -319,6 +522,27 @@ export const DailyFortuneCard: React.FC<DailyFortuneCardProps> = ({
                     </span>
                   ))}
                 </div>
+                {canAdjustPhysicalCard && (
+                  <div className="flex flex-wrap gap-1.5 pt-0.5">
+                    <button
+                      type="button"
+                      onClick={handleTogglePhysicalDirection}
+                      aria-label={fortune.isReversed ? '切换为正位' : '切换为逆位'}
+                      className="flex min-h-11 items-center justify-center gap-1.5 rounded-full border border-forest-accent/10 bg-white/80 px-3 text-[10px] font-bold text-forest-ink transition-all hover:border-forest-accent/30 hover:bg-white"
+                    >
+                      <RefreshCw size={12} />
+                      {fortune.isReversed ? '改正位' : '改逆位'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setCardPickerMode('replace')}
+                      className="flex min-h-11 items-center justify-center gap-1.5 rounded-full bg-forest-pink/12 px-3 text-[10px] font-bold text-forest-pink transition-all hover:bg-forest-pink/18"
+                    >
+                      <PenLine size={12} />
+                      更换牌
+                    </button>
+                  </div>
+                )}
                 <p className="line-clamp-1 text-[10px] leading-relaxed text-forest-muted sm:text-[11px]">
                   今日记忆：先记关键词，晚上再和真实发生的事对应。
                 </p>
@@ -332,7 +556,7 @@ export const DailyFortuneCard: React.FC<DailyFortuneCardProps> = ({
                 </div>
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-2">
-                    <p className="font-serif text-base font-bold text-forest-ink">这张牌和今天的什么事对应？</p>
+                    <p className="font-serif text-base font-bold text-forest-ink">今天这张牌，先看见了什么？</p>
                     {fortune.archivedAt && (
                       <span className="rounded-full bg-forest-accent/10 px-2 py-0.5 text-[10px] font-bold text-forest-accent">
                         已归档
@@ -340,17 +564,13 @@ export const DailyFortuneCard: React.FC<DailyFortuneCardProps> = ({
                     )}
                   </div>
                   <p className="mt-1 text-[11px] leading-relaxed text-forest-muted">
-                    刚抽完可以写第一直觉，晚上回来可以写今天真实发生的事。
+                    先写第一直觉，晚一点再回看今天有没有对应。
                   </p>
-                  {fortune.reflection && (
-                    <p className="mt-2 rounded-2xl bg-forest-bg/70 p-2.5 text-sm leading-relaxed text-forest-ink">
-                      {fortune.reflection}
-                    </p>
-                  )}
+                  <DailyReflectionBlocks fortune={fortune} />
                 </div>
               </div>
 
-              <div className="mt-2.5">
+              <div className="mt-2.5 grid gap-2 sm:grid-cols-2">
                 <button
                   type="button"
                   onClick={() => openArchiveDialog(fortune)}
@@ -361,7 +581,20 @@ export const DailyFortuneCard: React.FC<DailyFortuneCardProps> = ({
                   }`}
                 >
                   {fortune.archivedAt ? <PenLine size={16} /> : <Archive size={16} />}
-                  {fortune.archivedAt ? '补写今日对应' : '写下今天并归档'}
+                  {getDailyReflectionActionLabel(fortune)}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowArchiveZone(true)}
+                  className={`flex min-h-10 w-full items-center justify-center gap-2 rounded-full px-4 text-xs font-bold transition-all ${
+                    fortune.archivedAt
+                      ? 'bg-forest-accent text-white shadow-lg shadow-forest-accent/15 hover:bg-forest-accent/90'
+                      : 'border border-forest-accent/10 bg-white/75 text-forest-accent hover:border-forest-accent/30 hover:bg-white'
+                  }`}
+                  aria-label="打开日运复盘"
+                >
+                  <BookOpen size={16} />
+                  查看日运复盘
                 </button>
               </div>
             </div>
@@ -376,6 +609,7 @@ export const DailyFortuneCard: React.FC<DailyFortuneCardProps> = ({
               </button>
             )}
           </div>
+          )
         ) : fortuneChoice && shufflePhase === 'selected' && !fortuneChoice.isRevealed ? (
           <div className="p-6 text-center">
             <motion.div
@@ -423,9 +657,65 @@ export const DailyFortuneCard: React.FC<DailyFortuneCardProps> = ({
             </motion.div>
           </div>
         ) : (
-          <div className="p-2.5 text-center sm:p-3">
+          <div className="p-2 text-center sm:p-3">
             <AnimatePresence mode="wait">
               {shufflePhase === 'idle' && (
+                embedded ? (
+                  <motion.div
+                    key="idle"
+                    initial={{ opacity: 0, scale: 0.95 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    exit={{ opacity: 0, scale: 0.95 }}
+                    className="space-y-1.5 text-left"
+                  >
+                    <div className="flex items-start gap-2">
+                      <div className="min-w-0">
+                        <div className="inline-flex items-center gap-1 rounded-full bg-forest-accent/10 px-2 py-0.5 text-[8px] font-bold uppercase tracking-[0.12em] text-forest-accent">
+                          <Sparkles size={10} />
+                          日运抽牌
+                        </div>
+                        <h3 className="mt-1 font-serif text-base font-bold text-forest-ink">今日单牌练习</h3>
+                        <p className="mt-0.5 text-[10px] leading-relaxed text-forest-muted">
+                          洗牌抽一张，或录入现实牌；晚上再回看对应。
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-[1fr_1fr_auto] gap-1.5" aria-label="日运操作">
+                      <button
+                        data-tour="daily-draw"
+                        onClick={handleShuffle}
+                        aria-label={isRedrawing ? '重新洗牌' : '洗牌'}
+                        className="flex min-h-11 items-center justify-center gap-1 rounded-xl bg-forest-accent/92 px-2.5 text-xs font-medium text-white shadow-none transition-all hover:scale-[1.02] hover:bg-forest-accent active:scale-[0.98]"
+                      >
+                        <Shuffle size={15} />
+                        {isRedrawing ? '重新洗牌' : '洗牌'}
+                      </button>
+                      <button
+                        onClick={() => setCardPickerMode('create')}
+                        className="flex min-h-11 items-center justify-center gap-1 rounded-xl border border-forest-accent/8 bg-white/45 px-2.5 text-xs font-medium text-forest-ink transition-all hover:bg-white/70"
+                      >
+                        <PenLine size={15} />
+                        现实牌
+                        <span className="sr-only">录入现实牌</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setShowArchiveZone(true)}
+                        data-tour="daily-review"
+                        className="flex min-h-11 min-w-11 items-center justify-center gap-1 rounded-xl border border-forest-accent/8 bg-white/42 px-2.5 text-[11px] font-medium text-forest-accent hover:border-forest-accent/25 hover:bg-white/66"
+                        aria-label="打开日运复盘"
+                      >
+                        <BookOpen size={14} />
+                        <span className="hidden min-[360px]:inline">复盘</span>
+                      </button>
+                    </div>
+
+                    <p className="hidden rounded-xl bg-white/24 px-2 py-1.5 text-[9px] leading-relaxed text-forest-muted sm:block">
+                      洗牌后可输入数字或随机一张，也能用来抽查牌义。
+                    </p>
+                  </motion.div>
+                ) : (
                 <motion.div
                   key="idle"
                   initial={{ opacity: 0, scale: 0.9 }}
@@ -450,7 +740,7 @@ export const DailyFortuneCard: React.FC<DailyFortuneCardProps> = ({
                         data-tour="daily-draw"
                         onClick={handleShuffle}
                         aria-label={isRedrawing ? '重新洗牌' : '洗牌'}
-                        className="min-h-10 min-w-0 flex-1 rounded-xl bg-forest-accent px-2 text-[11px] font-bold text-white shadow-sm shadow-forest-accent/15 transition-all hover:scale-[1.02] hover:bg-forest-accent/90 active:scale-[0.98] sm:min-h-9 sm:flex-none sm:w-24 sm:px-3 sm:text-xs"
+                        className="min-h-10 min-w-0 flex-1 rounded-xl bg-forest-accent/92 px-2 text-[11px] font-bold text-white shadow-none transition-all hover:scale-[1.02] hover:bg-forest-accent active:scale-[0.98] sm:min-h-9 sm:flex-none sm:w-24 sm:px-3 sm:text-xs"
                       >
                         <span className="flex items-center justify-center gap-1.5">
                           <Shuffle size={14} />
@@ -458,8 +748,8 @@ export const DailyFortuneCard: React.FC<DailyFortuneCardProps> = ({
                         </span>
                       </button>
                       <button
-                        onClick={() => setShowCardPicker(true)}
-                        className="min-h-10 min-w-0 flex-1 rounded-xl border border-forest-accent/10 bg-white/70 px-2 text-[11px] font-bold text-forest-ink transition-all hover:bg-white sm:min-h-9 sm:flex-none sm:w-28 sm:px-3 sm:text-xs"
+                        onClick={() => setCardPickerMode('create')}
+                        className="min-h-10 min-w-0 flex-1 rounded-xl border border-forest-accent/8 bg-white/42 px-2 text-[11px] font-bold text-forest-ink transition-all hover:bg-white/66 sm:min-h-9 sm:flex-none sm:w-28 sm:px-3 sm:text-xs"
                       >
                         <span className="flex items-center justify-center gap-1.5">
                           <PenLine size={14} />
@@ -470,7 +760,7 @@ export const DailyFortuneCard: React.FC<DailyFortuneCardProps> = ({
                       </button>
                     </div>
 
-                    <p className="rounded-xl bg-white/50 px-2 py-1.5 text-[9px] leading-relaxed text-forest-muted sm:text-[10px]">
+                    <p className="rounded-xl bg-white/24 px-2 py-1.5 text-[9px] leading-relaxed text-forest-muted sm:text-[10px]">
                       洗牌后可输入数字或随机一张，也能用来抽查牌义。
                     </p>
                   </div>
@@ -478,7 +768,7 @@ export const DailyFortuneCard: React.FC<DailyFortuneCardProps> = ({
                   <button
                     type="button"
                     onClick={() => setShowArchiveZone(true)}
-                    className="group flex min-h-full flex-col justify-between rounded-2xl border border-forest-accent/10 bg-white/70 p-2.5 text-left shadow-sm transition-colors hover:border-forest-accent/30 hover:bg-white/85 sm:p-3"
+                    className="group flex min-h-full flex-col justify-between rounded-2xl border border-forest-accent/8 bg-white/42 p-2.5 text-left shadow-none transition-colors hover:border-forest-accent/25 hover:bg-white/66 sm:p-3"
                     aria-label="打开日运复盘"
                   >
                     <span className="flex items-center gap-2">
@@ -500,6 +790,7 @@ export const DailyFortuneCard: React.FC<DailyFortuneCardProps> = ({
                     </span>
                   </button>
                 </motion.div>
+                )
               )}
 
               {shufflePhase === 'shuffling' && (
@@ -614,69 +905,101 @@ export const DailyFortuneCard: React.FC<DailyFortuneCardProps> = ({
       </motion.div>
 
       <AnimatePresence>
-        {showCardPicker && (
+        {cardPickerMode && (
           <CardPicker
-            title="选择现实中抽到的牌"
-            description="选中后会作为今日日运记录，也可以用来练习这张单牌的含义。"
+            title={cardPickerMode === 'replace' ? '更换今日日运牌' : '选择现实中抽到的牌'}
+            description={cardPickerMode === 'replace'
+              ? '更正今天现实抽到的牌或正逆位，已写的第一直觉和今日回看会继续保留。'
+              : '选中后会作为今日日运记录，也可以用来练习这张单牌的含义。'}
+            initialIsReversed={cardPickerMode === 'replace' ? fortune?.isReversed : false}
             onSelect={handlePhysicalCardSelect}
-            onClose={() => setShowCardPicker(false)}
+            onClose={() => setCardPickerMode(null)}
           />
         )}
       </AnimatePresence>
 
+      {typeof document !== 'undefined' && createPortal(
       <AnimatePresence>
         {showArchiveDialog && editingFortune && (
-          <div className="fixed inset-0 z-[950] flex items-center justify-center bg-forest-ink/30 p-4 backdrop-blur-sm overscroll-contain">
+          <div className="fixed inset-0 z-[950] flex items-center justify-center bg-[rgba(62,58,54,0.42)] p-3 backdrop-blur-[3px] overscroll-contain">
             <motion.div
               role="dialog"
               aria-label="记录日运对应"
               initial={{ opacity: 0, scale: 0.96, y: 16 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.96, y: 16 }}
-              className="w-full max-w-md rounded-[2rem] border border-forest-accent/15 bg-white p-5 shadow-2xl"
+              className="max-h-[calc(100dvh-1.5rem)] w-full max-w-md overflow-y-auto rounded-[1.25rem] border border-forest-accent/8 bg-[#fffaf4] p-3.5 shadow-[0_20px_60px_-45px_rgba(62,58,54,0.62)] sm:rounded-[1.45rem] sm:p-5"
             >
               <div className="flex items-start justify-between gap-3">
                 <div>
-                  <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-forest-accent">
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-forest-accent">
                     {editingFortune.archivedAt ? '补写日运' : '归档日运'}
                   </p>
-                  <h3 className="mt-1 font-serif text-xl font-bold text-forest-ink">
+                  <h3 className="mt-1 font-serif text-lg font-semibold text-forest-ink">
                     {editingFortune.cardName} · {editingFortune.isReversed ? '逆位' : '正位'}
                   </h3>
                   <p className="mt-1 text-xs leading-relaxed text-forest-muted">
-                    刚抽完可以写第一直觉；晚上回来，可以写今天发生了什么和这张牌哪里对应。
+                    刚抽完先写第一直觉；晚上回来，再写今日回看。
                   </p>
                 </div>
                 <button
                   type="button"
                   onClick={closeArchiveDialog}
-                  className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-forest-muted hover:bg-forest-accent/10 hover:text-forest-accent"
+                  className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white/72 text-forest-muted transition-colors hover:bg-white hover:text-forest-accent"
                   aria-label="关闭记录日运对应"
                 >
                   <X size={18} />
                 </button>
               </div>
 
-              <textarea
-                value={archiveText}
-                onChange={(event) => setArchiveText(event.target.value)}
-                aria-label="日运记录内容"
-                placeholder="可以写刚翻开时的第一直觉，也可以晚上回来写：今天发生了什么？它和这张牌的关键词、画面或正逆位有什么对应？"
-                className="mt-4 min-h-32 w-full resize-none rounded-2xl border border-forest-accent/15 bg-forest-bg/60 p-4 text-sm leading-relaxed text-forest-ink outline-none transition-all placeholder:text-forest-muted/70 focus:border-forest-accent/40 focus:ring-2 focus:ring-forest-accent/15"
-              />
+              <div className="mt-3 space-y-2.5 sm:mt-4 sm:space-y-3">
+                <label className="block">
+                  <span className="text-xs font-semibold text-forest-accent">第一直觉</span>
+                  <AutoResizeTextarea
+                    minRows={1.5}
+                    maxRows={7}
+                    value={archiveInitialImpression}
+                    onChange={(event) => setArchiveInitialImpression(event.target.value)}
+                    aria-label="第一直觉"
+                    placeholder="刚看到这张牌时，第一眼想到什么？画面、关键词、身体感受都可以。"
+                    className="mt-1 w-full rounded-xl border border-forest-accent/10 bg-white/88 p-3 text-[13px] leading-relaxed text-forest-ink outline-none transition-all placeholder:text-forest-muted/65 focus:border-forest-accent/35 focus:ring-2 focus:ring-forest-accent/12 sm:rounded-2xl sm:p-3.5 sm:text-sm"
+                  />
+                </label>
+
+                <label className="block">
+                  <span className="text-xs font-semibold text-forest-accent">今日回看</span>
+                  <AutoResizeTextarea
+                    minRows={1.5}
+                    maxRows={7}
+                    value={archiveDailyReview}
+                    onChange={(event) => setArchiveDailyReview(event.target.value)}
+                    aria-label="今日回看"
+                    placeholder="晚一点回来写：今天发生了什么？它和这张牌的关键词、画面或正逆位有什么关系？"
+                    className="mt-1 w-full rounded-xl border border-forest-accent/10 bg-white/88 p-3 text-[13px] leading-relaxed text-forest-ink outline-none transition-all placeholder:text-forest-muted/65 focus:border-forest-accent/35 focus:ring-2 focus:ring-forest-accent/12 sm:rounded-2xl sm:p-3.5 sm:text-sm"
+                  />
+                </label>
+
+                <button
+                  type="button"
+                  onClick={() => setArchiveDailyReview(NO_OBVIOUS_DAILY_MATCH_TEXT)}
+                  className="min-h-10 rounded-full bg-forest-accent/8 px-3 text-xs font-semibold text-forest-accent transition-colors hover:bg-forest-accent/13"
+                >
+                  今天暂未看见明显对应
+                </button>
+              </div>
 
               <div className="mt-4 flex gap-2">
                 <button
                   type="button"
                   onClick={closeArchiveDialog}
-                  className="min-h-11 flex-1 rounded-xl px-4 text-xs font-bold text-forest-muted hover:bg-forest-accent/5 hover:text-forest-ink"
+                  className="min-h-11 flex-1 rounded-xl px-4 text-xs font-semibold text-forest-muted hover:bg-forest-accent/5 hover:text-forest-ink"
                 >
                   取消
                 </button>
                 <button
                   type="button"
                   onClick={handleSaveArchive}
-                  className="flex min-h-11 flex-1 items-center justify-center gap-2 rounded-xl bg-forest-accent px-4 text-xs font-bold text-white hover:bg-forest-accent/90"
+                  className="flex min-h-11 flex-1 items-center justify-center gap-2 rounded-xl bg-forest-accent/88 px-4 text-xs font-semibold text-white hover:bg-forest-accent"
                 >
                   <Save size={14} />
                   {editingFortune.archivedAt ? '保存补写' : '保存到日运复盘'}
@@ -685,13 +1008,17 @@ export const DailyFortuneCard: React.FC<DailyFortuneCardProps> = ({
             </motion.div>
           </div>
         )}
-      </AnimatePresence>
+      </AnimatePresence>,
+        document.body,
+      )}
 
       <DailyFortuneArchiveModal
         fortunes={archivedFortunes}
         isOpen={showArchiveZone}
         onClose={() => setShowArchiveZone(false)}
         onUpdateReflection={onUpdateReflection}
+        onSaveToCardAnnotation={onSaveToCardAnnotation}
+        ownerName={ownerName}
       />
     </>
   );

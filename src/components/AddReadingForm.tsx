@@ -1,17 +1,18 @@
 import React, { useState, useEffect, FormEvent, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Sparkles, Layers, User, MessageSquare, RotateCcw, BookOpen, X, Settings, Save, Hash, Orbit, Home, Wind, Info } from 'lucide-react';
+import { Sparkles, Layers, User, MessageSquare, RotateCcw, BookOpen, Settings, Save, Hash, Orbit, Home, Wind, Info, Copy } from 'lucide-react';
 import { CardKeywordMemory, SpreadDefinition, TarotCardMetadata, ReadingSlotData, TarotReading, ReadingFormData } from '../types';
-import { LAYOUT_TEMPLATES, TAROT_CARDS, getCardImageUrl, OFFICIAL_SPREADS } from '../constants';
+import { LAYOUT_TEMPLATES, TAROT_CARDS, OFFICIAL_SPREADS } from '../constants';
 import { CardPicker } from './CardPicker';
 import { FreeLayoutSaveMode, SpreadDesigner } from './SpreadDesigner';
 import { CardCorrespondenceEditor } from './CardCorrespondenceEditor';
-import { ReadingSlot } from './ReadingSlot';
 import { FoldableSection } from './FoldableSection';
 import { ReadingDetailView } from './ReadingDetailView';
 import { ReadingSpreadDisplay } from './ReadingSpreadDisplay';
 import { BasicInfoSection } from './BasicInfoSection';
 import { ConfirmDialog } from './ConfirmDialog';
+import { QuickSpreadButtons } from './QuickSpreadButtons';
+import { AutoResizeTextarea } from './ui/AutoResizeTextarea';
 import { useLongPressClear } from '../hooks/useLongPressClear';
 import { mapSlotsToSpread, normalizeInterpretationsForSlots } from '../lib/readingSlotSync';
 import {
@@ -34,9 +35,14 @@ import {
   upsertSpreadDefinition,
 } from '../lib/spreadPersistence';
 import { centerGridSlots, shiftGridSlots } from '../lib/spreadGridLayout';
-import { buildReadingSubmitPayload } from '../lib/readingSubmitPayload';
+import {
+  ReadingRequiredFieldIssue,
+  buildReadingSubmitPayload,
+  getReadingRequiredFieldIssue,
+} from '../lib/readingSubmitPayload';
 import { convertGridSlotsToFreeLayout, ensureFreeLayoutSlots } from '../lib/freeLayout';
 import { useBodyScrollLock } from '../hooks/useBodyScrollLock';
+import { ReadingAiPromptMode, buildReadingAiPrompt, getGentleAiPromptNotice } from '../lib/readingAiPrompt';
 
 interface AddReadingFormProps {
   onSubmit: (data: Partial<ReadingFormData>) => void;
@@ -67,7 +73,6 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
   spreads, 
   onUpdateSpreads, 
   cardMetadata,
-  cardKeywordMemory = [],
   onUpdateCardMetadata,
   initialData, 
   onCancel 
@@ -83,21 +88,24 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
     astrologyInfluence: initialData?.interpretation?.astrologyInfluence || '',
     houseInfluence: initialData?.interpretation?.houseInfluence || '',
     elementInfluence: initialData?.interpretation?.elementInfluence || '',
-    isAnonymous: initialData?.isAnonymous || false,
+    isAnonymous: Boolean(initialData?.isPublic && initialData?.isAnonymous),
     isPublic: initialData?.isPublic || false,
     isForClient: initialData?.isForClient || false,
     clientName: initialData?.clientName || '',
     clientFeedback: initialData?.clientFeedback || '',
     userFeedback: initialData?.userFeedback || '',
+    choicePathA: initialData?.choicePathA || '',
+    choicePathB: initialData?.choicePathB || '',
     readingDate: initialData?.readingDate ? new Date(initialData.readingDate).toISOString().slice(0, 16) : new Date().toISOString().slice(0, 16),
     isTimePrecise: false,
-    category: initialData?.category || '',
+    category: initialData?.category || initialData?.manualTags?.join('、') || '',
     skipAi: initialData?.skipAi !== undefined 
       ? initialData.skipAi 
       : (localStorage.getItem('tarot_ai_preference') === 'process' ? false : true)
   });
 
   const [cardInterpretations, setCardInterpretations] = useState<string[]>(initialData?.cardInterpretations || []);
+  const [cardQuestions, setCardQuestions] = useState<string[]>(initialData?.cardQuestions || []);
   const [editingCorrespondence, setEditingCorrespondence] = useState<{ index: number; card: ReadingSlotData; metadata: TarotCardMetadata } | null>(null);
   const [cardSlots, setCardSlots] = useState<ReadingSlotData[]>(() => {
     if (initialData?.cards) {
@@ -117,9 +125,12 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
   const [newSpreadName, setNewSpreadName] = useState('');
   const [designActiveSlot, setDesignActiveSlot] = useState(0);
   const [saveSuccess, setSaveSuccess] = useState(false);
-  const [showSlotNumbers, setShowSlotNumbers] = useState(true);
+  const showSlotNumbers = true;
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [showFeedback, setShowFeedback] = useState(false);
+  const [showAiPrompt, setShowAiPrompt] = useState(false);
+  const [aiPromptMode, setAiPromptMode] = useState<ReadingAiPromptMode>('mentor');
+  const [aiPromptNotice, setAiPromptNotice] = useState('');
   const [showComboReading, setShowComboReading] = useState(false);
   const [expandInfluenceByDefault, setExpandInfluenceByDefault] = useState(() => (
     localStorage.getItem('tarot_influence_sections_open') === 'true'
@@ -137,6 +148,7 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
   const [spreadSaveConflict, setSpreadSaveConflict] = useState<SpreadSaveConflict | null>(null);
   const [spreadNameNotice, setSpreadNameNotice] = useState('');
   const [submitNotice, setSubmitNotice] = useState('');
+  const [submitIssue, setSubmitIssue] = useState<ReadingRequiredFieldIssue | null>(null);
   const [pendingDeleteSpreadNames, setPendingDeleteSpreadNames] = useState<string[]>([]);
   const readingDetailRef = useRef<HTMLDivElement | null>(null);
   useBodyScrollLock(Boolean(showRestoreConfirm || spreadSaveConflict));
@@ -209,6 +221,43 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
       behavior: 'smooth',
     });
   };
+  const scrollRequiredIssueIntoView = (issue: ReadingRequiredFieldIssue) => {
+    if (issue.slotIndex !== undefined && issue.slotIndex >= 0 && issue.slotIndex < cardSlots.length) {
+      setActiveSlotIndex(issue.slotIndex);
+    }
+
+    if (typeof window === 'undefined' || window.innerWidth >= 768) return;
+
+    window.setTimeout(() => {
+      if (issue.field === 'cardInterpretation') {
+        scrollReadingDetailIntoView();
+        return;
+      }
+
+      const selector = issue.field === 'cards'
+        ? '[data-required-field="cards"]'
+        : `[data-required-field="${issue.field}"]`;
+      const target = document.querySelector<HTMLElement>(selector);
+      target?.scrollIntoView({ block: 'center', inline: 'nearest', behavior: 'smooth' });
+    }, 80);
+  };
+  const copyTextToClipboard = async (text: string) => {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(text);
+      return;
+    }
+
+    const textarea = document.createElement('textarea');
+    textarea.value = text;
+    textarea.setAttribute('readonly', 'true');
+    textarea.style.position = 'fixed';
+    textarea.style.opacity = '0';
+    document.body.appendChild(textarea);
+    textarea.select();
+    const copied = document.execCommand('copy');
+    document.body.removeChild(textarea);
+    if (!copied) throw new Error('Copy command failed');
+  };
 
   useEffect(() => {
     if (isDailyMode && !initialData) {
@@ -257,6 +306,9 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
       // Initialize interpretations if needed
       if (cardInterpretations.length !== newSlots.length) {
         setCardInterpretations(normalizeInterpretationsForSlots(cardInterpretations, newSlots.length));
+      }
+      if (cardQuestions.length !== newSlots.length) {
+        setCardQuestions(normalizeInterpretationsForSlots(cardQuestions, newSlots.length));
       }
     }
   }, [formData.spread, spreads]);
@@ -518,6 +570,27 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
     setCardSlots(spreadDef.layout === 'free' ? ensureFreeLayoutSlots(nextSlots) : nextSlots);
   };
 
+  const handleQuickThemeSelect = (spreadName: string, category?: string) => {
+    const spreadDef = spreads.find(item => item.name === spreadName);
+
+    if (spreadDef) {
+      setFormData(prev => ({
+        ...prev,
+        spread: spreadDef.name,
+        layoutType: spreadDef.layout,
+        category: category || prev.category,
+      }));
+      setGridCols(spreadDef.gridCols || 5);
+      setGridRows(spreadDef.gridRows || 5);
+      const nextSlots = mapSlotsToSpread(cardSlots, spreadDef);
+      setCardSlots(spreadDef.layout === 'free' ? ensureFreeLayoutSlots(nextSlots) : nextSlots);
+      setActiveSlotIndex(0);
+      return;
+    }
+
+    setFormData(prev => ({ ...prev, category: category || prev.category }));
+  };
+
   const shiftSlots = (dx: number, dy: number) => {
     const newSlots = shiftGridSlots(cardSlots, dx, dy, gridCols, gridRows);
     updateCardSlotsWithHistory(newSlots);
@@ -560,26 +633,139 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
   const handleSubmit = (e: FormEvent) => {
     e.preventDefault();
 
-    const result = buildReadingSubmitPayload({
+    const requiredIssue = getReadingRequiredFieldIssue({
       formData,
       cardSlots,
       cardInterpretations,
     });
 
+    if (requiredIssue) {
+      setSubmitIssue(requiredIssue);
+      setSubmitNotice(requiredIssue.notice);
+      scrollRequiredIssueIntoView(requiredIssue);
+      return;
+    }
+
+    const result = buildReadingSubmitPayload({
+      formData,
+      cardSlots,
+      cardInterpretations,
+      cardQuestions,
+    });
+
     if (result.ok === false) {
       setSubmitNotice(result.notice);
+      setSubmitIssue(null);
       return;
     }
 
     setSubmitNotice('');
+    setSubmitIssue(null);
     onSubmit(result.payload);
   };
 
+  const handlePublicShareToggle = (checked: boolean) => {
+    setFormData(prev => ({
+      ...prev,
+      isPublic: checked,
+      isAnonymous: false,
+    }));
+  };
+
+  const handleAnonymousShareToggle = (checked: boolean) => {
+    setFormData(prev => ({
+      ...prev,
+      isPublic: checked,
+      isAnonymous: checked,
+    }));
+  };
+
+  useEffect(() => {
+    if (aiPromptNotice) setAiPromptNotice('');
+  }, [
+    formData.question,
+    formData.spread,
+    formData.isForClient,
+    formData.clientName,
+    formData.choicePathA,
+    formData.choicePathB,
+    cardSlots,
+    cardInterpretations,
+    cardQuestions,
+  ]);
+
+  useEffect(() => {
+    if (!submitNotice && !submitIssue) return;
+    setSubmitNotice('');
+    setSubmitIssue(null);
+  }, [formData.question, formData.spread, formData.isForClient, formData.clientName, cardSlots, cardInterpretations]);
+
   const currentTemplate = LAYOUT_TEMPLATES[formData.layoutType] || LAYOUT_TEMPLATES.horizontal;
   const itemClasses = currentTemplate.itemClasses;
+  const shouldShowChoicePathFields = formData.layoutType === 'choice'
+    || formData.spread.includes('选择')
+    || cardSlots.some(slot => /^[ABＡＢ]/i.test((slot.label || '').trim()));
+  const aiPromptResult = buildReadingAiPrompt({ formData, cardSlots, cardInterpretations, cardQuestions, mode: aiPromptMode });
+  const canGenerateAiPrompt = aiPromptResult.ok === true;
+  const aiPromptText = aiPromptResult.ok === true ? aiPromptResult.prompt : '';
+  const aiPromptModeMeta = aiPromptMode === 'mentor'
+    ? {
+        label: '导师复盘',
+        buttonText: '生成导师提示词',
+        description: '带上你的逐牌解读，让 AI 帮你校准、补充。',
+        note: '这版会包含你的逐牌解读、疑问和复盘材料，适合学习校准。',
+      }
+    : {
+        label: '咨询解牌',
+        buttonText: '生成咨询提示词',
+        description: '只给问题、牌阵和牌面，让 AI 像接咨询一样直解。',
+        note: '这版不包含你的个人解读，只整理咨询问题和牌阵结果。',
+      };
+  const handleAiPromptModeChange = (mode: ReadingAiPromptMode) => {
+    setAiPromptMode(mode);
+    setShowAiPrompt(false);
+    setAiPromptNotice('');
+  };
+  const pendingCardQuestions = cardSlots
+    .map((slot, index) => ({
+      id: `${slot.name}-${index}`,
+      label: slot.label || `位置${index + 1}`,
+      cardName: slot.name || '未选牌',
+      question: cardQuestions[index]?.trim() || '',
+    }))
+    .filter(item => item.question);
+  const handleToggleAiPrompt = () => {
+    if (showAiPrompt && canGenerateAiPrompt) {
+      setShowAiPrompt(false);
+      setAiPromptNotice('');
+      return;
+    }
+
+    if (aiPromptResult.ok === false) {
+      setShowAiPrompt(false);
+      setAiPromptNotice(getGentleAiPromptNotice(aiPromptResult.notice));
+      return;
+    }
+
+    setAiPromptNotice('');
+    setShowAiPrompt(true);
+  };
+  const handleCopyAiPrompt = async () => {
+    if (aiPromptResult.ok === false) {
+      setAiPromptNotice(getGentleAiPromptNotice(aiPromptResult.notice));
+      return;
+    }
+
+    try {
+      await copyTextToClipboard(aiPromptResult.prompt);
+      setAiPromptNotice('已复制，可粘贴到你信任的 AI 工具。');
+    } catch {
+      setAiPromptNotice('复制失败，可以手动全选提示词复制。');
+    }
+  };
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-3 rounded-2xl border border-forest-border bg-white p-3 pb-[calc(5.5rem+env(safe-area-inset-bottom))] shadow-sm sm:space-y-7 sm:rounded-3xl sm:p-10">
+    <form onSubmit={handleSubmit} className="space-y-2.5 rounded-[1.45rem] border border-forest-accent/8 bg-white/46 p-2.5 pb-3 shadow-[0_14px_46px_-40px_rgba(62,58,54,0.45)] backdrop-blur-[2px] sm:space-y-4 sm:rounded-[1.7rem] sm:p-5">
       {editingCorrespondence && (
         <CardCorrespondenceEditor 
           card={editingCorrespondence.card}
@@ -614,7 +800,7 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
             initial={{ opacity: 0, y: -20 }} 
             animate={{ opacity: 1, y: 0 }} 
             exit={{ opacity: 0, y: -20 }}
-            className="fixed top-24 left-1/2 -translate-x-1/2 z-[100] bg-green-500 text-white px-6 py-3 rounded-full shadow-lg flex items-center gap-2 font-bold"
+	            className="fixed left-1/2 top-24 z-[100] flex -translate-x-1/2 items-center gap-2 rounded-full bg-forest-accent/90 px-5 py-3 text-sm font-medium text-white shadow-[0_14px_38px_-30px_rgba(62,58,54,0.55)]"
           >
             <Sparkles size={18} />
             <span>已保存，当前手记正在使用这个牌阵</span>
@@ -624,16 +810,16 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
 
       <AnimatePresence>
         {showRestoreConfirm && (
-          <div className="fixed inset-0 z-[150] flex items-center justify-center p-4 bg-forest-text/20 backdrop-blur-sm overscroll-contain">
+          <div className="fixed inset-0 z-[150] flex items-center justify-center bg-forest-text/14 p-3 backdrop-blur-[2px] overscroll-contain">
             <motion.div 
               initial={{ opacity: 0, scale: 0.9 }} 
               animate={{ opacity: 1, scale: 1 }} 
               exit={{ opacity: 0, scale: 0.9 }}
-              className="bg-white rounded-3xl p-6 max-w-sm w-full shadow-2xl space-y-4"
+              className="w-full max-w-sm space-y-3.5 rounded-[1.4rem] border border-forest-accent/8 bg-white/82 p-4 shadow-[0_18px_56px_-42px_rgba(62,58,54,0.58)] backdrop-blur-md"
             >
               <div className="flex items-center gap-3 text-forest-accent">
                 <RotateCcw size={24} />
-                <h3 className="text-xl font-serif">恢复默认设置</h3>
+                <h3 className="font-serif text-lg font-semibold">恢复默认设置</h3>
               </div>
               <p className="text-sm text-forest-muted leading-relaxed">
                 {showRestoreConfirm.name 
@@ -651,7 +837,7 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
                 <button 
                   type="button"
                   onClick={() => restoreDefaults(showRestoreConfirm.name)}
-                  className="flex-1 min-h-11 py-2 bg-forest-accent text-white rounded-xl font-medium hover:bg-forest-accent/90 transition-all shadow-md"
+                  className="flex-1 min-h-11 py-2 bg-forest-accent/92 text-white rounded-xl font-medium hover:bg-forest-accent transition-all"
                 >
                   确定恢复
                 </button>
@@ -663,16 +849,16 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
 
       <AnimatePresence>
         {spreadSaveConflict && (
-          <div className="fixed inset-0 z-[150] flex items-center justify-center p-4 bg-forest-text/20 backdrop-blur-sm overscroll-contain">
+          <div className="fixed inset-0 z-[150] flex items-center justify-center bg-forest-text/14 p-3 backdrop-blur-[2px] overscroll-contain">
             <motion.div
               initial={{ opacity: 0, scale: 0.9 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.9 }}
-              className="bg-white rounded-3xl p-6 max-w-sm w-full shadow-2xl space-y-4"
+              className="w-full max-w-sm space-y-3.5 rounded-[1.4rem] border border-forest-accent/8 bg-white/82 p-4 shadow-[0_18px_56px_-42px_rgba(62,58,54,0.58)] backdrop-blur-md"
             >
               <div className="flex items-center gap-3 text-forest-accent">
                 <Layers size={24} />
-                <h3 className="text-xl font-serif">牌阵名称已存在</h3>
+                <h3 className="font-serif text-lg font-semibold">牌阵名称已存在</h3>
               </div>
               <p className="text-sm text-forest-muted leading-relaxed">
                 “{spreadSaveConflict.name}”已经存在。你可以覆盖原牌阵，或另存为一个副本。
@@ -681,21 +867,21 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
                 <button
                   type="button"
                   onClick={saveSpreadAsCopy}
-                  className="min-h-11 rounded-xl bg-forest-accent text-white font-bold hover:bg-forest-accent/90 transition-all shadow-md"
+	                  className="min-h-11 rounded-xl bg-forest-accent/92 font-medium text-white transition-all hover:bg-forest-accent"
                 >
                   另存为副本
                 </button>
                 <button
                   type="button"
                   onClick={() => completeSpreadSave(spreadSaveConflict.spread)}
-                  className="min-h-11 rounded-xl bg-amber-100 text-amber-700 font-bold hover:bg-amber-200 transition-all"
+	                  className="min-h-11 rounded-xl bg-amber-100 font-medium text-amber-700 transition-all hover:bg-amber-200"
                 >
                   覆盖原牌阵
                 </button>
                 <button
                   type="button"
                   onClick={() => setSpreadSaveConflict(null)}
-                  className="min-h-11 rounded-xl bg-forest-bg text-forest-muted font-bold hover:text-forest-accent transition-colors"
+	                  className="min-h-11 rounded-xl bg-forest-bg font-medium text-forest-muted transition-colors hover:text-forest-accent"
                 >
                   取消
                 </button>
@@ -718,6 +904,7 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
         onSelectSpread={handleSpreadSelection}
         onOpenSpreadManager={handleOpenSpreadManager}
         onCreateSpread={handleCreateNewSpread}
+        onDeleteSpread={requestDeleteSpread}
         isMultiCard={isMultiCard}
         activeSlotIndex={activeSlotIndex}
         onSetActiveSlotIndex={setActiveSlotIndex}
@@ -729,8 +916,60 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
         onToggleClientMode={() => setFormData({...formData, isForClient: !formData.isForClient})}
         initialData={initialData}
         onCancel={onCancel}
+        highlightedRequiredField={
+          submitIssue?.field === 'question' || submitIssue?.field === 'spread'
+            ? submitIssue.field
+            : null
+        }
+        quickThemeSlot={
+          !initialData && !isDailyMode
+            ? <QuickSpreadButtons onSelectSpread={handleQuickThemeSelect} />
+            : null
+        }
       />
 
+      {shouldShowChoicePathFields && (
+        <section
+          data-testid="choice-path-fields"
+          className="rounded-[1.25rem] border border-forest-accent/8 bg-white/34 p-3 shadow-[0_10px_34px_-32px_rgba(62,58,54,0.45)]"
+        >
+          <div className="mb-2 flex items-center justify-between gap-2">
+            <div>
+              <p className="text-xs font-semibold text-forest-accent">选择路径说明</p>
+              <p className="mt-0.5 text-[10px] leading-relaxed text-forest-muted">
+                写清左右两条路，生成 AI 提示词时会自动带上。
+              </p>
+            </div>
+            <span className="rounded-full bg-forest-accent/7 px-2 py-1 text-[10px] font-medium text-forest-muted">
+              可稍后补
+            </span>
+          </div>
+          <div className="grid gap-2 sm:grid-cols-2">
+            <label className="block">
+              <span className="mb-1 block text-[10px] font-semibold text-forest-accent">A 路代表</span>
+              <input
+                aria-label="A 路代表"
+                value={formData.choicePathA}
+                onChange={e => setFormData({ ...formData, choicePathA: e.target.value })}
+                onFocus={scrollFocusedFieldIntoView}
+                className="min-h-11 w-full rounded-xl border border-forest-accent/8 bg-white/52 px-3 py-2 text-sm text-forest-ink transition-all placeholder:text-forest-muted/45 focus:ring-2 focus:ring-forest-accent/15"
+                placeholder="例如：三个月内离职，和私人老板合作"
+              />
+            </label>
+            <label className="block">
+              <span className="mb-1 block text-[10px] font-semibold text-forest-accent">B 路代表</span>
+              <input
+                aria-label="B 路代表"
+                value={formData.choicePathB}
+                onChange={e => setFormData({ ...formData, choicePathB: e.target.value })}
+                onFocus={scrollFocusedFieldIntoView}
+                className="min-h-11 w-full rounded-xl border border-forest-accent/8 bg-white/52 px-3 py-2 text-sm text-forest-ink transition-all placeholder:text-forest-muted/45 focus:ring-2 focus:ring-forest-accent/15"
+                placeholder="例如：继续留在当前单位"
+              />
+            </label>
+          </div>
+        </section>
+      )}
 
       <AnimatePresence>
         {showSpreadManager && (
@@ -861,32 +1100,42 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
         onClose={() => setPendingDeleteSpreadNames([])}
       />
 
-      <ReadingSpreadDisplay 
-        formData={formData}
-        cardSlots={cardSlots}
-        activeSlotIndex={activeSlotIndex}
-        showSlotNumbers={showSlotNumbers}
-        gridCols={gridCols}
-        itemClasses={itemClasses}
-        currentTemplate={currentTemplate}
-        showUpdatePrompt={showUpdatePrompt}
-        spreads={spreads}
-        onSlotClick={handleSlotClick}
-        handleLongPressStart={handleLongPressStart}
-        handleLongPressEnd={handleLongPressEnd}
-        removeSlot={removeSlot}
-        allowSlotRemoval={false}
-        handleCycleSlot={handleCycleSlot}
-        onConfirmSync={(name) => {
-          const spreadDef = spreads.find(s => s.name === name);
-          if (spreadDef) {
-            const nextSlots = mapSlotsToSpread(cardSlots, spreadDef);
-            setCardSlots(spreadDef.layout === 'free' ? ensureFreeLayoutSlots(nextSlots) : nextSlots);
-          }
-          setShowUpdatePrompt(null);
-        }}
-        onCancelSync={() => setShowUpdatePrompt(null)}
-      />
+      <div
+        data-required-field="cards"
+        className={`rounded-[1.45rem] transition-all ${
+          submitIssue?.field === 'cards'
+            ? 'ring-2 ring-forest-pink/12'
+            : 'ring-0'
+        }`}
+      >
+        <ReadingSpreadDisplay
+          formData={formData}
+          cardSlots={cardSlots}
+          activeSlotIndex={activeSlotIndex}
+          showSlotNumbers={showSlotNumbers}
+          gridCols={gridCols}
+          itemClasses={itemClasses}
+          currentTemplate={currentTemplate}
+          showUpdatePrompt={showUpdatePrompt}
+          spreads={spreads}
+          onSlotClick={handleSlotClick}
+          handleLongPressStart={handleLongPressStart}
+          handleLongPressEnd={handleLongPressEnd}
+          removeSlot={removeSlot}
+          allowSlotRemoval={false}
+          onToggleSlotReverse={toggleReverse}
+          handleCycleSlot={handleCycleSlot}
+          onConfirmSync={(name) => {
+            const spreadDef = spreads.find(s => s.name === name);
+            if (spreadDef) {
+              const nextSlots = mapSlotsToSpread(cardSlots, spreadDef);
+              setCardSlots(spreadDef.layout === 'free' ? ensureFreeLayoutSlots(nextSlots) : nextSlots);
+            }
+            setShowUpdatePrompt(null);
+          }}
+          onCancelSync={() => setShowUpdatePrompt(null)}
+        />
+      </div>
 
 
       {/* Card Metadata & Main Display */}
@@ -895,21 +1144,19 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
           activeSlotIndex={activeSlotIndex}
           cardSlots={cardSlots}
           cardMetadata={cardMetadata}
-          cardKeywordMemory={cardKeywordMemory}
           cardInterpretations={cardInterpretations}
-          question={formData.question}
-          spread={formData.spread}
-          category={formData.category}
-          combinationContext={formData.combination}
+          cardQuestions={cardQuestions}
           isLoggedIn={isLoggedIn}
           userId={userId}
           isMultiCard={isMultiCard}
           isDailyMode={isDailyMode}
           onToggleReverse={toggleReverse}
           onSetCardInterpretations={setCardInterpretations}
+          onSetCardQuestions={setCardQuestions}
           onSetActiveSlotIndex={setActiveSlotIndex}
           onSetShowPicker={setShowPicker}
           onUpdateCardSlotsWithHistory={updateCardSlotsWithHistory}
+          hasInterpretationError={submitIssue?.field === 'cardInterpretation' && submitIssue.slotIndex === activeSlotIndex}
         />
       </div>
 
@@ -921,9 +1168,10 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
           onToggle={() => setShowComboReading(!showComboReading)}
           subtitle="探索牌与牌之间的化学反应与整体意象"
         >
-          <textarea 
-            rows={4} 
-            className="w-full px-4 py-3 bg-white border border-forest-accent/5 rounded-xl focus:ring-2 focus:ring-forest-accent/20 text-sm" 
+          <AutoResizeTextarea
+            minRows={2}
+            maxRows={8}
+            className="w-full rounded-xl border border-forest-accent/8 bg-white/48 px-3 py-2.5 text-sm leading-relaxed focus:ring-2 focus:ring-forest-accent/15"
             placeholder="牌与牌之间的整体关联感悟..." 
             value={formData.combination} 
             onChange={e => setFormData({...formData, combination: e.target.value})} 
@@ -931,120 +1179,30 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
         </FoldableSection>
       )}
 
-      <div className="space-y-2.5 rounded-2xl border border-forest-accent/5 bg-forest-accent/[0.03] p-2.5 sm:space-y-3 sm:p-0 sm:border-0 sm:bg-transparent">
-        <div className="flex items-center justify-between gap-2 px-1">
-          <div>
-            <p className="text-xs font-bold text-forest-accent">补充解读视角（可选）</p>
-            <p className="mt-0.5 hidden text-[10px] text-forest-muted sm:block">灵数、星座、宫位、元素，需要时再补充。</p>
-          </div>
-          <div className="flex shrink-0 items-center gap-1.5">
-            <button
-              type="button"
-              onClick={() => setActiveInfluenceKey(shouldShowInfluenceTools ? null : 'numerologyInfluence')}
-              className="min-h-10 rounded-xl bg-white px-3 text-[11px] font-bold text-forest-accent shadow-sm ring-1 ring-forest-accent/10 transition-colors hover:bg-forest-accent/5 sm:hidden"
-            >
-              {shouldShowInfluenceTools ? '收起' : '展开'}
-            </button>
-            <label className={`${shouldShowInfluenceTools ? 'flex' : 'hidden sm:flex'} min-h-10 items-center gap-1.5 rounded-xl px-1.5 text-[10px] font-bold text-forest-muted transition-colors hover:bg-forest-accent/5`}>
-              <input
-                type="checkbox"
-                className="h-4 w-4 accent-forest-accent"
-                checked={expandInfluenceByDefault}
-                onChange={e => handleToggleInfluenceDefault(e.target.checked)}
-              />
-              <span>默认展开</span>
-            </label>
-          </div>
-        </div>
-        {shouldShowInfluenceTools && (
-          <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-4 sm:gap-2">
-            {influenceFields.map(field => {
-              const isActive = activeInfluenceKey === field.key;
-              const hasValue = !!formData[field.key]?.trim();
-
-              return (
-                <button
-                  key={field.key}
-                  type="button"
-                  onClick={() => setActiveInfluenceKey(isActive ? null : field.key)}
-                  className={`min-h-11 rounded-xl border px-2 py-1.5 text-[11px] font-bold flex items-center justify-center gap-1.5 transition-all sm:min-h-12 sm:px-3 sm:py-2 sm:text-xs ${
-                    isActive
-                      ? 'bg-forest-accent text-white border-forest-accent shadow-sm'
-                      : 'bg-white text-forest-accent border-forest-accent/5 hover:bg-forest-accent/10'
-                  }`}
-                >
-                  <span>{field.title}</span>
-                  {hasValue && <span className={`h-1.5 w-1.5 rounded-full ${isActive ? 'bg-white' : 'bg-forest-accent'}`} />}
-                </button>
-              );
-            })}
-          </div>
-        )}
-
-        <AnimatePresence mode="wait">
-          {activeInfluenceField && (
-            <motion.div
-              key={activeInfluenceField.key}
-              initial={{ opacity: 0, y: 8 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -8 }}
-              className="rounded-2xl bg-forest-accent/5 border border-forest-accent/5 p-4 space-y-3"
-            >
-              <div className="flex items-start gap-2">
-                {React.createElement(activeInfluenceField.icon, { size: 16, className: 'text-forest-accent mt-0.5' })}
-                <div>
-                  <p className="text-sm font-bold text-forest-accent">{activeInfluenceField.title}</p>
-                  <p className="text-[10px] text-forest-muted mt-1">{activeInfluenceField.subtitle}</p>
-                </div>
-              </div>
-              <textarea
-                rows={4}
-                className="w-full px-4 py-3 bg-white border border-forest-accent/5 rounded-xl focus:ring-2 focus:ring-forest-accent/20 text-sm"
-                placeholder={activeInfluenceField.placeholder}
-                value={formData[activeInfluenceField.key]}
-                onFocus={scrollFocusedFieldIntoView}
-                onChange={e => setFormData({ ...formData, [activeInfluenceField.key]: e.target.value })}
-              />
-            </motion.div>
-          )}
-        </AnimatePresence>
-      </div>
-
       {formData.isForClient && (
-        <div className="grid grid-cols-1 gap-3 rounded-2xl border border-forest-accent/5 bg-forest-accent/5 p-4 md:grid-cols-2">
+        <div className="grid grid-cols-1 gap-3 rounded-[1.25rem] border border-forest-accent/7 bg-white/22 p-3 md:grid-cols-2">
           <div className="space-y-1.5">
-            <label className="text-sm font-bold text-forest-accent flex items-center gap-2 px-1"><User size={14} /> 客户姓名</label>
-            <input className="w-full px-4 py-2 bg-white border border-forest-accent/5 rounded-xl focus:ring-2 focus:ring-forest-accent/20 text-sm" placeholder="输入客户称呼..." value={formData.clientName} onFocus={scrollFocusedFieldIntoView} onChange={e => setFormData({...formData, clientName: e.target.value})} />
+	            <label className="flex items-center gap-2 px-1 text-sm font-medium text-forest-accent"><User size={14} /> 客户姓名</label>
+            <input
+              data-required-field="clientName"
+              aria-invalid={submitIssue?.field === 'clientName'}
+              className={`w-full rounded-xl border px-4 py-2 text-sm transition-all focus:ring-2 ${
+                submitIssue?.field === 'clientName'
+                  ? 'border-forest-pink/35 bg-forest-pink/6 ring-2 ring-forest-pink/10 focus:ring-forest-pink/15'
+                  : 'border-forest-accent/8 bg-white/48 focus:ring-forest-accent/15'
+              }`}
+              placeholder="输入客户称呼..."
+              value={formData.clientName}
+              onFocus={scrollFocusedFieldIntoView}
+              onChange={e => setFormData({...formData, clientName: e.target.value})}
+            />
           </div>
           <div className="space-y-1.5">
-            <label className="text-sm font-bold text-forest-accent flex items-center gap-2 px-1"><MessageSquare size={14} /> 客户反馈</label>
-            <input className="w-full px-4 py-2 bg-white border border-forest-accent/5 rounded-xl focus:ring-2 focus:ring-forest-accent/20 text-sm" placeholder="客户的真实反馈..." value={formData.clientFeedback} onFocus={scrollFocusedFieldIntoView} onChange={e => setFormData({...formData, clientFeedback: e.target.value})} />
+	            <label className="flex items-center gap-2 px-1 text-sm font-medium text-forest-accent"><MessageSquare size={14} /> 客户反馈</label>
+            <input className="w-full px-4 py-2 bg-white/48 border border-forest-accent/8 rounded-xl focus:ring-2 focus:ring-forest-accent/15 text-sm" placeholder="客户的真实反馈..." value={formData.clientFeedback} onFocus={scrollFocusedFieldIntoView} onChange={e => setFormData({...formData, clientFeedback: e.target.value})} />
           </div>
         </div>
       )}
-
-      {submitNotice && (
-        <div className="rounded-2xl border border-red-100 bg-red-50 px-4 py-3 text-sm font-medium text-red-600">
-          {submitNotice}
-        </div>
-      )}
-
-      <button
-        type="submit"
-        disabled={isLoading}
-        className="flex min-h-12 w-full items-center justify-center gap-2 rounded-2xl bg-forest-accent px-4 py-3 font-bold text-white shadow-lg transition-all hover:bg-forest-accent/90 active:scale-[0.98] disabled:opacity-50 sm:min-h-14 sm:gap-3 sm:py-5"
-      >
-        {isLoading ? (
-          <><motion.div animate={{ rotate: 360 }} transition={{ repeat: Infinity, duration: 1, ease: "linear" }}><Sparkles size={20} /></motion.div> 灵光引路中...</>
-        ) : (
-          <>
-            {isLoggedIn ? <BookOpen size={22} /> : <Save size={22} />}
-            <span className="text-base sm:text-lg">
-              {initialData ? (isLoggedIn ? '📖 保存修改' : '💾 保存修改') : (isLoggedIn ? '📖 录入灵见手帖' : '💾 保存到本地')}
-            </span>
-          </>
-        )}
-      </button>
 
       <div className="space-y-3 sm:space-y-4">
         <FoldableSection
@@ -1053,14 +1211,199 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
           isOpen={showFeedback}
           onToggle={() => setShowFeedback(!showFeedback)}
         >
-          <textarea
-            rows={4}
-            className="w-full px-4 py-3 bg-white border border-forest-accent/5 rounded-xl focus:ring-2 focus:ring-forest-accent/20 text-sm"
+          <AutoResizeTextarea
+            minRows={2}
+            maxRows={10}
+            className="w-full rounded-xl border border-forest-accent/8 bg-white/48 px-3 py-2.5 text-sm leading-relaxed focus:ring-2 focus:ring-forest-accent/15"
             placeholder="记录你对这次占卜的自我评价或后续验证..."
             value={formData.userFeedback}
             onFocus={scrollFocusedFieldIntoView}
             onChange={e => setFormData({...formData, userFeedback: e.target.value})}
           />
+
+          {pendingCardQuestions.length > 0 && (
+            <div className="mt-3 rounded-[1.15rem] border border-forest-accent/7 bg-white/24 p-3">
+              <div className="mb-2 flex items-center justify-between gap-2">
+                <p className="text-xs font-semibold text-forest-accent">待回应的牌面疑问</p>
+                <span className="rounded-full bg-forest-accent/7 px-2 py-0.5 text-[10px] font-medium text-forest-muted">
+                  {pendingCardQuestions.length} 条
+                </span>
+              </div>
+              <div className="space-y-1.5">
+                {pendingCardQuestions.map(item => (
+                  <div key={item.id} className="rounded-xl bg-white/42 px-3 py-2 text-xs leading-relaxed text-forest-ink">
+                    <span className="font-medium text-forest-accent">{item.label} · {item.cardName}：</span>
+                    <span className="text-forest-muted">{item.question}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <div className="mt-3 space-y-2 rounded-[1rem] border border-forest-accent/7 bg-white/22 p-2 sm:rounded-[1.15rem] sm:p-2.5">
+            <div className="flex flex-wrap items-center gap-1.5">
+              <p className="mr-auto min-w-[6.8rem] text-sm font-semibold text-forest-accent">AI 解牌提示词</p>
+              <div className="flex rounded-full border border-forest-accent/7 bg-white/34 p-0.5">
+              {([
+                ['mentor', '导师复盘', '看我的解读'],
+                ['consultant', '咨询解牌', '直接看牌阵'],
+              ] as const).map(([mode, label, subtitle]) => {
+                const isActive = aiPromptMode === mode;
+
+                return (
+                  <button
+                    key={mode}
+                    type="button"
+                    onClick={() => handleAiPromptModeChange(mode)}
+                    aria-label={`${label}${subtitle}`}
+                    className={`min-h-11 rounded-full px-2.5 text-center text-[11px] font-medium transition-all sm:px-3 sm:text-xs ${
+                      isActive
+                        ? 'bg-forest-accent/88 text-white'
+                        : 'text-forest-muted hover:bg-white/70 hover:text-forest-accent'
+                    }`}
+                    aria-pressed={isActive}
+                  >
+                    {label}
+                  </button>
+                );
+              })}
+              </div>
+              <button
+                type="button"
+                onClick={handleToggleAiPrompt}
+                aria-label={showAiPrompt && canGenerateAiPrompt ? '收起提示词' : aiPromptModeMeta.buttonText}
+                className="inline-flex min-h-11 shrink-0 items-center justify-center gap-1.5 rounded-full bg-forest-accent/88 px-3 text-[11px] font-medium text-white transition-all hover:bg-forest-accent active:scale-[0.98] sm:px-3.5 sm:text-xs"
+              >
+                <Sparkles size={13} />
+                <span aria-hidden="true">{showAiPrompt && canGenerateAiPrompt ? '收起' : '生成'}</span>
+              </button>
+            </div>
+            <p className="text-[11px] leading-relaxed text-forest-muted">
+              {aiPromptModeMeta.description}
+            </p>
+
+            {aiPromptNotice && !showAiPrompt && (
+              <p className="rounded-xl border border-forest-accent/10 bg-white/46 px-3 py-2 text-xs leading-relaxed text-forest-muted">
+                {aiPromptNotice}
+              </p>
+            )}
+
+            <AnimatePresence>
+              {showAiPrompt && canGenerateAiPrompt && (
+                <motion.div
+                  initial={{ opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -8 }}
+                  className="space-y-2"
+                >
+                  <AutoResizeTextarea
+                    readOnly
+                    minRows={5}
+                    maxRows={14}
+                    value={aiPromptText}
+                    className="w-full resize-y rounded-xl border border-forest-accent/8 bg-[#FDF8F0]/70 px-3 py-2 text-xs leading-relaxed text-forest-ink focus:ring-2 focus:ring-forest-accent/15"
+                    aria-label={`生成的 AI 解牌提示词：${aiPromptModeMeta.label}`}
+                  />
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                    <p className="text-[11px] text-forest-muted">
+                      {aiPromptModeMeta.note}
+                    </p>
+                    <button
+                      type="button"
+                      onClick={handleCopyAiPrompt}
+                      className="inline-flex min-h-10 items-center justify-center gap-2 rounded-xl border border-forest-accent/10 bg-white/60 px-3 text-xs font-medium text-forest-accent transition-colors hover:bg-white"
+                    >
+                      <Copy size={14} />
+                      复制提示词
+                    </button>
+                  </div>
+                  {aiPromptNotice && (
+                    <p className="text-xs text-forest-accent">{aiPromptNotice}</p>
+                  )}
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
+
+          <div className="mt-3 space-y-2 rounded-[1.05rem] border border-forest-accent/7 bg-white/20 p-2.5 sm:rounded-[1.2rem] sm:p-3">
+            <div className="flex items-center justify-between gap-2">
+              <div>
+                <p className="text-xs font-semibold text-forest-accent">补充解读视角（可选）</p>
+                <p className="mt-0.5 hidden text-[10px] text-forest-muted sm:block">灵数、星座、宫位、元素，适合复盘后再审慎补充。</p>
+              </div>
+              <div className="flex shrink-0 items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => setActiveInfluenceKey(shouldShowInfluenceTools ? null : 'numerologyInfluence')}
+                  className="min-h-11 rounded-xl bg-white/38 px-3 text-[11px] font-semibold text-forest-accent ring-1 ring-forest-accent/7 transition-colors hover:bg-white/60 sm:hidden"
+                >
+                  {shouldShowInfluenceTools ? '收起' : '展开'}
+                </button>
+                <label className={`${shouldShowInfluenceTools ? 'flex' : 'hidden sm:flex'} min-h-10 items-center gap-1.5 rounded-xl px-1.5 text-[10px] font-semibold text-forest-muted transition-colors hover:bg-forest-accent/5`}>
+                  <input
+                    type="checkbox"
+                    className="h-4 w-4 accent-forest-accent"
+                    checked={expandInfluenceByDefault}
+                    onChange={e => handleToggleInfluenceDefault(e.target.checked)}
+                  />
+                  <span>默认展开</span>
+                </label>
+              </div>
+            </div>
+            {shouldShowInfluenceTools && (
+              <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-4 sm:gap-2">
+                {influenceFields.map(field => {
+                  const isActive = activeInfluenceKey === field.key;
+                  const hasValue = !!formData[field.key]?.trim();
+
+                  return (
+                    <button
+                      key={field.key}
+                      type="button"
+                      onClick={() => setActiveInfluenceKey(isActive ? null : field.key)}
+                      className={`flex min-h-11 items-center justify-center gap-1.5 rounded-xl border px-2 py-1.5 text-[11px] font-semibold transition-all sm:min-h-12 sm:px-3 sm:py-2 sm:text-xs ${
+                        isActive
+                          ? 'bg-forest-accent/92 text-white border-forest-accent/40'
+                          : 'bg-white/42 text-forest-accent border-forest-accent/8 hover:bg-white/64'
+                      }`}
+                    >
+                      <span>{field.title}</span>
+                      {hasValue && <span className={`h-1.5 w-1.5 rounded-full ${isActive ? 'bg-white' : 'bg-forest-accent'}`} />}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+
+            <AnimatePresence mode="wait">
+              {activeInfluenceField && (
+                <motion.div
+                  key={activeInfluenceField.key}
+                  initial={{ opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -8 }}
+                  className="space-y-3 rounded-[1.25rem] border border-forest-accent/7 bg-white/24 p-3"
+                >
+                  <div className="flex items-start gap-2">
+                    {React.createElement(activeInfluenceField.icon, { size: 16, className: 'text-forest-accent mt-0.5' })}
+                    <div>
+                      <p className="text-sm font-semibold text-forest-accent">{activeInfluenceField.title}</p>
+                      <p className="text-[10px] text-forest-muted mt-1">{activeInfluenceField.subtitle}</p>
+                    </div>
+                  </div>
+                  <AutoResizeTextarea
+                    minRows={2}
+                    maxRows={8}
+                    className="w-full rounded-xl border border-forest-accent/8 bg-white/48 px-3 py-2.5 text-sm leading-relaxed focus:ring-2 focus:ring-forest-accent/15"
+                    placeholder={activeInfluenceField.placeholder}
+                    value={formData[activeInfluenceField.key]}
+                    onFocus={scrollFocusedFieldIntoView}
+                    onChange={e => setFormData({ ...formData, [activeInfluenceField.key]: e.target.value })}
+                  />
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
         </FoldableSection>
 
         <FoldableSection
@@ -1071,14 +1414,14 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
         >
           <div className="flex flex-wrap items-center gap-6 pt-2">
             <label className="flex items-center gap-2 cursor-pointer text-sm text-forest-muted group">
-              <input type="checkbox" className="accent-forest-accent w-4 h-4" checked={formData.isPublic} onChange={e => setFormData({...formData, isPublic: e.target.checked})} />
+              <input type="checkbox" className="accent-forest-accent w-4 h-4" checked={formData.isPublic && !formData.isAnonymous} onChange={e => handlePublicShareToggle(e.target.checked)} />
               <span className="group-hover:text-forest-accent transition-colors">公开到研习广场</span>
             </label>
             <label className="flex items-center gap-2 cursor-pointer text-sm text-forest-muted group">
-              <input type="checkbox" className="accent-forest-accent w-4 h-4" checked={formData.isAnonymous} onChange={e => setFormData({...formData, isAnonymous: e.target.checked})} />
-              <span className="group-hover:text-forest-accent transition-colors">匿名研习</span>
+              <input type="checkbox" className="accent-forest-accent w-4 h-4" checked={formData.isPublic && formData.isAnonymous} onChange={e => handleAnonymousShareToggle(e.target.checked)} />
+              <span className="group-hover:text-forest-accent transition-colors">匿名分享到广场</span>
             </label>
-            <label className="flex items-center gap-2 cursor-pointer text-sm font-bold text-forest-accent group text-nowrap">
+	            <label className="group flex cursor-pointer items-center gap-2 text-nowrap text-sm font-medium text-forest-accent">
               <input type="checkbox" className="accent-forest-accent w-4 h-4" checked={!formData.skipAi} onChange={e => {
                 const willProcess = e.target.checked;
                 setFormData({...formData, skipAi: !willProcess});
@@ -1087,7 +1430,7 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
               <span className="group-hover:scale-105 transition-transform">参与AI深度解析</span>
             </label>
           </div>
-          <div className="mt-4 rounded-2xl border border-forest-accent/10 bg-forest-accent/5 px-4 py-3 text-xs leading-relaxed text-forest-muted">
+          <div className="mt-4 rounded-2xl border border-forest-accent/8 bg-white/28 px-4 py-3 text-xs leading-relaxed text-forest-muted">
             <p className="flex items-start gap-2">
               <Info size={14} className="mt-0.5 shrink-0 text-forest-accent" />
               <span>
@@ -1097,9 +1440,39 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
           </div>
         </FoldableSection>
       </div>
+
+      {submitNotice && (
+        <div className="rounded-2xl border border-forest-pink/18 bg-forest-pink/7 px-4 py-3 text-sm font-medium text-forest-ink">
+          {submitNotice}
+        </div>
+      )}
+
+	        <div className="sticky bottom-[4.35rem] z-20 rounded-[1.25rem] border border-forest-accent/7 bg-white/68 p-2 shadow-[0_14px_46px_-40px_rgba(62,58,54,0.48)] backdrop-blur-md sm:static sm:border-0 sm:bg-transparent sm:p-0 sm:shadow-none">
+        <button
+          type="submit"
+          disabled={isLoading}
+	          className="flex min-h-12 w-full items-center justify-center gap-2 rounded-2xl bg-forest-accent/88 px-4 py-3 font-medium text-white shadow-sm transition-all hover:bg-forest-accent active:scale-[0.98] disabled:opacity-50 sm:min-h-[3.1rem] sm:gap-3 sm:py-3.5"
+        >
+          {isLoading ? (
+            <><motion.div animate={{ rotate: 360 }} transition={{ repeat: Infinity, duration: 1, ease: "linear" }}><Sparkles size={20} /></motion.div> 灵光引路中...</>
+          ) : (
+            <>
+              {isLoggedIn ? <BookOpen size={22} /> : <Save size={22} />}
+              <span className="text-sm sm:text-base">
+                {initialData ? '保存修改' : '保存手记'}
+              </span>
+            </>
+          )}
+        </button>
+        {!isLoading && (
+          <p className="mt-1.5 text-center text-[10px] leading-tight text-forest-muted">
+            {isLoggedIn ? '会先写入本机，并继续同步云端。' : '会先保存在本机；登录后可同步云端。'}
+          </p>
+        )}
+      </div>
       
       {/* Spacing */}
-      <div className="h-4" />
+      <div className="h-1" />
     </form>
   );
 };

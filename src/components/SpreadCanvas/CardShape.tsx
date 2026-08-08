@@ -1,4 +1,4 @@
-import React, { useRef, useState, useEffect, useCallback } from 'react';
+import React, { useRef, useState, useCallback } from 'react';
 import { Group, Rect, Text, Image, Circle } from 'react-konva';
 import useImage from 'use-image';
 import { useSpreadCanvasStore } from '../../store/spreadCanvasStore';
@@ -18,7 +18,6 @@ interface CardShapeProps {
   onDragStart: () => void;
   onDragEnd: (x: number, y: number) => void;
   onDoubleClick: () => void;
-  onWheel: (e: React.WheelEvent) => void;
   onShiftDrag: (startX: number, currentX: number) => void;
 }
 
@@ -42,7 +41,6 @@ export const CardShape: React.FC<CardShapeProps> = ({
   onDragStart,
   onDragEnd,
   onDoubleClick,
-  onWheel,
   onShiftDrag
 }) => {
   const [image] = useImage(imageUrl);
@@ -86,7 +84,7 @@ export const CardShape: React.FC<CardShapeProps> = ({
     }
   }, [shiftDragStart, onShiftDrag]);
 
-  const handleClick = useCallback((e: KonvaMouseEvent) => {
+  const handleClick = useCallback(() => {
     openCardModal({
       id,
       cardId: '',

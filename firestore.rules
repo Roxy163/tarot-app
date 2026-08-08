@@ -2,10 +2,134 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
+    function hasOnlyProfileFields(data) {
+      return data.keys().hasOnly([
+          'id',
+          'user_public_id',
+          'nickname',
+          'display_name',
+          'signature',
+          'bio',
+          'avatar_url',
+          'createdAt',
+          'updatedAt'
+        ])
+        && (!data.keys().hasAny(['nickname']) || data.nickname is string)
+        && (!data.keys().hasAny(['display_name']) || data.display_name is string)
+        && (!data.keys().hasAny(['signature']) || data.signature is string)
+        && (!data.keys().hasAny(['bio']) || data.bio is string)
+        && (!data.keys().hasAny(['avatar_url']) || data.avatar_url is string)
+        && (!data.keys().hasAny(['updatedAt']) || data.updatedAt is string);
+    }
+
+    function isValidProfileCreate(userId, data) {
+      return hasOnlyProfileFields(data)
+        && data.id == userId
+        && data.createdAt is string
+        && (!data.keys().hasAny(['user_public_id']) || data.user_public_id.matches('^TAROT-[A-Z0-9]{8}$'));
+    }
+
+    function isValidProfileUpdate(data) {
+      return hasOnlyProfileFields(data)
+        && !data.diff(resource.data).affectedKeys().hasAny(['id', 'createdAt'])
+        && (!data.keys().hasAny(['user_public_id']) || data.user_public_id.matches('^TAROT-[A-Z0-9]{8}$'));
+    }
+
+    function isValidReading(data) {
+      return data.keys().hasAll(['question', 'cards', 'date'])
+        && data.question is string
+        && data.date is string
+        && data.cards is list;
+    }
+
+    function canReadPublicAnnotation(data) {
+      return data.isPublic == true;
+    }
+
+    function isKnownUserSetting(settingId) {
+      return settingId in ['spreads', 'cardMetadata', 'cardKeywordMemory', 'quizMemory', 'dailyFortunes'];
+    }
+
+    function isValidUserSetting(settingId, data) {
+      return isKnownUserSetting(settingId)
+        && data.keys().hasOnly(['items', 'updatedAt'])
+        && data.items is list
+        && data.updatedAt is string;
+    }
+
+    function isValidUserSettingBackup(settingId, data) {
+      return isKnownUserSetting(settingId)
+        && data.keys().hasOnly(['items', 'sourceKey', 'updatedAt', 'backupAt'])
+        && data.items is list
+        && data.sourceKey == settingId
+        && data.backupAt is string
+        && (!data.keys().hasAny(['updatedAt']) || data.updatedAt == null || data.updatedAt is string);
+    }
+
+    function isValidCardAnnotation(data) {
+      return data.keys().hasOnly(['cardName', 'meaning', 'updatedAt', 'isPublic'])
+        && data.cardName is string
+        && data.meaning is string
+        && data.updatedAt is string
+        && (!data.keys().hasAny(['isPublic']) || data.isPublic is bool);
+    }
+
+    function isValidNumerologySetting(data) {
+      return data.keys().hasOnly(['cardName', 'numerology', 'meaning', 'keywords', 'updatedAt'])
+        && data.cardName is string
+        && data.numerology is number
+        && data.meaning is string
+        && data.keywords is string
+        && data.updatedAt is string;
+    }
+
+    function isValidPublicReading(readingId, data) {
+      return data.keys().hasAll(['question', 'cards', 'date', 'isPublic'])
+        && data.keys().hasOnly([
+          'id',
+          'date',
+          'question',
+          'spread',
+          'cards',
+          'cardInterpretations',
+          'cardQuestions',
+          'interpretation',
+          'keywords',
+          'manualTags',
+          'isPublic',
+          'isAnonymous',
+          'authorName',
+          'layoutType',
+          'slotLabels',
+          'slotPositions',
+          'rotatedSlots',
+          'readingDate',
+          'category',
+          'choicePathA',
+          'choicePathB',
+          'isAiProcessed',
+          'processedByAi',
+          'showSlotNumbers',
+          'updatedAt'
+        ])
+        && (!data.keys().hasAny(['id']) || data.id == readingId)
+        && data.isPublic == true
+        && data.cards is list
+        && data.cards.size() > 0;
+    }
+
+    function ownsPrivateReading(readingId) {
+      return exists(/databases/$(database)/documents/users/$(request.auth.uid)/readings/$(readingId));
+    }
+
     match /profiles/{userId} {
       allow read: if request.auth != null;
-      allow create: if request.auth != null && request.auth.uid == userId;
-      allow update: if request.auth != null && request.auth.uid == userId && isValidProfileUpdate(request.resource.data);
+      allow create: if request.auth != null
+        && request.auth.uid == userId
+        && isValidProfileCreate(userId, request.resource.data);
+      allow update: if request.auth != null
+        && request.auth.uid == userId
+        && isValidProfileUpdate(request.resource.data);
       allow delete: if request.auth != null && request.auth.uid == userId;
     }
 
@@ -23,78 +147,47 @@ service cloud.firestore {
     }
 
     match /users/{userId}/settings/{settingId} {
-      allow read, write: if request.auth != null && request.auth.uid == userId;
+      allow read: if request.auth != null && request.auth.uid == userId;
+      allow create, update: if request.auth != null
+        && request.auth.uid == userId
+        && isValidUserSetting(settingId, request.resource.data);
+      allow delete: if request.auth != null && request.auth.uid == userId;
+    }
+
+    match /users/{userId}/settingsBackups/{settingId} {
+      allow read: if request.auth != null && request.auth.uid == userId;
+      allow create, update: if request.auth != null
+        && request.auth.uid == userId
+        && isValidUserSettingBackup(settingId, request.resource.data);
+      allow delete: if request.auth != null && request.auth.uid == userId;
     }
 
     match /users/{userId}/cardAnnotations/{cardName} {
       allow read: if request.auth != null && (request.auth.uid == userId || canReadPublicAnnotation(resource.data));
-      allow create, update, delete: if request.auth != null && request.auth.uid == userId;
+      allow create, update: if request.auth != null
+        && request.auth.uid == userId
+        && isValidCardAnnotation(request.resource.data);
+      allow delete: if request.auth != null && request.auth.uid == userId;
     }
 
     match /users/{userId}/numerologySettings/{cardName} {
-      allow read, write: if request.auth != null && request.auth.uid == userId;
+      allow read: if request.auth != null && request.auth.uid == userId;
+      allow create, update: if request.auth != null
+        && request.auth.uid == userId
+        && isValidNumerologySetting(request.resource.data);
+      allow delete: if request.auth != null && request.auth.uid == userId;
     }
 
     match /publicReadings/{readingId} {
       allow read: if true;
       allow create: if request.auth != null
         && ownsPrivateReading(readingId)
-        && isValidPublicReading(request.resource.data);
+        && isValidPublicReading(readingId, request.resource.data);
       allow update: if request.auth != null
         && ownsPrivateReading(readingId)
-        && isValidPublicReading(request.resource.data);
+        && isValidPublicReading(readingId, request.resource.data);
       allow delete: if request.auth != null
         && ownsPrivateReading(readingId);
     }
   }
-}
-
-function isValidProfileUpdate(data) {
-  return !data.diff(resource.data).affectedKeys().hasAny(['id', 'createdAt'])
-    && (!data.keys().hasAny(['user_public_id']) || data.user_public_id.matches('^TAROT-[A-Z0-9]{8}$'));
-}
-
-function isValidReading(data) {
-  return data.keys().hasAll(['question', 'cards', 'date']) &&
-         data.question is string &&
-         data.date is string &&
-         data.cards is list;
-}
-
-function canReadPublicAnnotation(data) {
-  return data.isPublic == true;
-}
-
-function isValidPublicReading(data) {
-  return data.keys().hasAll(['question', 'cards', 'date', 'isPublic']) &&
-         data.keys().hasOnly([
-           'id',
-           'date',
-           'question',
-           'spread',
-           'cards',
-           'cardInterpretations',
-           'interpretation',
-           'keywords',
-           'isPublic',
-           'isAnonymous',
-           'authorName',
-           'layoutType',
-           'slotLabels',
-           'slotPositions',
-           'rotatedSlots',
-           'readingDate',
-           'category',
-           'isAiProcessed',
-           'processedByAi',
-           'showSlotNumbers',
-           'updatedAt'
-         ]) &&
-         data.isPublic == true &&
-         data.cards is list &&
-         data.cards.size() > 0;
-}
-
-function ownsPrivateReading(readingId) {
-  return exists(/databases/$(database)/documents/users/$(request.auth.uid)/readings/$(readingId));
 }

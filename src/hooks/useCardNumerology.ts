@@ -1,6 +1,15 @@
 import { useState, useEffect } from 'react';
 import { TAROT_CARDS } from '../constants';
 import { deleteNumerologySetting, getNumerologySetting, saveNumerologySetting } from '../lib/firebaseData';
+import { readJsonRecordWithBackup, writeJsonWithBackup } from '../lib/safeLocalStorage';
+
+type LocalNumerologyValue = number | {
+  numerology: number;
+  meaning?: string;
+  keywords?: string;
+};
+
+type LocalNumerologyMap = Record<string, LocalNumerologyValue>;
 
 export function useCardNumerology(cardName: string, isLoggedIn: boolean, userId?: string) {
   const [numerology, setNumerology] = useState<number | null>(null);
@@ -37,34 +46,23 @@ export function useCardNumerology(cardName: string, isLoggedIn: boolean, userId?
           setIsCustom(false);
         }
       } else {
-        const saved = localStorage.getItem('tarot_user_numerology');
-        if (saved) {
-          try {
-            const parsed = JSON.parse(saved);
-            if (parsed[cardName] !== undefined) {
-              const item = parsed[cardName];
-              if (typeof item === 'object') {
-                setNumerology(item.numerology);
-                setMeaning(item.meaning || '');
-                setKeywords(item.keywords || '');
-              } else {
-                setNumerology(item);
-                setMeaning('');
-                setKeywords('');
-              }
-              setIsCustom(true);
-            } else {
-              setNumerology(defaultVal);
-              setMeaning('');
-              setKeywords('');
-              setIsCustom(false);
-            }
-          } catch (e) {
+        const parsed = readJsonRecordWithBackup<LocalNumerologyMap>('tarot_user_numerology');
+        if (parsed?.[cardName] !== undefined) {
+          const item = parsed[cardName];
+          if (typeof item === 'number') {
+            setNumerology(item);
+            setMeaning('');
+            setKeywords('');
+          } else if (typeof item === 'object' && item !== null) {
+            setNumerology(item.numerology);
+            setMeaning(item.meaning || '');
+            setKeywords(item.keywords || '');
+          } else {
             setNumerology(defaultVal);
             setMeaning('');
             setKeywords('');
-            setIsCustom(false);
           }
+          setIsCustom(true);
         } else {
           setNumerology(defaultVal);
           setMeaning('');
@@ -91,14 +89,13 @@ export function useCardNumerology(cardName: string, isLoggedIn: boolean, userId?
         return false;
       }
     } else {
-      const saved = localStorage.getItem('tarot_user_numerology') || '{}';
-      const parsed = JSON.parse(saved);
+      const parsed = readJsonRecordWithBackup<LocalNumerologyMap>('tarot_user_numerology') || {};
       parsed[cardName] = {
         numerology: value,
         meaning: customMeaning,
         keywords: customKeywords
       };
-      localStorage.setItem('tarot_user_numerology', JSON.stringify(parsed));
+      writeJsonWithBackup('tarot_user_numerology', parsed);
     }
     setNumerology(value);
     setMeaning(customMeaning);
@@ -116,11 +113,10 @@ export function useCardNumerology(cardName: string, isLoggedIn: boolean, userId?
         return false;
       }
     } else {
-      const saved = localStorage.getItem('tarot_user_numerology');
-      if (saved) {
-        const parsed = JSON.parse(saved);
+      const parsed = readJsonRecordWithBackup<LocalNumerologyMap>('tarot_user_numerology');
+      if (parsed) {
         delete parsed[cardName];
-        localStorage.setItem('tarot_user_numerology', JSON.stringify(parsed));
+        writeJsonWithBackup('tarot_user_numerology', parsed);
       }
     }
     setNumerology(defaultVal);

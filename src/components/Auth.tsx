@@ -1,6 +1,7 @@
-import React, { useState, useEffect, useRef } from 'react';
+import type React from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Mail, Lock, Send, Sparkles, ArrowRight, CloudOff, Home, Clock, CheckCircle, X, AlertCircle, Eye, EyeOff } from 'lucide-react';
+import { Mail, Lock, Send, Sparkles, CloudOff, Home, CheckCircle, X, AlertCircle, Eye, EyeOff } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { checkIfMagicLink, confirmPasswordReset } from '../lib/firebase';
 import { normalizeEmailInput } from '../lib/emailInput';
@@ -46,7 +47,7 @@ const PasswordInput: React.FC<PasswordInputProps> = ({
 );
 
 export const Auth: React.FC<AuthProps> = ({ onClose, onSignedOut }) => {
-  const { session, isEmailVerified, lastLogin, signIn, signUp, signOut, resetPassword, updatePassword, sendVerificationEmail, refreshUser } = useAuth();
+  const { session, isEmailVerified, signIn, signUp, signOut, resetPassword, updatePassword, sendVerificationEmail, refreshUser } = useAuth();
   
   const [authMode, setAuthMode] = useState<'login' | 'signup'>('login');
   const [email, setEmail] = useState('');
@@ -345,16 +346,16 @@ export const Auth: React.FC<AuthProps> = ({ onClose, onSignedOut }) => {
           initial={{ opacity: 0, scale: 0.9 }}
           animate={{ opacity: 1, scale: 1 }}
           transition={{ delay: 0.2 }}
-          className="bg-white rounded-3xl shadow-2xl border border-forest-border overflow-hidden"
+          className="bg-white/72 rounded-[1.65rem] shadow-lg border border-forest-border/70 overflow-hidden backdrop-blur-[2px]"
         >
           <div className="relative">
             <div className="absolute inset-0 bg-gradient-to-br from-forest-accent/5 to-forest-pink/5" />
-            <div className="relative p-5 sm:p-8">
-              <div className="mb-5 flex flex-col items-center sm:mb-8">
+            <div className="relative p-5 sm:p-7">
+              <div className="mb-5 flex flex-col items-center sm:mb-7">
                 <img
-                  src="/app-icon.svg"
+                  src="/app-icon-192.png"
                   alt="塔罗研习阁图标"
-                  className="mb-3 h-16 w-16 rounded-2xl shadow-lg shadow-forest-accent/10 sm:mb-4"
+                  className="mb-3 h-[3.75rem] w-[3.75rem] rounded-2xl shadow-sm sm:mb-4"
                   draggable={false}
                 />
                 <p className="text-[9px] font-bold uppercase tracking-[0.24em] text-forest-accent">观牌，也观心</p>
@@ -362,7 +363,7 @@ export const Auth: React.FC<AuthProps> = ({ onClose, onSignedOut }) => {
                   {authMode === 'signup' ? '注册塔罗研习阁' : '登录塔罗研习阁'}
                 </h1>
                 <p className="mt-1 text-xs text-forest-muted">
-                  {authMode === 'signup' ? '创建账号，开启云端同步' : '执印入阁，继续你的研习记录'}
+                  {authMode === 'signup' ? '创建账号，开启云端同步' : '登录后继续你的研习记录'}
                 </p>
               </div>
 
@@ -386,10 +387,10 @@ export const Auth: React.FC<AuthProps> = ({ onClose, onSignedOut }) => {
                     transition={{ delay: 0.3 }}
                   >
                     <h2 className="font-serif text-lg font-bold text-forest-ink">
-                      {isNewSignup ? '账号已创建' : '印鉴已验证'}
+                      {isNewSignup ? '账号已创建' : '已登录'}
                     </h2>
                     <p className="mt-1 text-xs text-forest-muted">
-                      {isNewSignup ? '完成邮箱验证后即可开启云端同步。' : '欢迎归来，研习阁主'}
+                      {isNewSignup ? '完成邮箱验证后即可开启云端同步。' : '欢迎回来'}
                     </p>
                   </motion.div>
                   
@@ -414,7 +415,7 @@ export const Auth: React.FC<AuthProps> = ({ onClose, onSignedOut }) => {
                           type="button"
                           disabled={verificationLoading}
                           onClick={handleSendVerificationEmail}
-                          className="py-2 bg-white border border-amber-200 text-amber-700 rounded-xl text-xs font-bold hover:bg-amber-100/40 transition-colors disabled:opacity-50"
+                        className="py-2 bg-white/60 border border-amber-200/70 text-amber-700 rounded-xl text-xs font-bold hover:bg-amber-100/40 transition-colors disabled:opacity-50"
                         >
                           重发邮件
                         </button>
@@ -446,7 +447,7 @@ export const Auth: React.FC<AuthProps> = ({ onClose, onSignedOut }) => {
                     onClick={handleLogout}
                     className="w-full py-3 bg-forest-accent/10 text-forest-accent rounded-xl font-medium hover:bg-forest-accent/20 transition-colors"
                   >
-                    封印离阁
+                    退出登录
                   </button>
 
                   <button
@@ -534,7 +535,7 @@ export const Auth: React.FC<AuthProps> = ({ onClose, onSignedOut }) => {
                           <button
                             type="button"
                             onClick={() => runAuthRecoveryAction(authError.action)}
-                            className="ml-auto min-h-9 px-3 rounded-xl bg-white border border-red-100 text-red-600 text-[11px] font-bold hover:bg-red-100/50 transition-colors"
+                          className="ml-auto min-h-9 px-3 rounded-xl bg-white/65 border border-red-100 text-red-600 text-[11px] font-bold hover:bg-red-100/50 transition-colors"
                           >
                             {authError.actionLabel}
                           </button>
@@ -546,7 +547,7 @@ export const Auth: React.FC<AuthProps> = ({ onClose, onSignedOut }) => {
                   <button
                     type="submit"
                     disabled={loading || !email || !password}
-                    className="w-full py-3.5 bg-forest-accent text-white rounded-xl font-bold text-sm hover:bg-forest-accent/90 transition-all disabled:opacity-50 shadow-lg shadow-forest-accent/20 flex items-center justify-center gap-2"
+                    className="w-full py-3.5 bg-forest-accent/92 text-white rounded-xl font-bold text-sm hover:bg-forest-accent transition-all disabled:opacity-50 flex items-center justify-center gap-2"
                   >
                     {loading ? (
                       <motion.div animate={{ rotate: 360 }} transition={{ repeat: Infinity, duration: 1, ease: "linear" }}>

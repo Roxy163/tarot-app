@@ -1,0 +1,26 @@
+/*
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin
+  X-Frame-Options: DENY
+  Permissions-Policy: camera=(), microphone=(), geolocation=()
+
+/sw.js
+  Cache-Control: no-cache
+
+/site.webmanifest
+  Cache-Control: no-cache
+
+/app-icon-192.png
+  Cache-Control: public, max-age=86400
+
+/app-icon-512.png
+  Cache-Control: public, max-age=86400
+
+/apple-touch-icon.png
+  Cache-Control: public, max-age=86400
+
+/assets/*
+  Cache-Control: public, max-age=31536000, immutable
+
+/tarot-cards/*
+  Cache-Control: public, max-age=31536000, immutable

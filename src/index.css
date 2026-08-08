@@ -1,9 +1,9 @@
 @import "tailwindcss";
 
 @theme {
-  --font-serif: "Cormorant Garamond", "LXGW WenKai Mono TC", serif;
-  --font-sans: "Inter", sans-serif;
-  --font-kai: "LXGW WenKai Mono TC", serif;
+  --font-serif: "Songti SC", "Noto Serif CJK SC", "Source Han Serif SC", "STSong", "SimSun", serif;
+  --font-sans: -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Segoe UI", Arial, sans-serif;
+  --font-kai: "Kaiti SC", "STKaiti", "KaiTi", "BiauKai", serif;
   
   --color-forest-bg: #FDF8F0;
   --color-forest-card: #FFFFFF;
@@ -43,13 +43,41 @@
   textarea {
     touch-action: manipulation;
   }
+
+  button {
+    transition-property: transform, background-color, border-color, color, box-shadow, opacity;
+    transition-duration: 160ms;
+    transition-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  button:not(:disabled) {
+    will-change: transform;
+  }
+
+  button:not(:disabled):active {
+    transform: scale(0.97);
+  }
+
+  button:disabled {
+    cursor: not-allowed;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    button {
+      transition-duration: 0.01ms !important;
+    }
+
+    button:not(:disabled):active {
+      transform: none;
+    }
+  }
   
   body::before {
     content: "";
     position: fixed;
     inset: 0;
     background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E");
-    opacity: 0.03;
+    opacity: 0.022;
     pointer-events: none;
     z-index: -1;
   }
@@ -170,7 +198,27 @@
 }
 
 .card-shadow {
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.04);
+  box-shadow: 0 2px 8px rgba(62, 58, 54, 0.035);
+}
+
+.shadow-sm {
+  box-shadow: 0 2px 10px rgba(62, 58, 54, 0.035) !important;
+}
+
+.shadow-md {
+  box-shadow: 0 8px 22px -18px rgba(62, 58, 54, 0.24) !important;
+}
+
+.shadow-lg {
+  box-shadow: 0 12px 30px -22px rgba(62, 58, 54, 0.28) !important;
+}
+
+.shadow-xl {
+  box-shadow: 0 18px 42px -30px rgba(62, 58, 54, 0.32) !important;
+}
+
+.shadow-2xl {
+  box-shadow: 0 24px 60px -38px rgba(62, 58, 54, 0.38) !important;
 }
 
 .active-tab {
@@ -193,14 +241,18 @@
 .ancient-book-bg {
   background-color: #FFFFFF;
   position: relative;
-  box-shadow: inset 0 0 40px rgba(230, 221, 210, 0.2);
+  box-shadow: inset 0 0 28px rgba(230, 221, 210, 0.12);
 }
 
 .ancient-book-bg::before {
   content: "";
   position: absolute;
   inset: 0;
-  background-image: url("https://www.transparenttextures.com/patterns/paper.png");
-  opacity: 0.05;
+  background-image:
+    radial-gradient(circle at 25% 20%, rgba(124, 169, 130, 0.16) 0 1px, transparent 1.5px),
+    radial-gradient(circle at 75% 70%, rgba(232, 165, 152, 0.14) 0 1px, transparent 1.5px),
+    linear-gradient(135deg, rgba(255, 255, 255, 0.45), rgba(245, 237, 227, 0.2));
+  background-size: 28px 28px, 34px 34px, 100% 100%;
+  opacity: 0.055;
   pointer-events: none;
 }

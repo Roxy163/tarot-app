@@ -90,64 +90,38 @@ export const TAROT_CARDS: TarotCardMetadata[] = [
   { id: 'peki', name: '星币国王', english: 'King of Pentacles', default_numerology: null, astrology: { zodiac: '金牛座', element: '土', house: '第二宫' } },
 ];
 
-const MAJOR_ARCANA_IMAGE_FILES: Record<string, string> = {
-  ar00: 'RWS_Tarot_00_Fool.jpg',
-  ar01: 'RWS_Tarot_01_Magician.jpg',
-  ar02: 'RWS_Tarot_02_High_Priestess.jpg',
-  ar03: 'RWS_Tarot_03_Empress.jpg',
-  ar04: 'RWS_Tarot_04_Emperor.jpg',
-  ar05: 'RWS_Tarot_05_Hierophant.jpg',
-  ar06: 'RWS_Tarot_06_Lovers.jpg',
-  ar07: 'RWS_Tarot_07_Chariot.jpg',
-  ar08: 'RWS_Tarot_08_Strength.jpg',
-  ar09: 'RWS_Tarot_09_Hermit.jpg',
-  ar10: 'RWS_Tarot_10_Wheel_of_Fortune.jpg',
-  ar11: 'RWS_Tarot_11_Justice.jpg',
-  ar12: 'RWS_Tarot_12_Hanged_Man.jpg',
-  ar13: 'RWS_Tarot_13_Death.jpg',
-  ar14: 'RWS_Tarot_14_Temperance.jpg',
-  ar15: 'RWS_Tarot_15_Devil.jpg',
-  ar16: 'RWS_Tarot_16_Tower.jpg',
-  ar17: 'RWS_Tarot_17_Star.jpg',
-  ar18: 'RWS_Tarot_18_Moon.jpg',
-  ar19: 'RWS_Tarot_19_Sun.jpg',
-  ar20: 'RWS_Tarot_20_Judgement.jpg',
-  ar21: 'RWS_Tarot_21_World.jpg',
-};
+const TAROT_CARD_IMAGE_IDS = new Set(TAROT_CARDS.map(card => card.id));
+export const TAROT_CARD_IMAGE_BASE_PATH = '/tarot-cards';
+export const TAROT_CARD_IMAGE_WIDTH = 330;
+export type TarotCardImageFormat = 'avif' | 'webp' | 'jpg';
 
-const MINOR_ARCANA_IMAGE_PREFIX: Record<string, string> = {
-  wa: 'Wands',
-  cu: 'Cups',
-  sw: 'Swords',
-  pe: 'Pents',
-};
+const getSafeCardImageId = (id: string) => (
+  TAROT_CARD_IMAGE_IDS.has(id) ? id : 'ar00'
+);
 
-const MINOR_ARCANA_RANK_NUMBER: Record<string, string> = {
-  ac: '01',
-  pa: '11',
-  kn: '12',
-  qu: '13',
-  ki: '14',
-};
+export const getCardImageSources = (id: string): Record<TarotCardImageFormat, string> => {
+  const safeId = getSafeCardImageId(id);
+  const baseUrl = `${TAROT_CARD_IMAGE_BASE_PATH}/${safeId}`;
 
-const getCardImageFileName = (id: string) => {
-  if (MAJOR_ARCANA_IMAGE_FILES[id]) return MAJOR_ARCANA_IMAGE_FILES[id];
-
-  const suit = id.slice(0, 2);
-  const rank = id.slice(2);
-  const suitPrefix = MINOR_ARCANA_IMAGE_PREFIX[suit];
-  const rankNumber = MINOR_ARCANA_RANK_NUMBER[rank] || rank;
-
-  if (!suitPrefix || !/^\d{2}$/.test(rankNumber)) {
-    return MAJOR_ARCANA_IMAGE_FILES.ar00;
-  }
-
-  return `${suitPrefix}${rankNumber}.jpg`;
+  return {
+    avif: `${baseUrl}.avif`,
+    webp: `${baseUrl}.webp`,
+    jpg: `${baseUrl}.jpg`,
+  };
 };
 
 export const getCardImageUrl = (id: string) => {
-  const fileName = getCardImageFileName(id);
-  return `https://commons.wikimedia.org/wiki/Special:FilePath/${encodeURIComponent(fileName)}`;
+  return getCardImageSources(id).jpg;
+};
+
+export const getCardImageFormatUrl = (
+  src: string,
+  format: Exclude<TarotCardImageFormat, 'jpg'>,
+) => {
+  const match = src.match(/^(.*\/tarot-cards\/[^?#.]+)\.jpg([?#].*)?$/);
+  if (!match) return null;
+
+  return `${match[1]}.${format}${match[2] || ''}`;
 };
 
 export const INITIAL_READINGS = [
@@ -204,9 +178,9 @@ export const LAYOUT_TEMPLATES: Record<string, { name: string, class: string, ite
   },
   'choice': { 
     name: '选择牌阵', 
-    class: 'grid grid-cols-3 gap-y-6 gap-x-8 max-w-[360px] mx-auto justify-items-center', 
-    itemClasses: ['col-start-2 row-start-3', 'col-start-1 row-start-2', 'col-start-3 row-start-2', 'col-start-1 row-start-1', 'col-start-3 row-start-1'],
-    defaultSlots: ['现状', '选项A-1', '选项B-1', '选项A-2', '选项B-2']
+    class: 'grid grid-cols-5 gap-y-6 gap-x-2 sm:gap-x-4 max-w-[500px] mx-auto justify-items-center',
+    itemClasses: ['col-start-3 row-start-3', 'col-start-2 row-start-2', 'col-start-4 row-start-2', 'col-start-1 row-start-1', 'col-start-5 row-start-1'],
+    defaultSlots: ['现状', 'A近期发展', 'B近期发展', 'A远期结果', 'B远期结果']
   },
   'seasons': { 
     name: '四季牌阵', 
@@ -284,8 +258,8 @@ export const OFFICIAL_SPREADS = [
   { 
     name: '选择牌阵', 
     layout: 'choice', 
-    slots: ['现状', '选项A-1', '选项B-1', '选项A-2', '选项B-2'],
-    slotPositions: ['col-start-2 row-start-3', 'col-start-1 row-start-2', 'col-start-3 row-start-2', 'col-start-1 row-start-1', 'col-start-3 row-start-1']
+    slots: ['现状', 'A近期发展', 'B近期发展', 'A远期结果', 'B远期结果'],
+    slotPositions: ['col-start-3 row-start-3', 'col-start-2 row-start-2', 'col-start-4 row-start-2', 'col-start-1 row-start-1', 'col-start-5 row-start-1']
   },
   { 
     name: '十字牌阵', 

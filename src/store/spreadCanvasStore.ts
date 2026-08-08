@@ -308,7 +308,7 @@ export const useSpreadCanvasStore = create<SpreadCanvasState>((set, get) => ({
   }
 }));
 
-export const getCardMeaning = (cardId: string, isReversed: boolean): { upright: string; reversed: string } => {
+export const getCardMeaning = (cardId: string): { upright: string; reversed: string } => {
   const card = TAROT_CARDS.find(c => c.id === cardId);
   if (!card) return { upright: '', reversed: '' };
   
@@ -324,5 +324,9 @@ export const getCardData = (cardId: string) => {
 
 export const getCardImage = (cardId: string, isReversed: boolean) => {
   const url = getCardImageUrl(cardId);
-  return isReversed ? `${url}?reversed=1` : url;
+  if (!isReversed) return url;
+
+  const reversedUrl = new URL(url);
+  reversedUrl.searchParams.set('reversed', '1');
+  return reversedUrl.toString();
 };

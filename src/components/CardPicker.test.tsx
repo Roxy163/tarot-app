@@ -15,6 +15,16 @@ const renderPicker = () => {
 };
 
 describe('CardPicker', () => {
+  it('prioritizes the first visible card thumbnails', () => {
+    renderPicker();
+
+    const images = screen.getAllByRole('img');
+    expect(images[0]).toHaveAttribute('loading', 'eager');
+    expect(images[0]).toHaveAttribute('fetchpriority', 'high');
+    expect(images[17]).toHaveAttribute('loading', 'eager');
+    expect(images[18]).toHaveAttribute('loading', 'lazy');
+  });
+
   it('finds cards by common Chinese aliases', async () => {
     const user = userEvent.setup();
     renderPicker();
@@ -40,5 +50,17 @@ describe('CardPicker', () => {
 
     expect(screen.getByText('圣杯王后')).toBeInTheDocument();
     expect(screen.queryByText('皇后')).not.toBeInTheDocument();
+  });
+
+  it('does not ask for orientation inside the picker and selects cards upright by default', async () => {
+    const user = userEvent.setup();
+    const props = renderPicker();
+
+    expect(screen.queryByRole('button', { name: '正位' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '逆位' })).not.toBeInTheDocument();
+
+    await user.click(screen.getByText('皇帝'));
+
+    expect(props.onSelect).toHaveBeenCalledWith(expect.objectContaining({ id: 'ar04' }), false);
   });
 });

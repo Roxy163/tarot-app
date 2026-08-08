@@ -20,14 +20,14 @@ export const QuickSpreadButtons: React.FC<QuickSpreadButtonsProps> = ({ onSelect
     <motion.div
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
-      className="space-y-2"
+      className="rounded-xl border border-forest-accent/7 bg-white/24 px-2 py-2 sm:px-2.5"
     >
-      <div className="flex items-center justify-between">
-        <h3 className="text-sm font-bold text-forest-ink">主题记录</h3>
-        <span className="text-[10px] text-forest-muted">手动记录，不会自动抽牌</span>
+      <div className="mb-1.5 flex items-center justify-between gap-2">
+        <h3 className="text-xs font-semibold text-forest-accent">速记主题</h3>
+        <span className="hidden text-[10px] text-forest-muted min-[390px]:inline">点一下预设标签和牌阵</span>
       </div>
       
-      <div className="grid grid-cols-5 gap-1.5">
+      <div className="grid grid-cols-5 gap-1">
         {QUICK_SPREADS.map((item, index) => (
           <motion.button
             key={item.id}
@@ -35,20 +35,17 @@ export const QuickSpreadButtons: React.FC<QuickSpreadButtonsProps> = ({ onSelect
             animate={{ opacity: 1, scale: 1 }}
             transition={{ delay: index * 0.05 }}
             onClick={() => onSelectSpread(item.spread, item.category)}
-            className="flex min-h-14 flex-col items-center justify-center gap-1 rounded-xl border border-forest-accent/10 bg-forest-bg px-1.5 py-1.5 transition-all group hover:border-forest-accent/30 hover:bg-forest-accent/5"
-            whileHover={{ scale: 1.05 }}
-            whileTap={{ scale: 0.95 }}
+            className="group flex min-h-11 min-w-0 flex-col items-center justify-center gap-0.5 rounded-xl border border-forest-accent/8 bg-white/42 px-1 text-[10px] font-medium text-forest-ink transition-all hover:border-forest-accent/24 hover:bg-white/62 sm:flex-row sm:gap-1.5 sm:text-xs"
+            whileHover={{ scale: 1.02 }}
+            whileTap={{ scale: 0.97 }}
           >
-            <div className="flex h-7 w-7 items-center justify-center rounded-full bg-gradient-to-br from-forest-accent/20 to-forest-pink/20 text-forest-accent transition-all group-hover:from-forest-accent/30 group-hover:to-forest-pink/30">
-              {React.cloneElement(iconMap[item.icon], { size: 16 })}
-            </div>
-            <span className="text-[9px] font-bold text-forest-ink">{item.name}</span>
+            <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-forest-accent/8 text-forest-accent transition-all group-hover:bg-forest-accent/12 sm:h-6 sm:w-6">
+              {React.cloneElement(iconMap[item.icon], { size: 13 })}
+            </span>
+            <span className="truncate">{item.name}</span>
           </motion.button>
         ))}
       </div>
-      <p className="rounded-xl bg-white/55 px-2.5 py-1.5 text-[10px] leading-relaxed text-forest-muted">
-        选择主题后进入记录页，牌阵会预设好；卡牌仍由你填写或抽取。
-      </p>
     </motion.div>
   );
 };

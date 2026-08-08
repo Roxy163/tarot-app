@@ -69,9 +69,21 @@ describe('FreeLayoutEditor', () => {
     const canvas = screen.getByTestId('free-layout-canvas');
     const actionHint = screen.getByTestId('free-layout-action-hint');
 
-    expect(actionHint).toHaveTextContent('单击出现虚影，拖动后点击固定');
+    expect(actionHint).toHaveTextContent('点击添加，拖动画布；Shift 拖动可框选');
     expect(actionHint.querySelector('span')).toHaveClass('whitespace-nowrap');
     expect(canvas).not.toContainElement(actionHint);
+  });
+
+  it('zooms the free canvas directly with the wheel inside the viewport', () => {
+    renderEditor();
+
+    fireEvent.wheel(screen.getByTestId('free-layout-viewport'), {
+      deltaY: -100,
+      clientX: 320,
+      clientY: 230,
+    });
+
+    expect(screen.getByText('108%')).toBeInTheDocument();
   });
 
   it('previews a new position by clicking the canvas center', () => {
@@ -92,7 +104,6 @@ describe('FreeLayoutEditor', () => {
     renderEditor({ onUpdateSlots });
     const viewport = screen.getByTestId('free-layout-viewport');
 
-    fireEvent.click(screen.getByRole('button', { name: '移动画布' }));
     fireEvent.pointerDown(viewport, {
       pointerId: 8,
       clientX: 320,
@@ -108,7 +119,10 @@ describe('FreeLayoutEditor', () => {
       clientX: 380,
       clientY: 250,
     });
-    fireEvent.click(screen.getByRole('button', { name: '摆牌' }));
+
+    act(() => {
+      vi.advanceTimersByTime(181);
+    });
 
     fireEvent.click(viewport, {
       clientX: 220,
@@ -356,6 +370,7 @@ describe('FreeLayoutEditor', () => {
       pointerId: 12,
       clientX: 100,
       clientY: 100,
+      shiftKey: true,
     });
     fireEvent.pointerMove(viewport, {
       pointerId: 12,
@@ -418,7 +433,7 @@ describe('FreeLayoutEditor', () => {
     });
     const viewport = screen.getByTestId('free-layout-viewport');
 
-    fireEvent.pointerDown(viewport, { pointerId: 13, clientX: 100, clientY: 100 });
+    fireEvent.pointerDown(viewport, { pointerId: 13, clientX: 100, clientY: 100, shiftKey: true });
     fireEvent.pointerMove(viewport, { pointerId: 13, clientX: 340, clientY: 240 });
     fireEvent.pointerUp(viewport, { pointerId: 13, clientX: 340, clientY: 240 });
 
@@ -459,7 +474,7 @@ describe('FreeLayoutEditor', () => {
     });
     const viewport = screen.getByTestId('free-layout-viewport');
 
-    fireEvent.pointerDown(viewport, { pointerId: 16, clientX: 100, clientY: 100 });
+    fireEvent.pointerDown(viewport, { pointerId: 16, clientX: 100, clientY: 100, shiftKey: true });
     fireEvent.pointerMove(viewport, { pointerId: 16, clientX: 340, clientY: 300 });
     fireEvent.pointerUp(viewport, { pointerId: 16, clientX: 340, clientY: 300 });
     fireEvent.click(screen.getByRole('button', { name: '所选水平' }));
@@ -471,7 +486,7 @@ describe('FreeLayoutEditor', () => {
     ]);
   });
 
-  it('keeps the free canvas quick toolbar focused on alignment only', () => {
+  it('keeps the free canvas quick toolbar focused while offering direct delete', () => {
     renderEditor();
 
     expect(screen.queryByRole('button', { name: '复制' })).not.toBeInTheDocument();
@@ -481,10 +496,52 @@ describe('FreeLayoutEditor', () => {
     expect(screen.queryByRole('button', { name: '右旋' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '缩小' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '放大' })).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: '删除' })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: '水平居中' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '垂直居中' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '居中' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '删除位置' })).toBeInTheDocument();
+  });
+
+  it('deletes the active free layout slot from the quick toolbar', () => {
+    const onUpdateSlots = vi.fn();
+    const onSetDesignActiveSlot = vi.fn();
+    renderEditor({
+      onUpdateSlots,
+      onSetDesignActiveSlot,
+      cardSlots: [
+        { name: '', isReversed: false, label: '一', x: 120, y: 120, rotation: 0, scale: 1 },
+        { name: '', isReversed: false, label: '二', x: 240, y: 130, rotation: 0, scale: 1 },
+      ],
+      designActiveSlot: 0,
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: '删除位置' }));
+
+    expect(onUpdateSlots).toHaveBeenCalledWith([
+      { name: '', isReversed: false, label: '二', x: 240, y: 130, rotation: 0, scale: 1 },
+    ]);
+    expect(onSetDesignActiveSlot).toHaveBeenCalledWith(0);
+  });
+
+  it('deletes a specific free layout slot from the slot corner button', () => {
+    const onUpdateSlots = vi.fn();
+    const onSetDesignActiveSlot = vi.fn();
+    renderEditor({
+      onUpdateSlots,
+      onSetDesignActiveSlot,
+      cardSlots: [
+        { name: '', isReversed: false, label: '一', x: 120, y: 120, rotation: 0, scale: 1 },
+        { name: '', isReversed: false, label: '二', x: 240, y: 130, rotation: 0, scale: 1 },
+      ],
+      designActiveSlot: 1,
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: '删除位置：二' }));
+
+    expect(onUpdateSlots).toHaveBeenCalledWith([
+      { name: '', isReversed: false, label: '一', x: 120, y: 120, rotation: 0, scale: 1 },
+    ]);
+    expect(onSetDesignActiveSlot).toHaveBeenCalledWith(0);
   });
 
   it('shows alignment guides and snaps while dragging near another slot', () => {

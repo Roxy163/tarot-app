@@ -8,13 +8,14 @@ interface ProfileTabProps {
   profile: UserProfile | null;
   readings: TarotReading[];
   cardMetadata: TarotCardMetadata[];
+  email?: string | null;
+  isLoggedIn?: boolean;
+  isEmailVerified?: boolean;
+  onLogin?: () => void;
   onLogout: () => void;
+  onOpenSecurity?: () => void;
+  onBackHome?: () => void;
   onUpdateProfile: (updated: Partial<UserProfile>) => Promise<void>;
-  onTagClick: (tag: string) => void;
-  onViewAll: () => void;
-  onEditReading: (reading: TarotReading) => void;
-  onDeleteReading: (id: string) => void;
-  onTogglePublic: (id: string) => void;
 }
 
 export const ProfileTab: React.FC<ProfileTabProps> = ({
@@ -22,13 +23,14 @@ export const ProfileTab: React.FC<ProfileTabProps> = ({
   profile,
   readings,
   cardMetadata,
+  email,
+  isLoggedIn,
+  isEmailVerified,
+  onLogin,
   onLogout,
+  onOpenSecurity,
+  onBackHome,
   onUpdateProfile,
-  onTagClick,
-  onViewAll,
-  onEditReading,
-  onDeleteReading,
-  onTogglePublic
 }) => {
   return (
     <motion.div 
@@ -42,14 +44,15 @@ export const ProfileTab: React.FC<ProfileTabProps> = ({
         authorName={authorName} 
         profile={profile}
         onLogout={onLogout}
+        onLogin={onLogin}
+        onOpenSecurity={onOpenSecurity}
+        onBackHome={onBackHome}
         onUpdateProfile={onUpdateProfile}
         readings={readings} 
         cardMetadata={cardMetadata}
-        onTagClick={onTagClick}
-        onViewAll={onViewAll}
-        onEditReading={onEditReading}
-        onDeleteReading={onDeleteReading}
-        onTogglePublic={onTogglePublic}
+        email={email}
+        isLoggedIn={isLoggedIn}
+        isEmailVerified={isEmailVerified}
       />
     </motion.div>
   );

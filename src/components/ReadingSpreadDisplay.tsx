@@ -85,6 +85,7 @@ interface ReadingSpreadDisplayProps {
   handleLongPressEnd: () => void;
   removeSlot: (index: number, e: React.MouseEvent) => void;
   allowSlotRemoval?: boolean;
+  onToggleSlotReverse?: (index: number, e: React.MouseEvent) => void;
   handleCycleSlot: (index: number, e: React.MouseEvent) => void;
   onConfirmSync: (spreadName: string) => void;
   onCancelSync: () => void;
@@ -99,12 +100,12 @@ export const ReadingSpreadDisplay: React.FC<ReadingSpreadDisplayProps> = ({
   itemClasses,
   currentTemplate,
   showUpdatePrompt,
-  spreads,
   onSlotClick,
   handleLongPressStart,
   handleLongPressEnd,
   removeSlot,
   allowSlotRemoval = true,
+  onToggleSlotReverse,
   handleCycleSlot,
   onConfirmSync,
   onCancelSync
@@ -159,6 +160,11 @@ export const ReadingSpreadDisplay: React.FC<ReadingSpreadDisplayProps> = ({
     : 0;
   const mobileDisplayScale = Math.min(1, Math.max(fitDisplayScale, readableScaleFloor));
   const shouldScaleGrid = isComplexGridLayout && mobileDisplayScale < 0.98;
+  const filledSlotCount = useMemo(
+    () => cardSlots.filter(slot => Boolean(slot.name)).length,
+    [cardSlots],
+  );
+  const shouldShowSpreadOverview = isFreeLayout || isYearlyRadialLayout || isCelticCross || cardSlots.length >= 5;
   const scaledGridStyle = shouldScaleGrid ? {
     width: rawGridWidth * mobileDisplayScale,
     minHeight: rawGridHeight * mobileDisplayScale,
@@ -188,6 +194,19 @@ export const ReadingSpreadDisplay: React.FC<ReadingSpreadDisplayProps> = ({
 
   return (
     <div ref={spreadViewportRef} className="space-y-3 sm:space-y-4">
+      {shouldShowSpreadOverview && (
+        <div
+          data-testid="spread-overview-status"
+          className="flex flex-wrap items-center justify-between gap-1.5 rounded-2xl border border-forest-accent/10 bg-forest-accent/[0.04] px-3 py-2 text-[11px] text-forest-muted sm:gap-2 sm:px-4 sm:py-2.5 sm:text-xs"
+        >
+          <span className="font-bold text-forest-accent">牌布总览</span>
+          <span className="font-bold text-forest-ink">已填 {filledSlotCount}/{cardSlots.length}</span>
+          <span className="basis-full text-[10px] leading-snug sm:basis-auto sm:text-xs">
+            点选位置后，在下方填写牌面与解读。
+          </span>
+        </div>
+      )}
+
       <AnimatePresence>
         {showUpdatePrompt && (
           <motion.div 
@@ -267,6 +286,7 @@ export const ReadingSpreadDisplay: React.FC<ReadingSpreadDisplayProps> = ({
                       onLongPressEnd={handleLongPressEnd}
                       onRemove={removeSlot}
                       allowRemove={allowSlotRemoval}
+                      onToggleReverse={onToggleSlotReverse}
                     />
                   </div>
                 );
@@ -276,13 +296,13 @@ export const ReadingSpreadDisplay: React.FC<ReadingSpreadDisplayProps> = ({
         </div>
       ) : isYearlyRadialLayout ? (
         <div className="w-full overflow-hidden pb-2" data-testid="yearly-radial-spread">
-          <div className="relative mx-auto aspect-square w-full max-w-[292px] rounded-3xl border border-forest-accent/10 bg-forest-bg/20 sm:max-w-[520px]">
+          <div className="relative mx-auto aspect-square w-full max-w-[276px] rounded-3xl border border-forest-accent/10 bg-forest-bg/20 sm:max-w-[520px]">
             <div className="pointer-events-none absolute inset-[18%] rounded-full border border-dashed border-forest-accent/12" />
             <div className="pointer-events-none absolute left-1/2 top-1/2 h-px w-[72%] -translate-x-1/2 bg-forest-accent/10" />
             <div className="pointer-events-none absolute left-1/2 top-1/2 h-[72%] w-px -translate-y-1/2 bg-forest-accent/10" />
             {cardSlots.map((slot, index) => {
               const point = yearlyMobilePositions[index] || yearlyMobilePositions[yearlyMobilePositions.length - 1];
-              const slotScale = spreadViewportWidth > 0 && spreadViewportWidth < 640 ? 0.72 : 0.82;
+              const slotScale = spreadViewportWidth > 0 && spreadViewportWidth < 640 ? 0.68 : 0.82;
 
               return (
                 <div
@@ -308,6 +328,7 @@ export const ReadingSpreadDisplay: React.FC<ReadingSpreadDisplayProps> = ({
                     onLongPressEnd={handleLongPressEnd}
                     onRemove={removeSlot}
                     allowRemove={allowSlotRemoval}
+                    onToggleReverse={onToggleSlotReverse}
                   />
                 </div>
               );
@@ -316,7 +337,7 @@ export const ReadingSpreadDisplay: React.FC<ReadingSpreadDisplayProps> = ({
         </div>
       ) : isCelticCross ? (
         <div className="w-full overflow-hidden pb-2" data-testid="celtic-cross-spread">
-          <div className="relative mx-auto aspect-[5/6] w-full max-w-[360px] rounded-3xl border border-forest-accent/10 bg-forest-bg/20 sm:max-w-[520px]">
+          <div className="relative mx-auto aspect-[5/6] w-full max-w-[330px] rounded-3xl border border-forest-accent/10 bg-forest-bg/20 sm:max-w-[520px]">
             <div className="pointer-events-none absolute left-[36%] top-[47%] h-[74%] w-px -translate-y-1/2 bg-forest-accent/10" />
             <div className="pointer-events-none absolute left-[14%] right-[30%] top-[47%] h-px bg-forest-accent/10" />
             <div className="pointer-events-none absolute bottom-[12%] right-[16%] top-[8%] w-px bg-forest-accent/10" />
@@ -324,7 +345,7 @@ export const ReadingSpreadDisplay: React.FC<ReadingSpreadDisplayProps> = ({
               if (index === 1) return null;
 
               const point = celticDisplayPositions[index] || celticDisplayPositions[0];
-              const slotScale = spreadViewportWidth > 0 && spreadViewportWidth < 640 ? 0.72 : 0.9;
+              const slotScale = spreadViewportWidth > 0 && spreadViewportWidth < 640 ? 0.68 : 0.9;
               const slotsAtPoint = index === 0 && cardSlots[1]
                 ? [
                     { ...slot, idx: 0 },
@@ -361,6 +382,7 @@ export const ReadingSpreadDisplay: React.FC<ReadingSpreadDisplayProps> = ({
                       onLongPressEnd={handleLongPressEnd}
                       onRemove={removeSlot}
                       allowRemove={allowSlotRemoval}
+                      onToggleReverse={onToggleSlotReverse}
                       onCycle={isCenterStack ? handleCycleSlot : undefined}
                     />
                   ))}
@@ -435,6 +457,7 @@ export const ReadingSpreadDisplay: React.FC<ReadingSpreadDisplayProps> = ({
                       onLongPressEnd={handleLongPressEnd}
                       onRemove={removeSlot}
                       allowRemove={allowSlotRemoval}
+                      onToggleReverse={onToggleSlotReverse}
                       onCycle={slotsAtPos.length > 1 ? handleCycleSlot : undefined}
                     />
                   ))}

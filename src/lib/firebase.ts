@@ -1,6 +1,8 @@
-import { initializeApp, getApps, getApp } from 'firebase/app';
 import type { FirebaseApp } from 'firebase/app';
-import { getAuth, signInWithPhoneNumber, RecaptchaVerifier, signOut, onAuthStateChanged, User, ConfirmationResult, createUserWithEmailAndPassword, signInWithEmailAndPassword, linkWithCredential, PhoneAuthProvider, EmailAuthProvider, sendPasswordResetEmail, sendEmailVerification, applyActionCode, verifyPasswordResetCode, confirmPasswordReset as firebaseConfirmPasswordReset, reauthenticateWithCredential, updatePassword, reload, deleteUser, setPersistence, browserLocalPersistence } from 'firebase/auth';
+import type { Auth, ConfirmationResult, User } from 'firebase/auth';
+
+type FirebaseAppApi = typeof import('firebase/app');
+type FirebaseAuthApi = typeof import('firebase/auth');
 
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY || '',
@@ -15,24 +17,35 @@ const firebaseConfig = {
 export const isFirebaseReady = !!import.meta.env.VITE_FIREBASE_API_KEY && import.meta.env.VITE_FIREBASE_API_KEY.length > 10;
 
 let firebaseApp: FirebaseApp | null = null;
-let auth: ReturnType<typeof getAuth> | null = null;
+let firebaseAppApi: FirebaseAppApi | null = null;
+let firebaseAppApiPromise: Promise<FirebaseAppApi> | null = null;
+let auth: Auth | null = null;
+let authApiPromise: Promise<FirebaseAuthApi> | null = null;
 let authPersistencePromise: Promise<void> | null = null;
 
-if (isFirebaseReady) {
-  try {
-    firebaseApp = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
-    auth = getAuth(firebaseApp);
-    authPersistencePromise = setPersistence(auth, browserLocalPersistence).catch(error => {
-      console.warn('Firebase auth persistence unavailable, continuing with default persistence:', error);
-    });
-  } catch (error) {
-    console.warn('Firebase initialization failed, running in guest mode');
-    firebaseApp = null;
-    auth = null;
-  }
-}
+const loadFirebaseAppApi = async (): Promise<FirebaseAppApi> => {
+  firebaseAppApiPromise ||= import('firebase/app').then(module => {
+    firebaseAppApi = module;
+    return module;
+  });
+  return firebaseAppApiPromise;
+};
 
-export const getFirebaseApp = (): FirebaseApp => {
+export const getFirebaseApp = async (): Promise<FirebaseApp> => {
+  if (!isFirebaseReady) {
+    throw new Error('Firebase 未配置。请设置 VITE_FIREBASE_API_KEY、VITE_FIREBASE_AUTH_DOMAIN、VITE_FIREBASE_PROJECT_ID 等环境变量。');
+  }
+
+  if (!firebaseApp) {
+    const api = firebaseAppApi || await loadFirebaseAppApi();
+    try {
+      firebaseApp = api.getApps().length > 0 ? api.getApp() : api.initializeApp(firebaseConfig);
+    } catch (error) {
+      console.warn('Firebase initialization failed, running in guest mode');
+      firebaseApp = null;
+    }
+  }
+
   if (!firebaseApp) {
     throw new Error('Firebase 未配置。请设置 VITE_FIREBASE_API_KEY、VITE_FIREBASE_AUTH_DOMAIN、VITE_FIREBASE_PROJECT_ID 等环境变量。');
   }
@@ -40,7 +53,39 @@ export const getFirebaseApp = (): FirebaseApp => {
   return firebaseApp;
 };
 
-export const firebaseAuth = auth;
+const loadAuthApi = async (): Promise<FirebaseAuthApi> => {
+  authApiPromise ||= import('firebase/auth');
+  return authApiPromise;
+};
+
+const getFirebaseAuth = async (): Promise<Auth | null> => {
+  if (!isFirebaseReady) return null;
+  const api = await loadAuthApi();
+  const app = await getFirebaseApp();
+
+  if (!auth) {
+    auth = api.getAuth(app);
+  }
+
+  return auth;
+};
+
+const ensureFirebaseAuth = async (): Promise<{ auth: Auth; api: FirebaseAuthApi }> => {
+  const firebaseAuth = await getFirebaseAuth();
+  const api = await loadAuthApi();
+
+  if (!firebaseAuth) {
+    throw new Error('Firebase 未配置。请设置 VITE_FIREBASE_API_KEY、VITE_FIREBASE_AUTH_DOMAIN、VITE_FIREBASE_PROJECT_ID 等环境变量。');
+  }
+
+  return { auth: firebaseAuth, api };
+};
+
+export const firebaseAuth = {
+  get currentUser() {
+    return auth?.currentUser || null;
+  },
+};
 
 const LOGIN_HISTORY_KEY = 'tarot_login_history';
 const USER_ACCOUNTS_KEY = 'tarot_user_accounts';
@@ -62,17 +107,13 @@ interface UserAccount {
   lastSmsReset: string;
 }
 
-const ensureFirebase = () => {
-  if (!auth) {
-    throw new Error('Firebase 未配置。请设置 VITE_FIREBASE_API_KEY、VITE_FIREBASE_AUTH_DOMAIN、VITE_FIREBASE_PROJECT_ID 等环境变量。');
-  }
-};
-
 export const ensureAuthPersistence = async (): Promise<void> => {
-  if (!auth) return;
+  const firebaseAuth = await getFirebaseAuth();
+  if (!firebaseAuth) return;
 
   if (!authPersistencePromise) {
-    authPersistencePromise = setPersistence(auth, browserLocalPersistence).catch(error => {
+    const api = await loadAuthApi();
+    authPersistencePromise = api.setPersistence(firebaseAuth, api.browserLocalPersistence).catch(error => {
       console.warn('Firebase auth persistence unavailable, continuing with default persistence:', error);
     });
   }
@@ -175,7 +216,9 @@ export const getLastLoginInfo = (uid: string): { type: string; identifier: strin
 };
 
 export const sendSmsCode = async (phoneNumber: string): Promise<ConfirmationResult | null> => {
-  if (!auth) return null;
+  const firebaseAuth = await getFirebaseAuth();
+  if (!firebaseAuth) return null;
+  const api = await loadAuthApi();
 
   const { canSend, resetDate } = canSendSms();
   if (!canSend) {
@@ -184,13 +227,13 @@ export const sendSmsCode = async (phoneNumber: string): Promise<ConfirmationResu
     throw error;
   }
 
-  const appVerifier = new RecaptchaVerifier(auth, 'recaptcha-container', {
+  const appVerifier = new api.RecaptchaVerifier(firebaseAuth, 'recaptcha-container', {
     size: 'invisible',
     callback: () => {},
     'expired-callback': () => {}
   });
 
-  return signInWithPhoneNumber(auth, phoneNumber, appVerifier);
+  return api.signInWithPhoneNumber(firebaseAuth, phoneNumber, appVerifier);
 };
 
 export const verifySmsCode = async (confirmationResult: ConfirmationResult, code: string): Promise<User> => {
@@ -199,28 +242,28 @@ export const verifySmsCode = async (confirmationResult: ConfirmationResult, code
 };
 
 export const signInWithPassword = async (email: string, password: string) => {
-  ensureFirebase();
+  const { auth: firebaseAuth, api } = await ensureFirebaseAuth();
   await ensureAuthPersistence();
-  return signInWithEmailAndPassword(auth!, email, password);
+  return api.signInWithEmailAndPassword(firebaseAuth, email, password);
 };
 
 export const signUpWithEmail = async (email: string, password: string) => {
-  ensureFirebase();
+  const { auth: firebaseAuth, api } = await ensureFirebaseAuth();
   await ensureAuthPersistence();
-  return createUserWithEmailAndPassword(auth!, email, password);
+  return api.createUserWithEmailAndPassword(firebaseAuth, email, password);
 };
 
 export const updateUserPassword = async (currentPassword: string, newPassword: string): Promise<void> => {
-  ensureFirebase();
-  const user = auth!.currentUser;
+  const { auth: firebaseAuth, api } = await ensureFirebaseAuth();
+  const user = firebaseAuth.currentUser;
 
   if (!user) throw new Error('用户未登录');
   if (!user.email) throw new Error('用户邮箱未设置');
 
   try {
-    const credential = EmailAuthProvider.credential(user.email, currentPassword);
-    await reauthenticateWithCredential(user, credential);
-    await updatePassword(user, newPassword);
+    const credential = api.EmailAuthProvider.credential(user.email, currentPassword);
+    await api.reauthenticateWithCredential(user, credential);
+    await api.updatePassword(user, newPassword);
   } catch (error: any) {
     let errorMessage = error.message || '修改密码失败';
 
@@ -247,11 +290,11 @@ export const updateUserPassword = async (currentPassword: string, newPassword: s
 };
 
 export const linkPhoneNumber = async (user: User, verificationId: string, verificationCode: string): Promise<User> => {
-  ensureFirebase();
+  const { api } = await ensureFirebaseAuth();
 
   try {
-    const credential = PhoneAuthProvider.credential(verificationId, verificationCode);
-    await linkWithCredential(user, credential);
+    const credential = api.PhoneAuthProvider.credential(verificationId, verificationCode);
+    await api.linkWithCredential(user, credential);
     return user;
   } catch (error: any) {
     if (error.code === 'auth/credential-already-in-use') {
@@ -262,11 +305,11 @@ export const linkPhoneNumber = async (user: User, verificationId: string, verifi
 };
 
 export const linkEmailPassword = async (user: User, email: string, password: string): Promise<User> => {
-  ensureFirebase();
+  const { api } = await ensureFirebaseAuth();
 
   try {
-    const credential = EmailAuthProvider.credential(email, password);
-    await linkWithCredential(user, credential);
+    const credential = api.EmailAuthProvider.credential(email, password);
+    await api.linkWithCredential(user, credential);
     return user;
   } catch (error: any) {
     if (error.code === 'auth/credential-already-in-use') {
@@ -277,8 +320,10 @@ export const linkEmailPassword = async (user: User, email: string, password: str
 };
 
 export const signOutUser = async (): Promise<void> => {
-  if (!auth) return;
-  await signOut(auth);
+  const firebaseAuth = await getFirebaseAuth();
+  if (!firebaseAuth) return;
+  const api = await loadAuthApi();
+  await api.signOut(firebaseAuth);
 };
 
 export const getCurrentUser = (): User | null => {
@@ -287,18 +332,43 @@ export const getCurrentUser = (): User | null => {
 };
 
 export const onAuthStateChangedListener = (callback: (user: User | null) => void): (() => void) => {
-  if (!auth) {
-    callback(null);
-    return () => {};
-  }
-  return onAuthStateChanged(auth, callback);
+  let unsubscribe: (() => void) | null = null;
+  let cancelled = false;
+
+  void (async () => {
+    try {
+      const firebaseAuth = await getFirebaseAuth();
+      if (!firebaseAuth) {
+        if (!cancelled) callback(null);
+        return;
+      }
+
+      const authWithStateReady = firebaseAuth as Auth & {
+        authStateReady?: () => Promise<void>;
+      };
+      await authWithStateReady.authStateReady?.();
+      if (cancelled) return;
+
+      const api = await loadAuthApi();
+      if (cancelled) return;
+      unsubscribe = api.onAuthStateChanged(firebaseAuth, callback);
+    } catch (error) {
+      console.warn('Firebase auth listener unavailable, continuing in guest mode:', error);
+      if (!cancelled) callback(null);
+    }
+  })();
+
+  return () => {
+    cancelled = true;
+    unsubscribe?.();
+  };
 };
 
 export const sendPasswordReset = async (email: string): Promise<void> => {
-  ensureFirebase();
+  const { auth: firebaseAuth, api } = await ensureFirebaseAuth();
 
   try {
-    await sendPasswordResetEmail(auth!, email, {
+    await api.sendPasswordResetEmail(firebaseAuth, email, {
       url: window.location.origin,
       handleCodeInApp: true,
     });
@@ -319,45 +389,45 @@ export const sendPasswordReset = async (email: string): Promise<void> => {
 };
 
 export const sendCurrentUserEmailVerification = async (): Promise<void> => {
-  ensureFirebase();
+  const { auth: firebaseAuth, api } = await ensureFirebaseAuth();
 
-  const user = auth!.currentUser;
+  const user = firebaseAuth.currentUser;
   if (!user) throw new Error('请先登录后再发送验证邮件。');
   if (!user.email) throw new Error('当前账号没有绑定邮箱。');
 
-  await reload(user);
+  await api.reload(user);
   if (user.emailVerified) return;
 
-  await sendEmailVerification(user, {
+  await api.sendEmailVerification(user, {
     url: window.location.origin,
     handleCodeInApp: false,
   });
 };
 
 export const refreshCurrentUser = async (): Promise<User> => {
-  ensureFirebase();
+  const { auth: firebaseAuth, api } = await ensureFirebaseAuth();
 
-  const user = auth!.currentUser;
+  const user = firebaseAuth.currentUser;
   if (!user) throw new Error('请先登录后再刷新验证状态。');
 
-  await reload(user);
-  return auth!.currentUser || user;
+  await api.reload(user);
+  return firebaseAuth.currentUser || user;
 };
 
 export const deleteUserAccount = async (): Promise<void> => {
-  ensureFirebase();
+  const { auth: firebaseAuth, api } = await ensureFirebaseAuth();
 
-  const user = auth!.currentUser;
+  const user = firebaseAuth.currentUser;
   if (!user) throw new Error('用户未登录');
 
-  await deleteUser(user);
+  await api.deleteUser(user);
 };
 
 export const confirmPasswordReset = async (oobCode: string, newPassword: string): Promise<void> => {
-  ensureFirebase();
+  const { auth: firebaseAuth, api } = await ensureFirebaseAuth();
 
   try {
-    await firebaseConfirmPasswordReset(auth!, oobCode, newPassword);
+    await api.confirmPasswordReset(firebaseAuth, oobCode, newPassword);
   } catch (error: any) {
     let errorMessage = error.message || '密码重置失败，请重试。';
 
@@ -385,16 +455,18 @@ export const checkIfMagicLink = (): { mode: string; oobCode: string } | null => 
 };
 
 export const verifyMagicLink = async (mode: string, oobCode: string): Promise<User | null> => {
-  if (!auth) return null;
+  const firebaseAuth = await getFirebaseAuth();
+  if (!firebaseAuth) return null;
+  const api = await loadAuthApi();
 
   if (mode === 'resetPassword') {
-    await verifyPasswordResetCode(auth, oobCode);
+    await api.verifyPasswordResetCode(firebaseAuth, oobCode);
     return null;
   }
 
   if (mode === 'verifyEmail' || mode === 'signIn') {
-    await applyActionCode(auth, oobCode);
-    return auth.currentUser;
+    await api.applyActionCode(firebaseAuth, oobCode);
+    return firebaseAuth.currentUser;
   }
 
   return null;

@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
-import { User } from 'firebase/auth';
+import type { User } from 'firebase/auth';
 import {
   signOutUser,
   onAuthStateChangedListener,
@@ -47,7 +47,9 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     let unsubscribe: (() => void) | null = null;
     let cancelled = false;
 
-    ensureAuthPersistence().finally(() => {
+    ensureAuthPersistence().catch(error => {
+      console.warn('Firebase auth persistence setup failed, continuing with auth listener:', error);
+    }).finally(() => {
       if (cancelled) return;
 
       unsubscribe = onAuthStateChangedListener((user) => {

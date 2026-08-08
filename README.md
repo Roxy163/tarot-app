@@ -84,6 +84,35 @@ npm run dev
 npm run build
 ```
 
+## ☁️ Cloudflare Pages 部署
+
+本项目同时保留 Netlify 配置与 Cloudflare Pages 配置。Netlify 的 `netlify.toml` 和 `netlify/functions/` 不需要删除；Cloudflare Pages 会自动使用根目录下的 `functions/` 处理 API 路由。
+
+Cloudflare Pages 推荐配置：
+
+- Build command：`npm run build`
+- Build output directory：`dist`
+- Functions route：`/api/gemini-proxy`
+
+Cloudflare Pages 环境变量：
+
+```env
+GEMINI_API_KEY=your-gemini-api-key
+VITE_FIREBASE_API_KEY=your-api-key
+VITE_FIREBASE_AUTH_DOMAIN=your-project.firebaseapp.com
+VITE_FIREBASE_PROJECT_ID=your-project-id
+VITE_FIREBASE_STORAGE_BUCKET=your-project.appspot.com
+VITE_FIREBASE_MESSAGING_SENDER_ID=your-sender-id
+VITE_FIREBASE_APP_ID=your-app-id
+VITE_FIREBASE_MEASUREMENT_ID=your-measurement-id
+```
+
+如果后续绑定自定义域名，或想允许额外预览地址调用 AI 接口，可在 Cloudflare Pages 环境变量里追加：
+
+```env
+ALLOWED_ORIGINS=https://your-domain.com,https://your-project.pages.dev
+```
+
 ## 🗂️ 项目结构
 
 ```

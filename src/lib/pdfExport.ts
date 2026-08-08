@@ -117,6 +117,7 @@ export const buildTarotExportLines = (data: TarotExportData): ExportLine[] => {
     if (reading.cardInterpretations?.length) {
       reading.cardInterpretations.forEach((interpretation, cardIndex) => {
         pushTextBlock(lines, `第 ${cardIndex + 1} 张注疏`, interpretation, 12);
+        pushTextBlock(lines, `第 ${cardIndex + 1} 张疑问`, reading.cardQuestions?.[cardIndex], 12);
       });
     }
 
@@ -218,6 +219,15 @@ const drawPageChrome = (context: CanvasRenderingContext2D, pageNumber: number) =
   context.moveTo(PAGE_MARGIN, 70);
   context.lineTo(PAGE_WIDTH_PT - PAGE_MARGIN, 70);
   context.stroke();
+
+  context.save();
+  context.translate(PAGE_WIDTH_PT / 2, PAGE_HEIGHT_PT / 2);
+  context.rotate(-0.34);
+  context.fillStyle = 'rgba(63, 111, 82, 0.055)';
+  context.font = '700 48px "Songti SC", "STSong", "Noto Serif CJK SC", serif';
+  context.textAlign = 'center';
+  context.fillText('塔罗研习阁', 0, 0);
+  context.restore();
 
   context.fillStyle = '#9aa38f';
   context.font = '400 9px "PingFang SC", sans-serif';
@@ -374,5 +384,10 @@ const createPdfBlobFromImages = (images: PdfPageImage[]) => {
 
 export const createTarotExportPdfBlob = (data: TarotExportData) => {
   const images = renderLinesToPageImages(buildTarotExportLines(data));
+  return createPdfBlobFromImages(images);
+};
+
+export const createExportPdfBlobFromLines = (lines: ExportLine[]) => {
+  const images = renderLinesToPageImages(lines);
   return createPdfBlobFromImages(images);
 };

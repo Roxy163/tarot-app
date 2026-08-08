@@ -1,64 +1,51 @@
-import React, { useEffect, useState } from 'react';
+import React from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Check, HelpCircle, Loader2, RotateCcw, Plus, FileText, Sparkles } from 'lucide-react';
-import { AiInspirationMode, CardKeywordMemory, ReadingSlotData, TarotCardMetadata } from '../types';
+import { HelpCircle, RotateCcw, Plus, FileText } from 'lucide-react';
+import { ReadingSlotData, TarotCardMetadata } from '../types';
 import { TAROT_CARDS, getCardImageUrl } from '../constants';
 import { getAnnotationByCardId } from '../constants/cardAnnotations';
 import { CardNumerologyBadge } from './CardNumerologyBadge';
-import { suggestAiInspiration } from '../services/geminiService';
 import { TarotCardImage } from './TarotCardImage';
+import { AutoResizeTextarea } from './ui/AutoResizeTextarea';
 
 interface ReadingDetailViewProps {
   activeSlotIndex: number;
   cardSlots: ReadingSlotData[];
   cardMetadata: TarotCardMetadata[];
-  cardKeywordMemory?: CardKeywordMemory[];
   cardInterpretations: string[];
-  question: string;
-  spread: string;
-  category?: string;
-  combinationContext?: string;
+  cardQuestions: string[];
   isLoggedIn: boolean;
   userId?: string;
   isMultiCard: boolean;
   isDailyMode: boolean;
   onToggleReverse: (idx: number, e: React.MouseEvent) => void;
   onSetCardInterpretations: (interps: string[]) => void;
+  onSetCardQuestions: (questions: string[]) => void;
   onSetActiveSlotIndex: (idx: number) => void;
   onSetShowPicker: (show: boolean) => void;
   onUpdateCardSlotsWithHistory: (slots: ReadingSlotData[]) => void;
+  hasInterpretationError?: boolean;
 }
 
 export const ReadingDetailView: React.FC<ReadingDetailViewProps> = ({
   activeSlotIndex,
   cardSlots,
   cardMetadata,
-  cardKeywordMemory = [],
   cardInterpretations,
-  question,
-  spread,
-  category,
-  combinationContext,
+  cardQuestions,
   isLoggedIn,
   userId,
   isMultiCard,
   isDailyMode,
   onToggleReverse,
   onSetCardInterpretations,
+  onSetCardQuestions,
   onSetActiveSlotIndex,
   onSetShowPicker,
-  onUpdateCardSlotsWithHistory
+  onUpdateCardSlotsWithHistory,
+  hasInterpretationError = false
 }) => {
-  const [inspirationMode, setInspirationMode] = useState<AiInspirationMode>('angle');
-  const [inspirationItems, setInspirationItems] = useState<string[]>([]);
-  const [isInspirationLoading, setIsInspirationLoading] = useState(false);
-  const [inspirationNotice, setInspirationNotice] = useState('');
   const currentSlot = cardSlots[activeSlotIndex];
-
-  useEffect(() => {
-    setInspirationItems([]);
-    setInspirationNotice('');
-  }, [activeSlotIndex, currentSlot?.name, currentSlot?.isReversed]);
 
   if (!currentSlot?.name) return null;
 
@@ -71,11 +58,6 @@ export const ReadingDetailView: React.FC<ReadingDetailViewProps> = ({
     house: officialAnnotation?.house,
     element: officialAnnotation?.element || currentMetadata?.astrology?.element,
   };
-  const personalKeywords = cardKeywordMemory
-    .find(item => item.cardName === currentSlot.name)
-    ?.keywords
-    .slice(0, 8)
-    .map(item => item.keyword) || [];
   const currentSlotLabel = currentSlot.label || `位置 ${activeSlotIndex + 1}`;
   const correspondenceBadgeClass = 'text-[9px] text-forest-muted bg-forest-bg px-1 rounded border border-forest-accent/5 font-bold';
   const cardAtmosphereHint = [
@@ -83,11 +65,6 @@ export const ReadingDetailView: React.FC<ReadingDetailViewProps> = ({
     cardCorrespondence.planet || cardCorrespondence.zodiac,
   ].filter(Boolean).join(' / ');
   const cardKeywordHint = (officialAnnotation?.keywords || currentMetadata?.keywords || []).slice(0, 2).join(' / ');
-  const inspirationModes: { id: AiInspirationMode; label: string; icon: React.ElementType }[] = [
-    { id: 'angle', label: '切入点', icon: Sparkles },
-    { id: 'questions', label: '自我提问', icon: HelpCircle },
-    { id: 'shadow', label: '反向视角', icon: RotateCcw },
-  ];
   const scrollFocusedFieldIntoView = (event: React.FocusEvent<HTMLElement>) => {
     if (typeof window === 'undefined' || window.innerWidth >= 768) return;
     const target = event.currentTarget;
@@ -103,45 +80,10 @@ export const ReadingDetailView: React.FC<ReadingDetailViewProps> = ({
     onSetCardInterpretations(newInterps);
   };
 
-  const handleAskInspiration = async (mode = inspirationMode) => {
-    setInspirationMode(mode);
-    setIsInspirationLoading(true);
-    setInspirationNotice('');
-    try {
-      const suggestions = await suggestAiInspiration({
-        cardName: currentSlot.name,
-        isReversed: currentSlot.isReversed,
-        slotLabel: currentSlotLabel,
-        question,
-        spread,
-        category,
-        currentInsight: cardInterpretations[activeSlotIndex] || '',
-        combinationContext,
-        personalKeywords,
-        cardKeywords: officialAnnotation?.keywords || currentMetadata?.keywords,
-        cardCorrespondences: [
-          cardCorrespondence.planet && `行星: ${cardCorrespondence.planet}`,
-          cardCorrespondence.zodiac && `星座: ${cardCorrespondence.zodiac}`,
-          cardCorrespondence.house && `宫位: ${cardCorrespondence.house}`,
-          cardCorrespondence.element && `元素: ${cardCorrespondence.element}`,
-        ].filter(Boolean) as string[],
-        cardMeaning: officialAnnotation?.uprightMeaning || currentMetadata?.meaning,
-        reversedMeaning: officialAnnotation?.reversedMeaning || currentMetadata?.reversedMeaning,
-        mode
-      });
-      setInspirationItems(suggestions);
-      if (suggestions.length === 0) setInspirationNotice('暂时没有生成灵感，可以换个模式再试。');
-    } catch (error) {
-      console.error('Failed to load AI inspiration:', error);
-      setInspirationNotice('灵感暂时没有回应，可以稍后再试。');
-    } finally {
-      setIsInspirationLoading(false);
-    }
-  };
-
-  const adoptInspiration = (item: string) => {
-    const current = cardInterpretations[activeSlotIndex] || '';
-    updateActiveInterpretation(current ? `${current}\n${item}` : item);
+  const updateActiveQuestion = (value: string) => {
+    const newQuestions = [...cardQuestions];
+    newQuestions[activeSlotIndex] = value;
+    onSetCardQuestions(newQuestions);
   };
 
   return (
@@ -265,7 +207,7 @@ export const ReadingDetailView: React.FC<ReadingDetailViewProps> = ({
                     >
                       <span className="opacity-60">{i + 1}.</span>
                       {slot.label || `位置 ${i + 1}`}
-                      {cardInterpretations[i] && <div className={`h-1 w-1 rounded-full ${activeSlotIndex === i ? 'bg-white' : 'bg-forest-accent'}`} />}
+                      {(cardInterpretations[i] || cardQuestions[i]) && <div className={`h-1 w-1 rounded-full ${activeSlotIndex === i ? 'bg-white' : 'bg-forest-accent'}`} />}
                     </button>
                   ))}
                 </div>
@@ -277,10 +219,16 @@ export const ReadingDetailView: React.FC<ReadingDetailViewProps> = ({
                 <FileText size={14} />
                 灵见注疏
               </div>
-              <textarea
-                required
-                rows={4}
-                className="w-full rounded-xl border border-forest-accent/10 bg-white px-3 py-2.5 text-sm shadow-inner transition-all focus:ring-2 focus:ring-forest-accent/20 sm:px-4 sm:py-3"
+              <AutoResizeTextarea
+                data-required-field="card-interpretation"
+                aria-invalid={hasInterpretationError}
+                minRows={1.5}
+                maxRows={9}
+                className={`w-full rounded-xl border px-3 py-2.5 text-sm shadow-inner transition-all focus:ring-2 sm:px-4 sm:py-3 ${
+                  hasInterpretationError
+                    ? 'border-forest-pink/35 bg-forest-pink/6 ring-2 ring-forest-pink/10 focus:ring-forest-pink/15'
+                    : 'border-forest-accent/10 bg-white focus:ring-forest-accent/20'
+                }`}
                 placeholder={isDailyMode ? "记录今天这张牌与你生活的对应..." : `记录关于“${currentSlot.label || `位置 ${activeSlotIndex + 1}`}”的直觉与洞察...`}
                 value={cardInterpretations[activeSlotIndex] || ''}
                 onFocus={scrollFocusedFieldIntoView}
@@ -288,91 +236,26 @@ export const ReadingDetailView: React.FC<ReadingDetailViewProps> = ({
               />
             </div>
 
-            <div className="space-y-2 rounded-2xl border border-forest-accent/10 bg-white/70 p-2.5 sm:space-y-3 sm:p-3">
-              <p className="text-[10px] leading-relaxed text-forest-muted">
-                AI 灵感只提供解读角度、追问和阴影面提示，不会替你保存结论；可把有用的部分写进上方注疏。
-              </p>
-              <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
-                <div className="flex flex-wrap gap-1.5">
-                  {inspirationModes.map(mode => {
-                    const Icon = mode.icon;
-                    const selected = inspirationMode === mode.id;
-                    return (
-                      <button
-                        key={mode.id}
-                        type="button"
-                        onClick={() => handleAskInspiration(mode.id)}
-                        disabled={isInspirationLoading}
-                        className={`flex min-h-11 items-center gap-1.5 rounded-xl border px-3 py-2 text-xs font-bold transition-all ${
-                          selected
-                            ? 'bg-forest-accent text-white border-forest-accent shadow-sm'
-                            : 'bg-white text-forest-muted border-forest-accent/10 hover:text-forest-accent hover:border-forest-accent/30'
-                        }`}
-                      >
-                        <Icon size={14} />
-                        {mode.label}
-                      </button>
-                    );
-                  })}
+            <div className="rounded-2xl border border-forest-accent/8 bg-white/46 p-2.5 sm:p-3">
+              <div className="mb-2 flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2 text-xs font-medium text-forest-accent">
+                  <HelpCircle size={14} />
+                  牌面疑问
                 </div>
-
-                <button
-                  type="button"
-                  onClick={() => handleAskInspiration()}
-                  disabled={isInspirationLoading}
-                  className="flex min-h-11 items-center justify-center gap-2 rounded-xl bg-forest-pink px-4 py-2 text-xs font-bold text-white shadow-sm transition-colors hover:bg-forest-pink/90 disabled:opacity-60"
-                >
-                  {isInspirationLoading ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
-                  AI 灵感
-                </button>
+                <span className="hidden text-[10px] text-forest-muted sm:inline">
+                  复盘时再回应
+                </span>
               </div>
-
-              {personalKeywords.length > 0 && (
-                <div className="flex flex-wrap gap-1.5">
-                  {personalKeywords.slice(0, 5).map(keyword => (
-                    <span key={keyword} className="text-[9px] px-2 py-0.5 rounded-full bg-forest-accent/5 text-forest-accent border border-forest-accent/10">
-                      {keyword}
-                    </span>
-                  ))}
-                </div>
-              )}
-
-              <div className="flex flex-wrap gap-1.5 text-[9px] text-forest-muted">
-                <span className="px-2 py-0.5 rounded-full bg-forest-accent/5 border border-forest-accent/10">依据: 系统牌义注解</span>
-                <span className="px-2 py-0.5 rounded-full bg-forest-accent/5 border border-forest-accent/10">正逆位含义</span>
-                <span className="px-2 py-0.5 rounded-full bg-forest-accent/5 border border-forest-accent/10">关键词与对应关系</span>
-                {personalKeywords.length > 0 && (
-                  <span className="px-2 py-0.5 rounded-full bg-forest-accent/5 border border-forest-accent/10">个人高频词</span>
-                )}
-              </div>
-
-              <AnimatePresence>
-                {(inspirationItems.length > 0 || inspirationNotice) && (
-                  <motion.div
-                    initial={{ opacity: 0, y: 6 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: -6 }}
-                    className="space-y-2"
-                  >
-                    {inspirationNotice && (
-                      <p className="text-[10px] text-forest-muted">{inspirationNotice}</p>
-                    )}
-                    {inspirationItems.map((item, index) => (
-                      <div key={`${item}-${index}`} className="flex items-start gap-2 rounded-xl bg-white border border-forest-accent/10 p-3">
-                        <p className="flex-1 text-xs text-forest-ink leading-relaxed">{item}</p>
-                        <button
-                          type="button"
-                          onClick={() => adoptInspiration(item)}
-                          className="min-h-11 px-3 py-2 rounded-xl bg-forest-accent/5 text-forest-accent text-[10px] font-bold flex items-center gap-1 hover:bg-forest-accent/10 transition-colors"
-                        >
-                          <Check size={12} />
-                          采纳
-                        </button>
-                      </div>
-                    ))}
-                  </motion.div>
-                )}
-              </AnimatePresence>
+              <AutoResizeTextarea
+                minRows={1.5}
+                maxRows={6}
+                className="w-full rounded-xl border border-forest-accent/8 bg-white/55 px-3 py-2 text-xs leading-relaxed text-forest-ink transition-all placeholder:text-forest-muted/70 focus:ring-2 focus:ring-forest-accent/15 sm:text-sm"
+                aria-label={`牌面疑问：${currentSlotLabel}`}
+                placeholder={`哪里还没想通？先写给“${currentSlotLabel}”留着。`}
+                value={cardQuestions[activeSlotIndex] || ''}
+                onFocus={scrollFocusedFieldIntoView}
+                onChange={e => updateActiveQuestion(e.target.value)}
+              />
             </div>
           </div>
         </div>

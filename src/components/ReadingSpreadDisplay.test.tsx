@@ -1,4 +1,5 @@
 import { render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ReadingSpreadDisplay } from './ReadingSpreadDisplay';
 import { LAYOUT_TEMPLATES } from '../constants';
@@ -48,6 +49,7 @@ describe('ReadingSpreadDisplay', () => {
     const lowerCell = screen.getByTestId('celtic-foundation-slot');
 
     expect(screen.getByTestId('celtic-cross-spread')).toBeInTheDocument();
+    expect(screen.getByTestId('spread-overview-status')).toHaveTextContent('已填 0/10');
     expect(centerCell).toHaveStyle({ zIndex: '40' });
     expect(lowerCell).toHaveStyle({ zIndex: '15' });
     expect(centerCell).toContainElement(centerButton);
@@ -95,7 +97,76 @@ describe('ReadingSpreadDisplay', () => {
     );
 
     expect(screen.getByTestId('yearly-radial-spread')).toBeInTheDocument();
+    expect(screen.getByTestId('spread-overview-status')).toHaveTextContent('已填 0/13');
     expect(screen.getByRole('button', { name: /底牌/ })).toBeInTheDocument();
+  });
+
+  it('uses the natural card-grid layout for the choice spread', () => {
+    const choiceSlots = LAYOUT_TEMPLATES.choice.defaultSlots.map((label, index) => ({
+      name: '',
+      isReversed: false,
+      label,
+      position: LAYOUT_TEMPLATES.choice.itemClasses[index],
+    }));
+
+    render(
+      <ReadingSpreadDisplay
+        formData={{ layoutType: 'choice', spread: '选择牌阵' }}
+        cardSlots={choiceSlots}
+        activeSlotIndex={-1}
+        showSlotNumbers
+        gridCols={3}
+        itemClasses={LAYOUT_TEMPLATES.choice.itemClasses}
+        currentTemplate={LAYOUT_TEMPLATES.choice}
+        showUpdatePrompt={null}
+        spreads={[]}
+        onSlotClick={vi.fn()}
+        handleLongPressStart={vi.fn()}
+        handleLongPressEnd={vi.fn()}
+        removeSlot={vi.fn()}
+        handleCycleSlot={vi.fn()}
+        onConfirmSync={vi.fn()}
+        onCancelSync={vi.fn()}
+      />,
+    );
+
+    expect(screen.queryByTestId('choice-spread')).not.toBeInTheDocument();
+    expect(screen.getByTestId('spread-overview-status')).toHaveTextContent('已填 0/5');
+    expect(screen.getByRole('button', { name: /A近期发展/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /B近期发展/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /A远期结果/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /B远期结果/ })).toBeInTheDocument();
+  });
+
+  it('toggles a selected card orientation from the slot badge', async () => {
+    const user = userEvent.setup();
+    const onToggleSlotReverse = vi.fn();
+
+    render(
+      <ReadingSpreadDisplay
+        formData={{ layoutType: 'horizontal', spread: '单牌阵' }}
+        cardSlots={[{ name: '愚者', isReversed: false, label: '主牌' }]}
+        activeSlotIndex={0}
+        showSlotNumbers
+        gridCols={5}
+        itemClasses={LAYOUT_TEMPLATES.horizontal.itemClasses}
+        currentTemplate={LAYOUT_TEMPLATES.horizontal}
+        showUpdatePrompt={null}
+        spreads={[]}
+        onSlotClick={vi.fn()}
+        handleLongPressStart={vi.fn()}
+        handleLongPressEnd={vi.fn()}
+        removeSlot={vi.fn()}
+        handleCycleSlot={vi.fn()}
+        onConfirmSync={vi.fn()}
+        onCancelSync={vi.fn()}
+        onToggleSlotReverse={onToggleSlotReverse}
+      />,
+    );
+
+    await user.click(screen.getByRole('button', { name: '切换第 1 张为逆位' }));
+
+    expect(onToggleSlotReverse).toHaveBeenCalledWith(0, expect.any(Object));
   });
 
   it('fits free-layout spreads inside a mobile-width preview instead of clipping them', async () => {

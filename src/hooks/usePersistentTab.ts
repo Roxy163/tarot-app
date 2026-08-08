@@ -6,12 +6,20 @@ export const usePersistentTab = <T extends string>(
   isValidTab: (value: string | null) => value is T,
 ) => {
   const [activeTab, setActiveTab] = useState<T>(() => {
-    const saved = localStorage.getItem(storageKey);
-    return isValidTab(saved) ? saved : fallbackTab;
+    try {
+      const saved = localStorage.getItem(storageKey);
+      return isValidTab(saved) ? saved : fallbackTab;
+    } catch {
+      return fallbackTab;
+    }
   });
 
   useEffect(() => {
-    localStorage.setItem(storageKey, activeTab);
+    try {
+      localStorage.setItem(storageKey, activeTab);
+    } catch {
+      // 存储不可用时只影响“记住上次页面”，不影响当前使用。
+    }
   }, [activeTab, storageKey]);
 
   return [activeTab, setActiveTab] as const;

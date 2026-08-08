@@ -20,6 +20,7 @@ export interface UserProfile {
   avatar_url?: string;
   password?: string;
   createdAt: string;
+  updatedAt?: string;
 }
 
 export interface TarotCardMetadata {
@@ -57,6 +58,33 @@ export interface CardKeywordMemoryEntry {
 export interface CardKeywordMemory {
   cardName: string;
   keywords: CardKeywordMemoryEntry[];
+  updatedAt: string;
+}
+
+export type QuizTrainingMode = 'meaning' | 'correspondence' | 'reverse';
+
+export type QuizPracticeFeedback = 'remembered' | 'unfamiliar' | 'wrong' | 'add-repeat' | 'clear-repeat';
+
+export interface QuizMemoryAttempt {
+  id: string;
+  modeLabel: string;
+  prompt: string;
+  answerLabel: string;
+  selectedLabel: string;
+  correct: boolean;
+  createdAt: string;
+}
+
+export interface QuizMemoryEntry {
+  cardId: string;
+  cardName: string;
+  practiceCount: number;
+  unfamiliarCount: number;
+  wrongCount: number;
+  repeated: boolean;
+  attempts?: QuizMemoryAttempt[];
+  lastPracticedAt?: string;
+  createdAt: string;
   updatedAt: string;
 }
 
@@ -126,6 +154,7 @@ export interface TarotReading {
   spread: string;
   cards: ReadingSlotData[];
   cardInterpretations?: string[];
+  cardQuestions?: string[];
   interpretation: {
     singleCard: string;
     combination: string;
@@ -136,6 +165,7 @@ export interface TarotReading {
     elementInfluence?: string;
   };
   keywords: string[];
+  manualTags?: string[];
   isPublic: boolean;
   authorName: string;
   isAnonymous: boolean;
@@ -143,6 +173,8 @@ export interface TarotReading {
   clientName?: string;
   clientFeedback?: string;
   userFeedback?: string;
+  choicePathA?: string;
+  choicePathB?: string;
   isExample?: boolean;
   layoutType?: string;
   slotLabels?: string[];
@@ -201,12 +233,16 @@ export interface ReadingFormData {
   clientName: string;
   clientFeedback: string;
   userFeedback: string;
+  choicePathA: string;
+  choicePathB: string;
   readingDate: string;
   isTimePrecise: boolean;
   category: string;
+  manualTags?: string[];
   skipAi: boolean;
   cards: ReadingSlotData[];
   cardInterpretations: string[];
+  cardQuestions: string[];
   slotLabels: string[];
   slotPositions: string[];
   rotatedSlots: number[];
@@ -220,12 +256,22 @@ export interface DailyFortune {
   isReversed: boolean;
   interpretation: string;
   keywords: string[];
+  initialImpression?: string;
+  dailyReview?: string;
   reflection?: string;
   archivedAt?: string;
+  savedToCardAnnotationAt?: string;
+  cardAnnotationNote?: string;
   source?: 'app-draw' | 'physical-draw';
   createdAt: string;
+  updatedAt?: string;
   isRevealed?: boolean;
   isLocked?: boolean;
+}
+
+export interface DailyFortuneReflectionParts {
+  initialImpression?: string;
+  dailyReview?: string;
 }
 
 export interface FortuneSummary {

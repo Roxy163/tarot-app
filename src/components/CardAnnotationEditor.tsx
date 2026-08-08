@@ -1,13 +1,14 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import type React from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { X, Search, ChevronDown, ChevronRight, Save, RotateCcw, Star, Moon, Sun, Sparkles, ArrowLeft } from 'lucide-react';
-import { TarotCardMetadata } from '../types';
+import { X, Search, Save, RotateCcw, Star, Moon, Sun, Sparkles, ArrowLeft } from 'lucide-react';
 import { TAROT_CARDS, getCardImageUrl } from '../constants';
 import { OFFICIAL_CARD_ANNOTATIONS } from '../constants/cardAnnotations';
 import { cardMatchesSearch } from '../lib/cardSearch';
 import { cardAnnotationService } from '../services/cardAnnotationService';
 import { useBodyScrollLock } from '../hooks/useBodyScrollLock';
 import { TarotCardImage } from './TarotCardImage';
+import { AutoResizeTextarea } from './ui/AutoResizeTextarea';
 
 interface CardAnnotationEditorProps {
   isOpen: boolean;
@@ -46,14 +47,6 @@ export const CardAnnotationEditor: React.FC<CardAnnotationEditorProps> = ({
   const [filter, setFilter] = useState<FilterType>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [refreshTick, setRefreshTick] = useState(0);
-  const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({
-    major: true,
-    wands: true,
-    cups: true,
-    swords: true,
-    pentacles: true,
-  });
-
   const [editForm, setEditForm] = useState({
     numerology: '',
     planet: '',
@@ -179,10 +172,6 @@ export const CardAnnotationEditor: React.FC<CardAnnotationEditorProps> = ({
     }, 2000);
   };
 
-  const toggleGroup = (group: string) => {
-    setExpandedGroups(prev => ({ ...prev, [group]: !prev[group] }));
-  };
-
   if (!isOpen) return null;
 
   const getArcanaInfo = (cardId: string) => {
@@ -206,11 +195,11 @@ export const CardAnnotationEditor: React.FC<CardAnnotationEditorProps> = ({
         initial={{ scale: 0.95, opacity: 0 }}
         animate={{ scale: 1, opacity: 1 }}
         exit={{ scale: 0.95, opacity: 0 }}
-        className="absolute inset-3 sm:inset-4 md:inset-8 max-h-[calc(100vh-1.5rem)] sm:max-h-[calc(100vh-2rem)] md:max-h-[calc(100vh-4rem)] bg-forest-bg rounded-2xl shadow-2xl flex flex-col overflow-hidden"
+        className="absolute inset-2 flex max-h-[calc(100vh-1rem)] flex-col overflow-hidden rounded-2xl bg-forest-bg shadow-2xl sm:inset-4 sm:max-h-[calc(100vh-2rem)] md:inset-8 md:max-h-[calc(100vh-4rem)]"
       >
         {/* Header */}
-        <div className="flex items-center justify-between p-4 border-b border-forest-accent/20">
-          <h2 className="text-xl font-serif font-bold text-forest-ink">编辑牌义</h2>
+        <div className="flex items-center justify-between border-b border-forest-accent/12 p-3 sm:p-4">
+          <h2 className="font-serif text-lg font-bold text-forest-ink sm:text-xl">编辑牌义</h2>
           <button
             onClick={onClose}
             className="min-h-11 min-w-11 p-2 hover:bg-forest-accent/10 rounded-lg transition-colors flex items-center justify-center"
@@ -225,7 +214,7 @@ export const CardAnnotationEditor: React.FC<CardAnnotationEditorProps> = ({
           {/* Left Panel - Card List */}
           <div className={`${selectedCardId ? 'hidden md:flex' : 'flex'} w-full md:w-80 md:border-r border-forest-accent/20 flex-col`}>
             {/* Search and Filter */}
-            <div className="p-4 space-y-3 border-b border-forest-accent/20">
+            <div className="space-y-2 border-b border-forest-accent/12 p-3 sm:space-y-3 sm:p-4">
               <div className="relative">
                 <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-forest-muted" />
                 <input
@@ -473,10 +462,11 @@ export const CardAnnotationEditor: React.FC<CardAnnotationEditorProps> = ({
                   {/* Meanings */}
                   <div>
                     <label className="block text-sm font-bold text-forest-accent mb-1">正位释义</label>
-                    <textarea
+                    <AutoResizeTextarea
                       value={editForm.uprightMeaning}
                       onChange={(e) => setEditForm({ ...editForm, uprightMeaning: e.target.value })}
-                      rows={4}
+                      minRows={2}
+                      maxRows={10}
                       className="w-full px-3 py-2 bg-white rounded-lg border border-forest-accent/20 focus:border-forest-accent focus:ring-2 focus:ring-forest-accent/20 outline-none resize-none"
                       placeholder="请输入正位的详细释义..."
                     />
@@ -484,10 +474,11 @@ export const CardAnnotationEditor: React.FC<CardAnnotationEditorProps> = ({
 
                   <div>
                     <label className="block text-sm font-bold text-forest-pink mb-1">逆位释义</label>
-                    <textarea
+                    <AutoResizeTextarea
                       value={editForm.reversedMeaning}
                       onChange={(e) => setEditForm({ ...editForm, reversedMeaning: e.target.value })}
-                      rows={4}
+                      minRows={2}
+                      maxRows={10}
                       className="w-full px-3 py-2 bg-white rounded-lg border border-forest-pink/20 focus:border-forest-pink focus:ring-2 focus:ring-forest-pink/20 outline-none resize-none"
                       placeholder="请输入逆位的详细释义..."
                     />
@@ -496,10 +487,11 @@ export const CardAnnotationEditor: React.FC<CardAnnotationEditorProps> = ({
                   {/* Personal Notes */}
                   <div>
                     <label className="block text-sm font-bold text-amber-600 mb-1">个人注解</label>
-                    <textarea
+                    <AutoResizeTextarea
                       value={editForm.personalNotes}
                       onChange={(e) => setEditForm({ ...editForm, personalNotes: e.target.value })}
-                      rows={3}
+                      minRows={2}
+                      maxRows={10}
                       className="w-full px-3 py-2 bg-amber-50 rounded-lg border border-amber-200 focus:border-amber-400 focus:ring-2 focus:ring-amber-200 outline-none resize-none"
                       placeholder="记录你个人对这张牌的理解和感悟..."
                     />

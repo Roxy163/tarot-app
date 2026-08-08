@@ -16,6 +16,25 @@ describe('official spread definitions', () => {
     ]);
   });
 
+  it('matches the choice spread labels and positions for two-option decisions', () => {
+    const choiceSpread = OFFICIAL_SPREADS.find(spread => spread.name === '选择牌阵');
+
+    expect(choiceSpread?.slots).toEqual([
+      '现状',
+      'A近期发展',
+      'B近期发展',
+      'A远期结果',
+      'B远期结果',
+    ]);
+    expect(choiceSpread?.slotPositions).toEqual([
+      'col-start-3 row-start-3',
+      'col-start-2 row-start-2',
+      'col-start-4 row-start-2',
+      'col-start-1 row-start-1',
+      'col-start-5 row-start-1',
+    ]);
+  });
+
   it('keeps official positions within their display template columns', () => {
     OFFICIAL_SPREADS.forEach(spread => {
       const template = LAYOUT_TEMPLATES[spread.layout];

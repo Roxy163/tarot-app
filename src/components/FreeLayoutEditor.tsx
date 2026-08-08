@@ -30,6 +30,14 @@ const DRAG_MOVE_THRESHOLD = 6;
 const CLICK_SUPPRESS_MS = 180;
 const PENDING_SLOT_TIMEOUT_MS = 2000;
 const ALIGNMENT_SNAP_THRESHOLD = 14;
+const getWindowViewportHeight = () => (
+  typeof window === 'undefined' ? 720 : window.innerHeight
+);
+
+const getCenteredViewportOffset = (viewportWidth: number, viewportHeight: number, scale = 1) => ({
+  x: (viewportWidth - FREE_LAYOUT_CANVAS_WIDTH * scale) / 2,
+  y: (viewportHeight - FREE_LAYOUT_CANVAS_HEIGHT * scale) / 2,
+});
 
 type DragPosition = {
   x: number;
@@ -200,7 +208,7 @@ export const FreeLayoutEditor: React.FC<FreeLayoutEditorProps> = ({
   onSwapSlotIndex,
   onUpdateSlots
 }) => {
-  const [showGrid, setShowGrid] = useState(true);
+  const showGrid = true;
   const [snapEnabled, setSnapEnabled] = useState(true);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
   const [pendingSlot, setPendingSlot] = useState<ReadingSlotData | null>(null);
@@ -212,7 +220,6 @@ export const FreeLayoutEditor: React.FC<FreeLayoutEditorProps> = ({
   const [canvasScale, setCanvasScale] = useState(1);
   const [viewportOffset, setViewportOffset] = useState({ x: 0, y: 0 });
   const [isPanning, setIsPanning] = useState(false);
-  const [interactionMode, setInteractionMode] = useState<'place' | 'pan'>('place');
   const rootRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLDivElement>(null);
   const viewportRef = useRef<HTMLDivElement>(null);
@@ -226,13 +233,16 @@ export const FreeLayoutEditor: React.FC<FreeLayoutEditorProps> = ({
   const canvasSuppressClickTimerRef = useRef<number | null>(null);
   const pendingExpireTimerRef = useRef<number | null>(null);
   const panStartRef = useRef({ clientX: 0, clientY: 0, x: 0, y: 0 });
+  const panMovedRef = useRef(false);
+  const hasInitializedViewRef = useRef(false);
   const pointersRef = useRef<Map<number, PointerEvent>>(new Map());
   const pinchRef = useRef<{ distance: number; scale: number } | null>(null);
   const [viewportWidth, setViewportWidth] = useState(FREE_LAYOUT_CANVAS_WIDTH);
-  const viewportHeight = Math.min(
-    FREE_LAYOUT_VIEWPORT_HEIGHT,
-    Math.max(320, viewportWidth * 0.72),
-  );
+  const [windowViewportHeight, setWindowViewportHeight] = useState(getWindowViewportHeight);
+  const isCompactViewport = viewportWidth < 640;
+  const viewportHeight = isCompactViewport
+    ? Math.max(420, Math.min(620, windowViewportHeight * 0.62))
+    : Math.min(FREE_LAYOUT_VIEWPORT_HEIGHT, Math.max(360, viewportWidth * 0.72));
   const canvasSize = {
     width: FREE_LAYOUT_CANVAS_WIDTH,
     height: FREE_LAYOUT_CANVAS_HEIGHT,
@@ -245,6 +255,7 @@ export const FreeLayoutEditor: React.FC<FreeLayoutEditorProps> = ({
       const nextViewportWidth = Math.max(280, Math.min(availableWidth, 900));
 
       setViewportWidth(nextViewportWidth);
+      setWindowViewportHeight(getWindowViewportHeight());
     };
 
     updateSize();
@@ -259,6 +270,13 @@ export const FreeLayoutEditor: React.FC<FreeLayoutEditorProps> = ({
       window.removeEventListener('resize', updateSize);
     };
   }, []);
+
+  useEffect(() => {
+    if (hasInitializedViewRef.current) return;
+
+    hasInitializedViewRef.current = true;
+    setViewportOffset(getCenteredViewportOffset(viewportWidth, viewportHeight, 1));
+  }, [viewportHeight, viewportWidth]);
 
   useEffect(() => {
     setSelectedSlotIndexes(current => {
@@ -372,6 +390,7 @@ export const FreeLayoutEditor: React.FC<FreeLayoutEditorProps> = ({
 
   const startViewportPan = useCallback((clientX: number, clientY: number) => {
     setIsPanning(true);
+    panMovedRef.current = false;
     panStartRef.current = {
       clientX,
       clientY,
@@ -382,11 +401,6 @@ export const FreeLayoutEditor: React.FC<FreeLayoutEditorProps> = ({
 
   const handleCanvasPointerDown = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
     if (e.target !== canvasRef.current && e.target !== viewportRef.current) return;
-
-    if (interactionMode === 'pan') {
-      startViewportPan(e.clientX, e.clientY);
-      return;
-    }
 
     const nativeEvent = e.nativeEvent;
     pointersRef.current.set(nativeEvent.pointerId, nativeEvent);
@@ -400,6 +414,14 @@ export const FreeLayoutEditor: React.FC<FreeLayoutEditorProps> = ({
         distance: Math.hypot(points[0].clientX - points[1].clientX, points[0].clientY - points[1].clientY),
         scale: canvasScale,
       };
+      return;
+    }
+
+    if (!e.shiftKey && !e.metaKey && !e.ctrlKey) {
+      selectionDragRef.current = null;
+      selectionBoxRef.current = null;
+      setSelectionBox(null);
+      startViewportPan(e.clientX, e.clientY);
       return;
     }
 
@@ -417,12 +439,10 @@ export const FreeLayoutEditor: React.FC<FreeLayoutEditorProps> = ({
   }, [
     canvasScale,
     getCanvasPoint,
-    interactionMode,
     startViewportPan,
   ]);
 
   const handleCanvasClick = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
-    if (interactionMode !== 'place') return;
     if (e.target !== canvasRef.current && e.target !== viewportRef.current) return;
     if (canvasSuppressClickRef.current) return;
 
@@ -430,7 +450,7 @@ export const FreeLayoutEditor: React.FC<FreeLayoutEditorProps> = ({
     if (!point) return;
 
     previewSlotAtPosition(point.x, point.y);
-  }, [getCanvasPoint, interactionMode, previewSlotAtPosition]);
+  }, [getCanvasPoint, previewSlotAtPosition]);
 
   const handleCanvasPointerMove = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
     const nativeEvent = e.nativeEvent;
@@ -784,6 +804,20 @@ export const FreeLayoutEditor: React.FC<FreeLayoutEditorProps> = ({
     onSetDesignActiveSlot(-1);
   }, [cardSlots, onSetDesignActiveSlot, onUpdateSlots, selectedSlotIndexes]);
 
+  const handleDeleteSlot = useCallback((idx: number) => {
+    const remainingSlots = cardSlots.filter((_, slotIndex) => slotIndex !== idx);
+    const nextActiveIndex = remainingSlots.length === 0 ? -1 : Math.min(idx, remainingSlots.length - 1);
+
+    onUpdateSlots(remainingSlots);
+    setSelectedSlotIndexes(current => (
+      current
+        .filter(slotIndex => slotIndex !== idx)
+        .map(slotIndex => (slotIndex > idx ? slotIndex - 1 : slotIndex))
+        .filter(slotIndex => slotIndex >= 0 && slotIndex < remainingSlots.length)
+    ));
+    onSetDesignActiveSlot(nextActiveIndex);
+  }, [cardSlots, onSetDesignActiveSlot, onUpdateSlots]);
+
   const handleCenterSelectedSlots = useCallback((axis: 'horizontal' | 'vertical' | 'both') => {
     if (selectedSlotIndexes.length === 0) return;
 
@@ -950,42 +984,74 @@ export const FreeLayoutEditor: React.FC<FreeLayoutEditorProps> = ({
     onUpdateSlots(nextSlots);
   }, [boundCanvasPosition, cardSlots, designActiveSlot, getVisibleCanvasCenter, onUpdateSlots]);
 
-  const handleViewportPointerDown = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
-    if (interactionMode !== 'pan') return;
-    if (e.target !== viewportRef.current && e.target !== canvasRef.current) return;
-
-    startViewportPan(e.clientX, e.clientY);
-  }, [interactionMode, startViewportPan]);
-
   const handleViewportPointerMove = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
     if (!isPanning) return;
 
+    const deltaX = e.clientX - panStartRef.current.clientX;
+    const deltaY = e.clientY - panStartRef.current.clientY;
+    if (Math.hypot(deltaX, deltaY) > DRAG_MOVE_THRESHOLD) {
+      panMovedRef.current = true;
+    }
+
     setViewportOffset({
-      x: panStartRef.current.x + e.clientX - panStartRef.current.clientX,
-      y: panStartRef.current.y + e.clientY - panStartRef.current.clientY,
+      x: panStartRef.current.x + deltaX,
+      y: panStartRef.current.y + deltaY,
     });
   }, [isPanning]);
 
   const stopPanning = useCallback(() => {
+    if (panMovedRef.current) {
+      suppressCanvasClick();
+      panMovedRef.current = false;
+    }
     setIsPanning(false);
-  }, []);
+  }, [suppressCanvasClick]);
 
   const resetView = useCallback(() => {
     setCanvasScale(1);
-    setViewportOffset({ x: 0, y: 0 });
-  }, []);
+    setViewportOffset(getCenteredViewportOffset(viewportWidth, viewportHeight, 1));
+  }, [viewportHeight, viewportWidth]);
 
   const updateCanvasScale = useCallback((getNextScale: (currentScale: number) => number) => {
     setCanvasScale(currentScale => Math.max(0.55, Math.min(1.8, getNextScale(currentScale))));
   }, []);
 
-  const handleCanvasWheel = useCallback((e: React.WheelEvent<HTMLDivElement>) => {
-    if (!e.ctrlKey && !e.metaKey) return;
+  const zoomCanvasAtPoint = useCallback((deltaY: number, clientX: number, clientY: number) => {
+    const direction = deltaY > 0 ? -0.08 : 0.08;
+    const rect = viewportRef.current?.getBoundingClientRect();
+    const pointerX = rect ? clientX - rect.left : viewportWidth / 2;
+    const pointerY = rect ? clientY - rect.top : viewportHeight / 2;
 
-    e.preventDefault();
-    const direction = e.deltaY > 0 ? -0.08 : 0.08;
-    updateCanvasScale(prev => prev + direction);
-  }, [updateCanvasScale]);
+    setCanvasScale(currentScale => {
+      const nextScale = Math.max(0.55, Math.min(1.8, currentScale + direction));
+      if (nextScale === currentScale) return currentScale;
+
+      setViewportOffset(currentOffset => {
+        const worldX = (pointerX - currentOffset.x) / currentScale;
+        const worldY = (pointerY - currentOffset.y) / currentScale;
+
+        return {
+          x: pointerX - worldX * nextScale,
+          y: pointerY - worldY * nextScale,
+        };
+      });
+
+      return nextScale;
+    });
+  }, [viewportHeight, viewportWidth]);
+
+  useEffect(() => {
+    const viewport = viewportRef.current;
+    if (!viewport) return;
+
+    const handleWheel = (event: WheelEvent) => {
+      event.preventDefault();
+      zoomCanvasAtPoint(event.deltaY, event.clientX, event.clientY);
+    };
+
+    viewport.addEventListener('wheel', handleWheel, { passive: false });
+    return () => viewport.removeEventListener('wheel', handleWheel);
+  }, [zoomCanvasAtPoint]);
 
   return (
     <div ref={rootRef} className="w-full max-w-[900px] space-y-2 sm:space-y-3">
@@ -1003,98 +1069,62 @@ export const FreeLayoutEditor: React.FC<FreeLayoutEditorProps> = ({
         onClose={() => setShowClearConfirm(false)}
       />
 
-      <div className="flex items-center gap-2 overflow-x-auto pb-0.5 custom-scrollbar-hide">
-        <div className="flex shrink-0 items-center gap-2">
-          <span className="text-xs font-bold text-forest-accent">自由画布</span>
-          <span className="px-2 py-0.5 bg-forest-pink/10 text-forest-pink rounded-full text-[9px] font-bold">
-            摆放
-          </span>
+      <div className="flex items-center justify-between gap-2 overflow-x-auto pb-0.5 custom-scrollbar-hide">
+        <div className="flex min-h-11 shrink-0 items-center gap-1.5 rounded-full bg-white/55 px-3 text-[10px] font-semibold text-forest-accent ring-1 ring-forest-accent/8 sm:min-h-10">
+          <Crosshair size={13} />
+          <span>自由画布</span>
+          <span className="font-medium text-forest-muted">点击添加 · 拖动画布</span>
         </div>
         <div className="flex shrink-0 items-center gap-1.5">
-            <div className="flex min-h-11 sm:min-h-10 shrink-0 items-center rounded-xl bg-forest-bg p-0.5">
-              <button
-                type="button"
-                onClick={() => setInteractionMode('place')}
-                className={`flex min-h-11 sm:min-h-10 items-center gap-1 rounded-lg px-2.5 text-xs font-bold transition-all ${
-                  interactionMode === 'place'
-                    ? 'bg-white text-forest-accent shadow-sm'
-                    : 'text-forest-muted hover:text-forest-accent'
-                }`}
-              >
-                <Crosshair size={13} />
-                摆牌
-              </button>
-              <button
-                type="button"
-                onClick={() => setInteractionMode('pan')}
-                className={`flex min-h-11 sm:min-h-10 items-center gap-1 rounded-lg px-2.5 text-xs font-bold transition-all ${
-                  interactionMode === 'pan'
-                    ? 'bg-white text-forest-accent shadow-sm'
-                    : 'text-forest-muted hover:text-forest-accent'
-                }`}
-              >
-                <Move size={13} />
-                移动画布
-              </button>
-            </div>
-            <button
-              type="button"
-              onClick={() => updateCanvasScale(prev => prev + 0.1)}
-              className="flex min-h-11 sm:min-h-10 min-w-11 sm:min-w-10 shrink-0 items-center justify-center rounded-xl bg-forest-accent/10 text-forest-accent transition-all hover:bg-forest-accent/20"
-              title="放大画布"
-              aria-label="放大画布"
-            >
-              <ZoomIn size={13} />
-            </button>
-            <button
-              type="button"
-              onClick={() => updateCanvasScale(prev => prev - 0.1)}
-              className="flex min-h-11 sm:min-h-10 min-w-11 sm:min-w-10 shrink-0 items-center justify-center rounded-xl bg-forest-accent/10 text-forest-accent transition-all hover:bg-forest-accent/20"
-              title="缩小画布"
-              aria-label="缩小画布"
-            >
-              <ZoomOut size={13} />
-            </button>
-            <button
-              type="button"
-              onClick={resetView}
-              className="flex min-h-11 sm:min-h-10 min-w-11 sm:min-w-10 shrink-0 items-center justify-center rounded-xl bg-forest-accent/10 text-forest-accent transition-all hover:bg-forest-accent/20"
-              title="重置视图"
-              aria-label="重置视图"
-            >
-              <Maximize2 size={13} />
-            </button>
-            <button
-              type="button"
-              onClick={() => setShowGrid(!showGrid)}
-              className={`min-h-11 sm:min-h-10 shrink-0 rounded-xl px-2.5 text-[10px] font-bold transition-all ${
-                showGrid ? 'bg-forest-accent/10 text-forest-accent' : 'bg-gray-100 text-gray-400'
-              }`}
-            >
-              网格
-            </button>
-            <button
-              type="button"
-              onClick={() => setSnapEnabled(!snapEnabled)}
-              className={`min-h-11 sm:min-h-10 shrink-0 rounded-xl px-2.5 text-[10px] font-bold transition-all ${
-                snapEnabled ? 'bg-amber-100 text-amber-600' : 'bg-gray-100 text-gray-400'
-              }`}
-            >
-              对齐
-            </button>
-            <button
-              type="button"
-              onClick={handleClearAll}
-              disabled={cardSlots.length === 0}
-              className={`flex min-h-11 sm:min-h-10 shrink-0 items-center gap-1 rounded-xl px-2.5 text-[10px] font-bold transition-all ${
-                cardSlots.length === 0
-                  ? 'cursor-not-allowed bg-gray-100 text-gray-300'
-                  : 'bg-red-100 text-red-600 hover:bg-red-200'
-              }`}
-            >
-              <Trash2 size={10} />
-              清空
-            </button>
+          <button
+            type="button"
+            onClick={() => updateCanvasScale(prev => prev + 0.1)}
+            className="flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-xl bg-forest-accent/10 text-forest-accent transition-all hover:bg-forest-accent/20 sm:min-h-10 sm:min-w-10"
+            title="放大画布"
+            aria-label="放大画布"
+          >
+            <ZoomIn size={13} />
+          </button>
+          <button
+            type="button"
+            onClick={() => updateCanvasScale(prev => prev - 0.1)}
+            className="flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-xl bg-forest-accent/10 text-forest-accent transition-all hover:bg-forest-accent/20 sm:min-h-10 sm:min-w-10"
+            title="缩小画布"
+            aria-label="缩小画布"
+          >
+            <ZoomOut size={13} />
+          </button>
+          <button
+            type="button"
+            onClick={resetView}
+            className="flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-xl bg-forest-accent/10 text-forest-accent transition-all hover:bg-forest-accent/20 sm:min-h-10 sm:min-w-10"
+            title="重置视图"
+            aria-label="重置视图"
+          >
+            <Maximize2 size={13} />
+          </button>
+          <button
+            type="button"
+            onClick={() => setSnapEnabled(!snapEnabled)}
+            className={`min-h-11 shrink-0 rounded-xl px-2.5 text-[10px] font-semibold transition-all sm:min-h-10 ${
+              snapEnabled ? 'bg-amber-100 text-amber-600' : 'bg-gray-100 text-gray-400'
+            }`}
+          >
+            对齐
+          </button>
+          <button
+            type="button"
+            onClick={handleClearAll}
+            disabled={cardSlots.length === 0}
+            className={`flex min-h-11 shrink-0 items-center gap-1 rounded-xl px-2.5 text-[10px] font-semibold transition-all sm:min-h-10 ${
+              cardSlots.length === 0
+                ? 'cursor-not-allowed bg-gray-100 text-gray-300'
+                : 'bg-red-100 text-red-600 hover:bg-red-200'
+            }`}
+          >
+            <Trash2 size={10} />
+            清空
+          </button>
         </div>
       </div>
 
@@ -1102,7 +1132,7 @@ export const FreeLayoutEditor: React.FC<FreeLayoutEditorProps> = ({
         ref={viewportRef}
         data-testid="free-layout-viewport"
         className={`relative overflow-hidden rounded-2xl border border-forest-accent/10 bg-forest-bg/40 shadow-inner touch-none ${
-          isPanning ? 'cursor-grabbing' : interactionMode === 'pan' ? 'cursor-grab' : 'cursor-crosshair'
+          isPanning ? 'cursor-grabbing' : 'cursor-grab'
         }`}
         style={{
           width: viewportWidth,
@@ -1118,7 +1148,6 @@ export const FreeLayoutEditor: React.FC<FreeLayoutEditorProps> = ({
         }}
         onPointerDown={(e) => {
           handleCanvasPointerDown(e);
-          handleViewportPointerDown(e);
         }}
         onPointerMove={(e) => {
           handleCanvasPointerMove(e);
@@ -1132,7 +1161,6 @@ export const FreeLayoutEditor: React.FC<FreeLayoutEditorProps> = ({
           finishCanvasPointer(e.nativeEvent.pointerId);
           stopPanning();
         }}
-        onWheel={handleCanvasWheel}
         onClick={handleCanvasClick}
       >
         <div
@@ -1271,8 +1299,8 @@ export const FreeLayoutEditor: React.FC<FreeLayoutEditorProps> = ({
                   <div className="flex h-11 w-11 sm:h-10 sm:w-10 items-center justify-center rounded-full bg-forest-accent/10 text-forest-accent">
                     <Plus size={18} />
                   </div>
-                  <p className="text-xs font-bold text-forest-ink">点击画布创建第一个位置</p>
-                  <p className="text-[10px] leading-relaxed text-forest-muted">虚影会短暂停留，拖到想要的位置后点击固定。</p>
+                  <p className="text-xs font-bold text-forest-ink">点击添加第一个位置</p>
+                  <p className="text-[10px] leading-relaxed text-forest-muted">拖动空白处移动画布，双指或滚轮缩放。</p>
                 </motion.div>
               )}
 
@@ -1330,6 +1358,7 @@ export const FreeLayoutEditor: React.FC<FreeLayoutEditorProps> = ({
                   onUpdateSlots={onUpdateSlots}
                   onMoveSlot={handleMoveSlot}
                   onSwapSlotIndex={onSwapSlotIndex}
+                  onDeleteSlot={handleDeleteSlot}
                   cardSlots={cardSlots}
                   snapEnabled={snapEnabled}
                   onUpdateAlignmentGuides={setAlignmentGuides}
@@ -1345,17 +1374,17 @@ export const FreeLayoutEditor: React.FC<FreeLayoutEditorProps> = ({
           className="pointer-events-none absolute bottom-3 left-1/2 z-40 flex max-w-[calc(100%-1rem)] -translate-x-1/2 items-center gap-2 rounded-full bg-white/90 px-3 py-1.5 shadow-sm backdrop-blur-sm"
         >
           <Plus size={14} className="shrink-0 text-forest-accent" />
-          <span className="truncate whitespace-nowrap text-xs text-forest-muted">单击出现虚影，拖动后点击固定</span>
+          <span className="truncate whitespace-nowrap text-xs text-forest-muted">点击添加，拖动画布；Shift 拖动可框选</span>
         </div>
 
         <div className="absolute left-3 top-3 flex items-center gap-1.5 px-2 py-1 bg-white/90 rounded-full shadow-sm text-[10px] font-bold text-forest-accent pointer-events-none">
           <Move size={11} />
-          <span>{interactionMode === 'pan' ? '移动画布' : `${(canvasScale * 100).toFixed(0)}%`}</span>
+          <span>{(canvasScale * 100).toFixed(0)}%</span>
         </div>
       </div>
 
       <p className="text-center text-[9px] text-forest-muted">
-        点击空白处预览落点，虚影会在 2 秒后自动取消；切到移动视图可拖动画布。
+        点击添加，拖动空白处移动画布；滚轮、触控板或双指可缩放。
       </p>
 
       {activeSlot && (
@@ -1368,7 +1397,7 @@ export const FreeLayoutEditor: React.FC<FreeLayoutEditorProps> = ({
               {isMultiSelecting ? '多选操作' : '快捷摆位'}
             </span>
           </div>
-          <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-4">
+          <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-5">
             {isMultiSelecting ? (
               <>
                 <button
@@ -1403,6 +1432,14 @@ export const FreeLayoutEditor: React.FC<FreeLayoutEditorProps> = ({
                   <Crosshair size={14} />
                   取消多选
                 </button>
+                <button
+                  type="button"
+                  onClick={handleDeleteSelectedSlots}
+                  className="flex min-h-11 items-center justify-center gap-1 rounded-xl bg-red-50 px-2 text-[10px] font-semibold text-red-500 transition-all hover:bg-red-100 sm:min-h-10"
+                >
+                  <Trash2 size={14} />
+                  删除所选
+                </button>
               </>
             ) : (
               <>
@@ -1430,6 +1467,14 @@ export const FreeLayoutEditor: React.FC<FreeLayoutEditorProps> = ({
               <Maximize2 size={14} />
               居中
             </button>
+            <button
+              type="button"
+              onClick={() => handleDeleteSlot(designActiveSlot)}
+              className="flex min-h-11 items-center justify-center gap-1 rounded-xl bg-red-50 px-2 text-[10px] font-semibold text-red-500 transition-all hover:bg-red-100 sm:min-h-10"
+            >
+              <Trash2 size={14} />
+              删除位置
+            </button>
               </>
             )}
           </div>
@@ -1453,6 +1498,7 @@ interface FreeLayoutSlotProps {
   onUpdateSlots: (slots: ReadingSlotData[]) => void;
   onMoveSlot: (idx: number, x: number, y: number, options?: { snap?: boolean; moveSelection?: boolean }) => void;
   onSwapSlotIndex?: (oldIdx: number, newIdx: number) => void;
+  onDeleteSlot: (idx: number) => void;
   snapEnabled: boolean;
   onUpdateAlignmentGuides: (guides: AlignmentGuide[]) => void;
 }
@@ -1471,6 +1517,7 @@ const FreeLayoutSlot: React.FC<FreeLayoutSlotProps> = ({
   onUpdateSlots,
   onMoveSlot,
   onSwapSlotIndex,
+  onDeleteSlot,
   snapEnabled,
   onUpdateAlignmentGuides,
 }) => {
@@ -1745,7 +1792,7 @@ const FreeLayoutSlot: React.FC<FreeLayoutSlotProps> = ({
       transition={{ type: "spring", stiffness: 500, damping: 50 }}
     >
       <div
-        className={`w-full h-full rounded-xl flex flex-col items-center justify-between p-2 shadow-lg transition-all ${
+        className={`group w-full h-full rounded-xl flex flex-col items-center justify-between p-2 shadow-lg transition-all ${
           isActive
             ? 'bg-gradient-to-br from-forest-accent to-forest-pink text-white ring-2 ring-white'
             : isSelected
@@ -1795,8 +1842,24 @@ const FreeLayoutSlot: React.FC<FreeLayoutSlotProps> = ({
           }}
         />
 
+        {(isActive || isSelected) && (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onDeleteSlot(idx);
+            }}
+            onPointerDown={(e) => e.stopPropagation()}
+            onMouseDown={(e) => e.stopPropagation()}
+            aria-label={`删除位置：${slot.label || `位置${idx + 1}`}`}
+            className="absolute -right-3 -top-3 z-50 flex min-h-11 min-w-11 items-center justify-center rounded-full bg-white/95 text-red-500 shadow-sm ring-1 ring-red-100 transition-all hover:bg-red-50 hover:text-red-600 active:scale-95"
+          >
+            <Trash2 size={14} />
+          </button>
+        )}
+
         {isSelected && (
-          <span className={`absolute -right-2 -top-2 rounded-full bg-white px-2 py-1 text-[8px] font-bold shadow ${
+          <span className={`absolute -left-2 -top-2 rounded-full bg-white px-2 py-1 text-[8px] font-bold shadow ${
             isActive ? 'text-forest-accent' : 'text-forest-pink'
           }`}>
             {isActive ? '已选' : '同组'}

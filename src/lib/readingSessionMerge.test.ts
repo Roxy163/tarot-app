@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { CardKeywordMemory, SpreadDefinition, TarotCardMetadata, TarotReading } from '../types';
+import { CardKeywordMemory, QuizMemoryEntry, SpreadDefinition, TarotCardMetadata, TarotReading } from '../types';
 import {
   mergeCardMetadataSources,
   mergeKeywordMemorySources,
+  mergeQuizMemorySources,
   mergeReadingsForSignedInUser,
   mergeSpreadSources,
 } from './readingSessionMerge';
@@ -183,5 +184,53 @@ describe('reading session merge', () => {
         examples: [],
       })],
     }]);
+  });
+
+  it('merges quiz attempt history from cloud and local memory', () => {
+    const cloudMemory: QuizMemoryEntry = {
+      cardId: 'ar00',
+      cardName: '愚者',
+      practiceCount: 1,
+      unfamiliarCount: 0,
+      wrongCount: 1,
+      repeated: true,
+      lastPracticedAt: '2026-07-18T08:00:00.000Z',
+      createdAt: '2026-07-18T08:00:00.000Z',
+      updatedAt: '2026-07-18T08:00:00.000Z',
+      attempts: [{
+        id: 'cloud-attempt',
+        modeLabel: '看牌对应',
+        prompt: '这张牌对应哪个元素？',
+        answerLabel: '风',
+        selectedLabel: '水',
+        correct: false,
+        createdAt: '2026-07-18T08:00:00.000Z',
+      }],
+    };
+    const localMemory: QuizMemoryEntry = {
+      ...cloudMemory,
+      practiceCount: 2,
+      wrongCount: 1,
+      repeated: false,
+      updatedAt: '2026-07-18T09:00:00.000Z',
+      attempts: [{
+        id: 'local-attempt',
+        modeLabel: '文字找牌',
+        prompt: '这段含义，更接近哪张牌？',
+        answerLabel: '愚者',
+        selectedLabel: '魔术师',
+        correct: false,
+        createdAt: '2026-07-18T09:00:00.000Z',
+      }],
+    };
+
+    const merged = mergeQuizMemorySources([[cloudMemory], [localMemory]]);
+
+    expect(merged[0].attempts?.map(attempt => attempt.id)).toEqual(['local-attempt', 'cloud-attempt']);
+    expect(merged[0]).toMatchObject({
+      practiceCount: 2,
+      wrongCount: 1,
+      repeated: false,
+    });
   });
 });

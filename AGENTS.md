@@ -35,3 +35,12 @@
 - **Netlify 部署**：预览部署、正式部署、Netlify 链接状态检查时，优先使用 `netlify-deploy`。
 - **安全检查**：涉及登录、云端同步、公开分享、用户数据或上线前检查时，优先使用 `security-best-practices`。
 - **目标澄清**：任务范围大、目标模糊或需要验收标准时，可先使用 `define-goal` 明确目标、范围与完成证据。
+
+## 6. Firebase 部署记忆
+- Firebase Project ID 固定为 `tarot-pavilion`，根目录 `.firebaserc` 已设置 default project。
+- 只部署 Firestore Rules 使用：`npx --yes firebase-tools deploy --only firestore:rules --project tarot-pavilion`。
+- 如果 Firebase CLI 登录出现 `credentials are no longer valid` 或网页 `Firebase CLI Login Failed`，不要反复让用户复制 authorization code。最多尝试一次 `firebase login --reauth`；仍失败时，改走服务账号 / ADC，或让用户在 Firebase Console 手动发布 `firestore.rules`。
+- 详细复盘和稳定方案见 `docs/firebase-deployment-runbook.md`。
+
+## 7. 新窗口接续记忆
+- 新的 Codex 对话窗口处理本项目时，无需用户记住或重复说明路径；只要当前工作目录是本项目，就必须先读本文件和 `docs/tarot-app-project-memory.md`，再开始改代码。该记忆文件记录了长期产品调性、核心功能、部署方式和用户协作偏好。

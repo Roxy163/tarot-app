@@ -3,9 +3,9 @@ import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { OFFICIAL_SPREADS } from '../constants';
 import { AddReadingForm } from './AddReadingForm';
-import { SpreadDefinition } from '../types';
+import { SpreadDefinition, TarotReading } from '../types';
 
-const renderForm = (overrides: { spreads?: SpreadDefinition[] } = {}) => {
+const renderForm = (overrides: { spreads?: SpreadDefinition[]; initialData?: Partial<TarotReading> } = {}) => {
   const props = {
     onSubmit: vi.fn(),
     isLoading: false,
@@ -14,6 +14,7 @@ const renderForm = (overrides: { spreads?: SpreadDefinition[] } = {}) => {
     onUpdateSpreads: vi.fn(),
     cardMetadata: [],
     onUpdateCardMetadata: vi.fn(),
+    initialData: overrides.initialData,
   };
 
   render(<AddReadingForm {...props} />);
@@ -184,6 +185,35 @@ describe('AddReadingForm spread designer flow', () => {
     ]));
   });
 
+  it('lets users delete the selected custom spread from the spread control bar', async () => {
+    const user = userEvent.setup();
+    const customSpread: SpreadDefinition = {
+      name: '二择镜像',
+      layout: 'choice',
+      slots: ['现状', 'A近期发展', 'B近期发展', 'A远期结果', 'B远期结果'],
+      slotPositions: [
+        'col-start-3 row-start-3',
+        'col-start-2 row-start-2',
+        'col-start-4 row-start-2',
+        'col-start-1 row-start-1',
+        'col-start-5 row-start-1',
+      ],
+    };
+    const props = renderForm({ spreads: [...OFFICIAL_SPREADS, customSpread] });
+
+    await user.selectOptions(screen.getByRole('combobox'), '二择镜像');
+    await user.click(screen.getByRole('button', { name: '删除当前自定义牌阵 二择镜像' }));
+
+    expect(screen.getByRole('dialog', { name: '删除自定义牌阵' })).toBeInTheDocument();
+    expect(props.onUpdateSpreads).not.toHaveBeenCalled();
+
+    await user.click(within(screen.getByRole('dialog', { name: '删除自定义牌阵' })).getByRole('button', { name: '删除' }));
+
+    expect(props.onUpdateSpreads).toHaveBeenCalledWith(expect.not.arrayContaining([
+      expect.objectContaining({ name: '二择镜像' }),
+    ]));
+  });
+
   it('renames an existing custom spread instead of creating a duplicate', async () => {
     const user = userEvent.setup();
     const customSpread: SpreadDefinition = {
@@ -252,10 +282,59 @@ describe('AddReadingForm spread designer flow', () => {
     expect(screen.getByRole('button', { name: '添加自定义位置' })).toBeInTheDocument();
   });
 
+  it('shows A and B path fields for choice spreads', async () => {
+    const user = userEvent.setup();
+    renderForm();
+
+    expect(screen.queryByLabelText('A 路代表')).not.toBeInTheDocument();
+
+    await user.selectOptions(screen.getByRole('combobox'), '选择牌阵');
+
+    expect(screen.getByTestId('choice-path-fields')).toBeInTheDocument();
+    expect(screen.getByLabelText('A 路代表')).toHaveAttribute('placeholder', '例如：三个月内离职，和私人老板合作');
+    expect(screen.getByLabelText('B 路代表')).toHaveAttribute('placeholder', '例如：继续留在当前单位');
+  });
+
   it('does not expose per-position remove controls while filling a finished spread', () => {
     renderForm();
 
     expect(screen.queryByRole('button', { name: /移除第 1 个位置/ })).not.toBeInTheDocument();
+  });
+
+  it('keeps public sharing and anonymous sharing mutually exclusive in advanced options', async () => {
+    const user = userEvent.setup();
+    renderForm();
+
+    await user.click(screen.getByRole('button', { name: /高级选项/ }));
+
+    const publicShare = screen.getByLabelText('公开到研习广场') as HTMLInputElement;
+    const anonymousShare = screen.getByLabelText('匿名分享到广场') as HTMLInputElement;
+
+    await user.click(publicShare);
+
+    expect(publicShare).toBeChecked();
+    expect(anonymousShare).not.toBeChecked();
+
+    await user.click(anonymousShare);
+
+    expect(publicShare).not.toBeChecked();
+    expect(anonymousShare).toBeChecked();
+
+    await user.click(anonymousShare);
+
+    expect(publicShare).not.toBeChecked();
+    expect(anonymousShare).not.toBeChecked();
+  });
+
+  it('shows a compact mobile slot navigator for complex spreads', async () => {
+    const user = userEvent.setup();
+    renderForm();
+
+    await user.selectOptions(screen.getByRole('combobox'), '凯尔特十字牌阵');
+
+    const mobileNav = screen.getByTestId('mobile-slot-quick-nav');
+    expect(mobileNav).toBeInTheDocument();
+    expect(within(mobileNav).getByRole('button', { name: '跳到第 10 个位置：结果' })).toBeInTheDocument();
   });
 
   it('brings the selected-card detail into view after choosing a card on mobile', async () => {
@@ -277,5 +356,96 @@ describe('AddReadingForm spread designer flow', () => {
     await waitFor(() => {
       expect(scrollTo).toHaveBeenCalledWith(expect.objectContaining({ behavior: 'smooth' }));
     });
+  });
+
+  it('shows a gentle AI prompt reminder only after users try to generate it too early', async () => {
+    const user = userEvent.setup();
+    renderForm({
+      initialData: {
+        question: '',
+        spread: '单牌阵',
+        layoutType: 'horizontal',
+        category: '事业',
+        interpretation: { singleCard: '', combination: '', summary: '' },
+        cards: [{ name: '愚者', isReversed: false }],
+        cardInterpretations: ['新的开始'],
+        slotLabels: ['主牌'],
+        slotPositions: [''],
+        rotatedSlots: [],
+      },
+    });
+
+    await user.click(screen.getByRole('button', { name: /添加复盘/ }));
+
+    const generateButton = screen.getByRole('button', { name: '生成导师提示词' });
+    expect(generateButton).toBeEnabled();
+    expect(screen.queryByText(/还差一点/)).not.toBeInTheDocument();
+
+    await user.click(generateButton);
+
+    expect(screen.getByText('还差一点：先补上占卜问题，就能生成提示词。')).toBeInTheDocument();
+
+    await user.type(screen.getByPlaceholderText('占卜的问题是什么？'), '测试问题');
+
+    expect(screen.queryByText(/还差一点/)).not.toBeInTheDocument();
+  });
+
+  it('generates a copyable AI prompt inside the feedback section from completed reading information', async () => {
+    const user = userEvent.setup();
+    renderForm({
+      initialData: {
+        question: '这次工作选择该怎么看？',
+        spread: '单牌阵',
+        layoutType: 'horizontal',
+        category: '事业',
+        interpretation: { singleCard: '', combination: '', summary: '' },
+        cards: [{ name: '愚者', isReversed: false }],
+        cardInterpretations: ['新的开始，也有不确定。'],
+        cardQuestions: ['这张牌是在鼓励我开始，还是提醒我太冲动？'],
+        slotLabels: ['主牌'],
+        slotPositions: [''],
+        rotatedSlots: [],
+      },
+    });
+
+    await user.click(screen.getByRole('button', { name: /添加复盘/ }));
+    await user.click(screen.getByRole('button', { name: '生成导师提示词' }));
+
+    const prompt = screen.getByLabelText('生成的 AI 解牌提示词：导师复盘') as HTMLTextAreaElement;
+    expect(prompt.value).toContain('你是一位经验非常丰富、擅长韦特体系的塔罗师');
+    expect(prompt.value).toContain('我这次占卜的问题是：\n这次工作选择该怎么看？');
+    expect(prompt.value).toContain('1. 主牌：愚者（正位）');
+    expect(prompt.value).toContain('我的逐牌解读：新的开始，也有不确定。');
+    expect(prompt.value).toContain('我对这张牌的疑问：这张牌是在鼓励我开始，还是提醒我太冲动？');
+  });
+
+  it('can generate a consultant AI prompt without exposing the user interpretation notes', async () => {
+    const user = userEvent.setup();
+    renderForm({
+      initialData: {
+        question: '这次工作选择该怎么看？',
+        spread: '单牌阵',
+        layoutType: 'horizontal',
+        category: '事业',
+        interpretation: { singleCard: '', combination: '', summary: '' },
+        cards: [{ name: '愚者', isReversed: false }],
+        cardInterpretations: ['这是我自己的思路，不应该放进咨询版。'],
+        cardQuestions: ['这里也不应该给到咨询版。'],
+        slotLabels: ['主牌'],
+        slotPositions: [''],
+        rotatedSlots: [],
+      },
+    });
+
+    await user.click(screen.getByRole('button', { name: /添加复盘/ }));
+    await user.click(screen.getByRole('button', { name: '咨询解牌直接看牌阵' }));
+    await user.click(screen.getByRole('button', { name: '生成咨询提示词' }));
+
+    const prompt = screen.getByLabelText('生成的 AI 解牌提示词：咨询解牌') as HTMLTextAreaElement;
+    expect(prompt.value).toContain('请像正式接到一次咨询一样');
+    expect(prompt.value).toContain('1. 主牌：愚者（正位）');
+    expect(prompt.value).not.toContain('这是我自己的思路');
+    expect(prompt.value).not.toContain('这里也不应该给到咨询版');
+    expect(prompt.value).not.toContain('我的逐牌解读');
   });
 });

@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { ReadingSlotData } from '../types';
-import { EMPTY_READING_NOTICE, ReadingFormState, buildReadingSubmitPayload } from './readingSubmitPayload';
+import {
+  INCOMPLETE_CARDS_NOTICE,
+  REQUIRED_CARD_INTERPRETATION_NOTICE,
+  REQUIRED_CLIENT_NAME_NOTICE,
+  REQUIRED_QUESTION_NOTICE,
+  ReadingFormState,
+  buildReadingSubmitPayload
+} from './readingSubmitPayload';
 
 const baseFormData: ReadingFormState = {
   question: '我该如何推进？',
@@ -19,6 +26,8 @@ const baseFormData: ReadingFormState = {
   clientName: '',
   clientFeedback: '',
   userFeedback: '复盘',
+  choicePathA: '',
+  choicePathB: '',
   readingDate: '2026-06-24T10:30',
   isTimePrecise: false,
   category: '事业',
@@ -30,59 +39,90 @@ const slots: ReadingSlotData[] = [
   { name: '', isReversed: false, label: '现在', position: 'p2' },
   { name: '魔术师', isReversed: true, label: '未来', position: 'p3', isRotated: true },
 ];
+const completeSlots: ReadingSlotData[] = [
+  { name: '愚者', isReversed: false, label: '过去', position: 'p1' },
+  { name: '女祭司', isReversed: false, label: '现在', position: 'p2' },
+  { name: '魔术师', isReversed: true, label: '未来', position: 'p3', isRotated: true },
+];
 
 describe('buildReadingSubmitPayload', () => {
-  it('returns a notice when no card has been selected', () => {
+  it('requires every card position to be selected', () => {
     expect(buildReadingSubmitPayload({
       formData: baseFormData,
       cardSlots: [{ name: '', isReversed: false, label: '空位' }],
       cardInterpretations: [''],
-    })).toEqual({ ok: false, notice: EMPTY_READING_NOTICE });
+    })).toEqual({ ok: false, notice: INCOMPLETE_CARDS_NOTICE });
   });
 
-  it('filters empty slots and keeps labels, positions, rotations and interpretations aligned', () => {
+  it('requires the reading question before saving', () => {
+    expect(buildReadingSubmitPayload({
+      formData: { ...baseFormData, question: '   ' },
+      cardSlots: [completeSlots[0]],
+      cardInterpretations: ['过去解读'],
+    })).toEqual({ ok: false, notice: REQUIRED_QUESTION_NOTICE });
+  });
+
+  it('requires client name in client mode', () => {
+    expect(buildReadingSubmitPayload({
+      formData: { ...baseFormData, isForClient: true, clientName: '' },
+      cardSlots: [completeSlots[0]],
+      cardInterpretations: ['过去解读'],
+    })).toEqual({ ok: false, notice: REQUIRED_CLIENT_NAME_NOTICE });
+  });
+
+  it('requires every submitted card to have a card interpretation', () => {
+    expect(buildReadingSubmitPayload({
+      formData: baseFormData,
+      cardSlots: completeSlots,
+      cardInterpretations: ['过去解读', '', '未来解读'],
+    })).toEqual({ ok: false, notice: REQUIRED_CARD_INTERPRETATION_NOTICE });
+  });
+
+  it('keeps labels, positions, rotations and interpretations aligned when all required fields are filled', () => {
     const result = buildReadingSubmitPayload({
       formData: baseFormData,
-      cardSlots: slots,
-      cardInterpretations: ['过去解读', '空位解读', '未来解读'],
+      cardSlots: completeSlots,
+      cardInterpretations: ['过去解读', '现在解读', '未来解读'],
+      cardQuestions: ['过去疑问', '', '未来疑问'],
     });
 
     expect(result.ok).toBe(true);
     if (!result.ok) return;
 
-    expect(result.payload.cards).toEqual([slots[0], slots[2]]);
-    expect(result.payload.slotLabels).toEqual(['过去', '未来']);
-    expect(result.payload.slotPositions).toEqual(['p1', 'p3']);
-    expect(result.payload.rotatedSlots).toEqual([1]);
-    expect(result.payload.cardInterpretations).toEqual(['过去解读', '未来解读']);
+    expect(result.payload.cards).toEqual(completeSlots);
+    expect(result.payload.slotLabels).toEqual(['过去', '现在', '未来']);
+    expect(result.payload.slotPositions).toEqual(['p1', 'p2', 'p3']);
+    expect(result.payload.rotatedSlots).toEqual([2]);
+    expect(result.payload.cardInterpretations).toEqual(['过去解读', '现在解读', '未来解读']);
+    expect(result.payload.cardQuestions).toEqual(['过去疑问', '', '未来疑问']);
     expect(result.payload.interpretation?.combination).toBe('组合原文');
   });
 
   it('keeps free layout coordinates on submitted cards', () => {
     const freeSlots: ReadingSlotData[] = [
       { name: '愚者', isReversed: false, label: '核心', x: 120, y: 80, rotation: 15, scale: 1.2 },
-      { name: '', isReversed: false, label: '空位', x: 240, y: 80, rotation: 0, scale: 1 },
+      { name: '女祭司', isReversed: false, label: '空位', x: 240, y: 80, rotation: 0, scale: 1 },
       { name: '魔术师', isReversed: true, label: '建议', x: 300, y: 200, rotation: -20, scale: 0.9 },
     ];
     const result = buildReadingSubmitPayload({
       formData: { ...baseFormData, layoutType: 'free', spread: '自由牌阵' },
       cardSlots: freeSlots,
-      cardInterpretations: ['核心解读', '', '建议解读'],
+      cardInterpretations: ['核心解读', '空位解读', '建议解读'],
     });
 
     expect(result.ok).toBe(true);
     if (!result.ok) return;
 
-    expect(result.payload.cards).toEqual([freeSlots[0], freeSlots[2]]);
-    expect(result.payload.slotLabels).toEqual(['核心', '建议']);
-    expect(result.payload.slotPositions).toEqual(['', '']);
+    expect(result.payload.cards).toEqual(freeSlots);
+    expect(result.payload.slotLabels).toEqual(['核心', '空位', '建议']);
+    expect(result.payload.slotPositions).toEqual(['', '', '']);
   });
 
   it('uses the first submitted interpretation as single-card text for daily readings', () => {
     const result = buildReadingSubmitPayload({
       formData: { ...baseFormData, category: '日运', spread: '时间流牌阵' },
-      cardSlots: slots,
-      cardInterpretations: ['今日解读', '', '第二张解读'],
+      cardSlots: completeSlots,
+      cardInterpretations: ['今日解读', '现在解读', '第二张解读'],
     });
 
     expect(result.ok).toBe(true);
@@ -117,5 +157,32 @@ describe('buildReadingSubmitPayload', () => {
     if (!result.ok) return;
 
     expect(result.payload.readingDate).toBe(new Date(baseFormData.readingDate).toISOString());
+  });
+
+  it('stores only user-entered category tags as manual tags', () => {
+    const result = buildReadingSubmitPayload({
+      formData: { ...baseFormData, category: '职业、推进 #复盘 职业' },
+      cardSlots: [slots[0]],
+      cardInterpretations: ['单张解读'],
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    expect(result.payload.manualTags).toEqual(['职业', '推进', '复盘']);
+  });
+
+  it('treats anonymous sharing as a public anonymous share in the submit payload', () => {
+    const result = buildReadingSubmitPayload({
+      formData: { ...baseFormData, isPublic: false, isAnonymous: true },
+      cardSlots: [slots[0]],
+      cardInterpretations: ['单张解读'],
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    expect(result.payload.isPublic).toBe(true);
+    expect(result.payload.isAnonymous).toBe(true);
   });
 });

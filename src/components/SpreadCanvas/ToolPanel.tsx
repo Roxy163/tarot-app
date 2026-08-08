@@ -16,7 +16,6 @@ export const ToolPanel: React.FC = () => {
   } = useSpreadCanvasStore();
 
   const [showCardPicker, setShowCardPicker] = useState(false);
-  const [importFile, setImportFile] = useState<File | null>(null);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
 
   const handleExport = () => {
@@ -40,7 +39,6 @@ export const ToolPanel: React.FC = () => {
       importSpread(json);
     };
     reader.readAsText(file);
-    setImportFile(null);
   };
 
   const handleAddCard = (cardId: string) => {

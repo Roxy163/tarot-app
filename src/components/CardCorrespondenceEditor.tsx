@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { motion } from 'motion/react';
 import { X, Save, Info } from 'lucide-react';
 import { TarotCardMetadata } from '../types';

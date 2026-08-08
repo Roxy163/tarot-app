@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -88,9 +88,33 @@ describe('SpreadDesigner', () => {
   it('groups official and custom templates in the workbench selector', () => {
     renderDesigner();
 
-    const templateSelect = screen.getByLabelText('模板');
+    const templateSelect = screen.getByLabelText('基于已有改造');
     expect(templateSelect.querySelector('optgroup[label="官方牌阵"]')).toBeInTheDocument();
     expect(templateSelect.querySelector('optgroup[label="自定义牌阵 (1)"]')).toBeInTheDocument();
+  });
+
+  it('allows a blank new spread to start from an existing spread', async () => {
+    const user = userEvent.setup();
+    const onSelectSpread = vi.fn();
+    const onUpdateNewSpreadName = vi.fn();
+    const onSetDesignActiveSlot = vi.fn();
+
+    renderDesigner({
+      currentSpread: '',
+      layoutType: 'free',
+      cardSlots: [],
+      designActiveSlot: -1,
+      newSpreadName: '',
+      onSelectSpread,
+      onUpdateNewSpreadName,
+      onSetDesignActiveSlot,
+    });
+
+    await user.selectOptions(screen.getByLabelText('基于已有改造'), '自由牌阵');
+
+    expect(onSelectSpread).toHaveBeenCalledWith(spreads[0]);
+    expect(onUpdateNewSpreadName).toHaveBeenCalledWith('自由牌阵 改造');
+    expect(onSetDesignActiveSlot).toHaveBeenCalledWith(-1);
   });
 
   it('updates the spread name from the name field', async () => {
@@ -155,17 +179,13 @@ describe('SpreadDesigner', () => {
     expect(onStartNewSession).not.toHaveBeenCalled();
   });
 
-  it('keeps mobile free canvas behind a start step until the user begins editing', async () => {
+  it('opens the mobile free canvas directly without a start step', () => {
     setViewportWidth(390);
-    const user = userEvent.setup();
 
     renderDesigner();
 
-    expect(screen.getByTestId('spread-workbench-mobile-setup')).toBeInTheDocument();
-    expect(screen.queryByTestId('free-layout-canvas')).not.toBeInTheDocument();
-
-    await user.click(screen.getByRole('button', { name: '开始摆放' }));
-
+    expect(screen.queryByTestId('spread-workbench-mobile-setup')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '开始摆放' })).not.toBeInTheDocument();
     expect(screen.getByTestId('free-layout-canvas')).toBeInTheDocument();
   });
 

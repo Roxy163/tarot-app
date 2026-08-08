@@ -1,19 +1,20 @@
-import React, { Suspense, lazy, useCallback, useMemo, useState, useEffect, useRef } from 'react';
+import { Suspense, lazy, useCallback, useMemo, useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Plus, Globe, Sparkles, X, User, ChevronRight, Info, LogOut, Database, ShieldCheck, ArrowRight, LogIn, Book, Upload, Moon, CheckCircle, AlertTriangle, Mail, Home } from 'lucide-react';
-import { TarotReading, SpreadDefinition, TarotCardMetadata, UserProfile } from './types';
-import { OFFICIAL_SPREADS, PAVILION_PROVERBS, TAROT_CARDS } from './constants';
+import { Sparkles, X, User, ChevronRight, LogOut, Database, ShieldCheck, ArrowRight, LogIn, CheckCircle, AlertTriangle, Mail, Home, Download } from 'lucide-react';
+import { TarotReading, SpreadDefinition, UserProfile } from './types';
+import { OFFICIAL_SPREADS, PAVILION_PROVERBS } from './constants';
 import { Modal } from './components/Modal';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { checkIfMagicLink, verifyMagicLink, deleteUserAccount } from './lib/firebase';
-import { getOrCreateUserProfile, updateUserProfile, replaceUserReadings, saveUserSpreads, saveUserCardMetadata, deleteUserAccount as deleteUserAccountData } from './lib/firebaseData';
+import { getCachedUserProfile, getOrCreateUserProfile, hasPendingUserProfileUpdate, updateUserProfile, deleteUserAccount as deleteUserAccountData } from './lib/firebaseData';
 import { isValidPassword } from './lib/utils';
 import { HomeTab } from './components/tabs/HomeTab';
 import { MainLayout } from './components/layouts/MainLayout';
+import { SplashScreen } from './components/SplashScreen';
 import { useReadings } from './hooks/useReadings';
+import { useDailyFortune } from './hooks/useDailyFortune';
 import { useOnboarding } from './context/OnboardingContext';
 import { SmartTipBanner } from './components/onboarding/SmartTipBanner';
-import { FeatureSpotlightGuide, FeatureSpotlightStep } from './components/onboarding/FeatureSpotlightGuide';
 import { useSmartTips } from './hooks/useSmartTips';
 import { usePersistentTab } from './hooks/usePersistentTab';
 import { CloudSyncPanel } from './components/CloudSyncPanel';
@@ -22,13 +23,11 @@ import {
   normalizeLegacyCustomSpreads,
   normalizeLegacyReadingSpreadNames,
 } from './lib/spreadPersistence';
-import { createTarotExportPdfBlob } from './lib/pdfExport';
 import { getAuthorDisplayName, syncReadingAuthorName } from './lib/readingAuthor';
+import { warmTarotDeckImages } from './lib/tarotImagePreload';
 import { useBodyScrollLock } from './hooks/useBodyScrollLock';
 import { useMobileFocusScroll } from './hooks/useMobileFocusScroll';
-import { BrandIntro } from './components/BrandIntro';
-
-const BRAND_INTRO_SEEN_KEY = 'tarot_brand_intro_seen';
+import { requestPwaInstallPrompt } from './hooks/usePwaInstallPrompt';
 
 const loadCardMetadataManager = () => import('./components/CardMetadataManager');
 const loadReadingDetailModal = () => import('./components/ReadingDetailModal');
@@ -47,8 +46,39 @@ const PublicTab = lazy(() => loadPublicTab().then(module => ({ default: module.P
 const ProfileTab = lazy(() => loadProfileTab().then(module => ({ default: module.ProfileTab })));
 
 const SuspenseFallback = () => (
-  <div className="min-h-[220px] flex items-center justify-center text-forest-muted text-xs font-bold">
-    正在展开阁中卷册...
+  <div className="min-h-[220px] space-y-3 rounded-[1.5rem] border border-forest-accent/7 bg-white/24 p-4" role="status" aria-live="polite">
+    <div className="h-4 w-28 animate-pulse rounded-full bg-forest-accent/10" />
+    <div className="grid gap-2">
+      <div className="h-16 animate-pulse rounded-2xl bg-white/46" />
+      <div className="h-16 animate-pulse rounded-2xl bg-white/34" />
+      <div className="h-16 animate-pulse rounded-2xl bg-white/24" />
+    </div>
+    <p className="text-center text-[11px] font-medium text-forest-muted">正在展开内容…</p>
+  </div>
+);
+
+const AuthRestoringScreen = () => (
+  <div className="min-h-[100dvh] bg-forest-bg flex items-center justify-center px-6 text-center">
+    <motion.div
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.28, ease: 'easeOut' }}
+      className="flex w-full max-w-xs flex-col items-center gap-4 rounded-[1.6rem] border border-forest-accent/8 bg-white/42 px-5 py-6 shadow-sm"
+      role="status"
+      aria-live="polite"
+    >
+      <div className="grid h-14 w-14 place-items-center rounded-[1.4rem] border border-forest-accent/8 bg-white/58 shadow-sm">
+        <Sparkles size={24} className="text-forest-accent" />
+      </div>
+      <div className="space-y-1">
+        <p className="font-serif text-2xl font-bold text-forest-ink">塔罗研习阁</p>
+        <p className="text-sm font-medium text-forest-muted">正在恢复账号状态…</p>
+      </div>
+      <div className="grid w-full gap-2">
+        <div className="h-2.5 animate-pulse rounded-full bg-forest-accent/8" />
+        <div className="mx-auto h-2.5 w-2/3 animate-pulse rounded-full bg-forest-accent/6" />
+      </div>
+    </motion.div>
   </div>
 );
 
@@ -67,47 +97,42 @@ const isAppTab = (value: string | null): value is AppTab => (
   !!value && APP_TABS.includes(value as AppTab)
 );
 
-const FEATURE_SPOTLIGHT_STORAGE_KEY = 'tarot_feature_spotlight_seen_v3';
+const getLocalStorageValue = (key: string) => {
+  try {
+    return localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+};
 
-const FEATURE_SPOTLIGHT_STEPS: FeatureSpotlightStep[] = [
-  {
-    target: '[data-tour="daily-draw"]',
-    title: '先抽今天的一张牌',
-    description: '洗牌输入数字，也可录入现实牌。',
-    mobileNote: 'right-top',
-  },
-  {
-    target: '[data-tour="daily-review"]',
-    title: '回看每日对应',
-    description: '晚上看这张牌对应了什么事。',
-    mobileNote: 'right-middle',
-  },
-  {
-    target: '[data-tour="library-review"]',
-    title: '进入典籍复盘',
-    description: '回看自己的手记和客户记录。',
-    mobileNote: 'right-middle',
-  },
-  {
-    target: '[data-tour="card-annotations"]',
-    title: '整理你的牌义',
-    description: '把新理解写进单牌注疏。',
-    mobileNote: 'below-center',
-  },
-];
+const setLocalStorageValue = (key: string, value: string) => {
+  try {
+    localStorage.setItem(key, value);
+  } catch {
+    // 非关键偏好写入失败时，不影响主流程。
+  }
+};
+
+const removeLocalStorageValue = (key: string) => {
+  try {
+    localStorage.removeItem(key);
+  } catch {
+    // 非关键偏好删除失败时，不影响主流程。
+  }
+};
 
 function AppContent() {
-  const { session, isLoading: isAuthLoading, isEmailVerified, signOut, updatePassword, sendVerificationEmail, refreshUser } = useAuth();
-  const { state: onboardingState, checkAndUnlockAchievements } = useOnboarding();
+  const { session, isLoading: isAuthLoading, isEmailVerified, signOut, updatePassword, sendVerificationEmail } = useAuth();
+  const { checkAndUnlockAchievements } = useOnboarding();
   
   const [activeTab, setActiveTab] = usePersistentTab<AppTab>('tarot_active_tab', 'home', isAppTab);
   const [profile, setProfile] = useState<UserProfile | null>(null);
-  const [selectedAuthor, setSelectedAuthor] = useState<string | null>(null);
   const [selectedReadingDetail, setSelectedReadingDetail] = useState<TarotReading | null>(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isSecurityModalOpen, setIsSecurityModalOpen] = useState(false);
   const [showAuthPage, setShowAuthPage] = useState(false);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
+  const [hasEnteredApp, setHasEnteredApp] = useState(false);
   
   // Login Prompts
   const [loginPrompt, setLoginPrompt] = useState<{ isOpen: boolean; title: string; content: string }>({
@@ -128,37 +153,22 @@ function AppContent() {
   // Account Delete Confirmation
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [isDeletingAccount, setIsDeletingAccount] = useState(false);
-  const [hasNavigatedOnLogin, setHasNavigatedOnLogin] = useState(false);
-  const [showBrandIntro, setShowBrandIntro] = useState(() => {
-    if (navigator.userAgent.toLowerCase().includes('jsdom')) return false;
-
-    try {
-      return window.sessionStorage.getItem(BRAND_INTRO_SEEN_KEY) !== 'true';
-    } catch {
-      return true;
-    }
-  });
-  const finishBrandIntro = useCallback(() => {
-    try {
-      window.sessionStorage.setItem(BRAND_INTRO_SEEN_KEY, 'true');
-    } catch {
-      // sessionStorage may be unavailable in strict privacy contexts.
-    }
-    setShowBrandIntro(false);
-  }, []);
   
   // Password Change Modal
   const [showPasswordModal, setShowPasswordModal] = useState(false);
+  const [isPasswordUpdateLoading, setIsPasswordUpdateLoading] = useState(false);
   
-  // Narrative Elements
-  const [showPromotionCeremony, setShowPromotionCeremony] = useState<{ isOpen: boolean; rank: string }>({ isOpen: false, rank: '' });
   const [dailyProverb, setDailyProverb] = useState('');
-  const [formQuestion, setFormQuestion] = useState('');
-  const [hasCards, setHasCards] = useState(false);
   const [highlightedReadingId, setHighlightedReadingId] = useState<string | null>(null);
-  const [isFeatureSpotlightOpen, setIsFeatureSpotlightOpen] = useState(false);
+  const [metadataInitialCardId, setMetadataInitialCardId] = useState<string | undefined>(undefined);
   const highlightTimerRef = useRef<number | null>(null);
   const snackbarTimerRef = useRef<number | null>(null);
+  const activeTabRef = useRef<AppTab>(activeTab);
+  const showAuthPageRef = useRef(showAuthPage);
+  const isSidebarOpenRef = useRef(isSidebarOpen);
+  const appHistoryReadyRef = useRef(false);
+  const skipNextHistoryPushRef = useRef(false);
+  const lastBackExitNoticeRef = useRef(0);
 
   // Use custom hook for readings state
   const {
@@ -169,6 +179,8 @@ function AppContent() {
     cardMetadata,
     setCardMetadata,
     cardKeywordMemory,
+    quizMemory,
+    setQuizMemory,
     searchQuery,
     setSearchQuery,
     searchTags,
@@ -190,7 +202,8 @@ function AppContent() {
     syncNotice,
     clearSyncNotice,
   } = useReadings(session, isAuthLoading);
-  useBodyScrollLock(isProcessing || showPromotionCeremony.isOpen);
+  const dailyFortune = useDailyFortune(session, isAuthLoading);
+  useBodyScrollLock(isProcessing);
   useMobileFocusScroll();
 
   const [publicReadingsCache, setPublicReadingsCache] = useState<TarotReading[]>([]);
@@ -229,34 +242,57 @@ function AppContent() {
   }, [clearSyncNotice, syncNotice]);
 
   useEffect(() => {
-    const preloadTabs = () => {
-      void Promise.allSettled([
-        loadAddTab(),
-        loadPrivateTab(),
-        loadPublicTab(),
-        loadProfileTab(),
-        loadCardMetadataManager(),
-        loadReadingDetailModal(),
-      ]);
-    };
+    if (!hasEnteredApp) return;
+
+    warmTarotDeckImages();
+  }, [hasEnteredApp]);
+
+  useEffect(() => {
+    if (!hasEnteredApp) return;
 
     const idleWindow = window as Window & {
       requestIdleCallback?: (callback: IdleRequestCallback, options?: IdleRequestOptions) => number;
       cancelIdleCallback?: (handle: number) => void;
     };
+    const idleIds: number[] = [];
+    const timers: number[] = [];
 
-    if (idleWindow.requestIdleCallback && idleWindow.cancelIdleCallback) {
-      const idleId = idleWindow.requestIdleCallback(preloadTabs, { timeout: 2500 });
-      return () => idleWindow.cancelIdleCallback?.(idleId);
-    }
+    const schedulePreload = (callback: () => void, timeout: number, fallbackDelay: number) => {
+      if (idleWindow.requestIdleCallback && idleWindow.cancelIdleCallback) {
+        idleIds.push(idleWindow.requestIdleCallback(callback, { timeout }));
+        return;
+      }
 
-    const timer = window.setTimeout(preloadTabs, 1200);
-    return () => window.clearTimeout(timer);
-  }, []);
+      timers.push(window.setTimeout(callback, fallbackDelay));
+    };
+
+    schedulePreload(() => {
+      void Promise.allSettled([
+        loadAddTab(),
+        loadReadingDetailModal(),
+      ]);
+    }, 2200, 1800);
+
+    schedulePreload(() => {
+      void Promise.allSettled([
+        loadPrivateTab(),
+        loadPublicTab(),
+        loadProfileTab(),
+      ]);
+    }, 6500, 5200);
+
+    schedulePreload(() => {
+      void loadCardMetadataManager();
+    }, 9500, 8200);
+
+    return () => {
+      idleIds.forEach(id => idleWindow.cancelIdleCallback?.(id));
+      timers.forEach(timer => window.clearTimeout(timer));
+    };
+  }, [hasEnteredApp]);
 
   const resetPrivateSessionState = useCallback((forceHome = false) => {
     setProfile(null);
-    setSelectedAuthor(null);
     setSelectedReadingDetail(null);
     setEditingReading(null);
     setShowLogoutConfirm(false);
@@ -266,9 +302,9 @@ function AppContent() {
 
   const realReadings = useMemo(() => readings.filter(r => !r.isExample), [readings]);
   const readingCount = realReadings.length;
-  const customSpreadCount = useMemo(
-    () => spreads.filter(spread => !OFFICIAL_SPREADS.some(official => official.name === spread.name)).length,
-    [spreads],
+  const reviewedReadingCount = useMemo(
+    () => realReadings.filter(reading => Boolean(reading.userFeedback?.trim())).length,
+    [realReadings],
   );
   const hasPublicReading = realReadings.some(r => r.isPublic);
   const aiUsageCount = realReadings.filter(r => r.interpretation?.combination?.includes('AI') || r.processedByAi).length;
@@ -305,25 +341,21 @@ function AppContent() {
   }, [activeTab, scrollPageToTop]);
 
   useEffect(() => {
-    if (!onboardingState.hasCompletedFirstEntry || activeTab !== 'home') return;
-    if (localStorage.getItem(FEATURE_SPOTLIGHT_STORAGE_KEY) === 'true') return;
+    activeTabRef.current = activeTab;
+  }, [activeTab]);
 
-    const timer = window.setTimeout(() => {
-      setIsFeatureSpotlightOpen(true);
-    }, 800);
+  useEffect(() => {
+    showAuthPageRef.current = showAuthPage;
+  }, [showAuthPage]);
 
-    return () => window.clearTimeout(timer);
-  }, [activeTab, onboardingState.hasCompletedFirstEntry]);
-
-  const finishFeatureSpotlight = useCallback(() => {
-    localStorage.setItem(FEATURE_SPOTLIGHT_STORAGE_KEY, 'true');
-    setIsFeatureSpotlightOpen(false);
-  }, []);
+  useEffect(() => {
+    isSidebarOpenRef.current = isSidebarOpen;
+  }, [isSidebarOpen]);
 
   const { currentTip, isVisible: isTipVisible, dismissTip } = useSmartTips(
     readingCount,
-    !!formQuestion,
-    hasCards
+    false,
+    false
   );
 
   const handleTipAction = () => {
@@ -338,10 +370,34 @@ function AppContent() {
 
   const navigateToTab = useCallback((tab: AppTab) => {
     if (tab !== 'add') setEditingReading(null);
+    if (tab !== 'metadata') setMetadataInitialCardId(undefined);
     dismissTip();
     setActiveTab(tab);
     scrollPageToTop('smooth');
   }, [dismissTip, scrollPageToTop, setEditingReading, setActiveTab]);
+
+  const handleOpenCardLibrary = useCallback((cardId?: string) => {
+    setMetadataInitialCardId(cardId);
+    navigateToTab('metadata');
+  }, [navigateToTab]);
+
+  const handleManualCloudSyncWithProfile = useCallback(async () => {
+    await handleManualCloudSync();
+
+    if (!session?.uid) return;
+
+    try {
+      setProfile(await getOrCreateUserProfile(session));
+    } catch (error) {
+      console.error('Failed to refresh profile during manual sync:', error);
+    }
+  }, [handleManualCloudSync, session]);
+
+  const handleEnterApp = useCallback(() => {
+    setActiveTab('home');
+    setHasEnteredApp(true);
+    scrollPageToTop('auto');
+  }, [scrollPageToTop, setActiveTab]);
 
   const closeSidebar = useCallback(() => {
     setIsSidebarOpen(false);
@@ -352,6 +408,109 @@ function AppContent() {
     dismissTip();
     setIsSidebarOpen(true);
   }, [dismissTip]);
+
+  useEffect(() => {
+    const isJsdom = typeof navigator !== 'undefined' && navigator.userAgent.toLowerCase().includes('jsdom');
+    if (!hasEnteredApp || isJsdom) return;
+
+    const createState = (tab: AppTab, root = false) => ({ tarotPavilionApp: true, tab, root });
+
+    try {
+      window.history.replaceState(createState(activeTabRef.current, true), '', window.location.href);
+      window.history.pushState(createState(activeTabRef.current), '', window.location.href);
+      appHistoryReadyRef.current = true;
+    } catch {
+      return;
+    }
+
+    const handlePopState = (event: PopStateEvent) => {
+      const state = event.state as { tarotPavilionApp?: boolean; tab?: string } | null;
+      const currentTab = activeTabRef.current;
+      const stateTab = state?.tab || null;
+      const incomingTab: AppTab = isAppTab(stateTab) ? stateTab : 'home';
+
+      if (showAuthPageRef.current) {
+        setShowAuthPage(false);
+        try {
+          window.history.pushState(createState(currentTab), '', window.location.href);
+        } catch {
+          // 浏览器历史不可写时，至少关闭当前浮层。
+        }
+        return;
+      }
+
+      if (isSidebarOpenRef.current) {
+        setIsSidebarOpen(false);
+        try {
+          window.history.pushState(createState(currentTab), '', window.location.href);
+        } catch {
+          // 浏览器历史不可写时，至少关闭侧边栏。
+        }
+        return;
+      }
+
+      if (incomingTab !== currentTab) {
+        skipNextHistoryPushRef.current = true;
+        setActiveTab(incomingTab);
+        scrollPageToTop('auto');
+        return;
+      }
+
+      if (currentTab !== 'home') {
+        skipNextHistoryPushRef.current = true;
+        setActiveTab('home');
+        scrollPageToTop('auto');
+        return;
+      }
+
+      const now = Date.now();
+      if (now - lastBackExitNoticeRef.current < 1800) {
+        window.removeEventListener('popstate', handlePopState);
+        window.history.back();
+        return;
+      }
+
+      lastBackExitNoticeRef.current = now;
+      setSnackbar({ isOpen: true, message: '再按一次返回，离开研习阁。' });
+      try {
+        window.history.pushState(createState('home'), '', window.location.href);
+      } catch {
+        // 提示已经出现，历史不可写时不阻断页面。
+      }
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    return () => {
+      appHistoryReadyRef.current = false;
+      window.removeEventListener('popstate', handlePopState);
+    };
+  }, [hasEnteredApp, scrollPageToTop, setActiveTab]);
+
+  useEffect(() => {
+    const isJsdom = typeof navigator !== 'undefined' && navigator.userAgent.toLowerCase().includes('jsdom');
+    if (!hasEnteredApp || !appHistoryReadyRef.current || isJsdom) return;
+
+    const nextState = { tarotPavilionApp: true, tab: activeTab };
+
+    if (skipNextHistoryPushRef.current) {
+      skipNextHistoryPushRef.current = false;
+      try {
+        window.history.replaceState(nextState, '', window.location.href);
+      } catch {
+        // 忽略非关键历史写入失败。
+      }
+      return;
+    }
+
+    const currentState = window.history.state as { tarotPavilionApp?: boolean; tab?: string } | null;
+    if (currentState?.tarotPavilionApp && currentState.tab === activeTab) return;
+
+    try {
+      window.history.pushState(nextState, '', window.location.href);
+    } catch {
+      // 忽略非关键历史写入失败。
+    }
+  }, [activeTab, hasEnteredApp]);
 
   const resetSignedOutView = useCallback(() => {
     resetPrivateSessionState(true);
@@ -384,14 +543,9 @@ function AppContent() {
 
     if (!session) {
       resetSignedOutView();
-      setHasNavigatedOnLogin(false);
-      localStorage.removeItem('has_navigated_on_login');
-    } else if (!hasNavigatedOnLogin && !localStorage.getItem('has_navigated_on_login')) {
-      setHasNavigatedOnLogin(true);
-      localStorage.setItem('has_navigated_on_login', 'true');
-      setActiveTab('profile');
+      removeLocalStorageValue('has_navigated_on_login');
     }
-  }, [resetSignedOutView, session, hasNavigatedOnLogin, isAuthLoading]);
+  }, [resetSignedOutView, session, isAuthLoading]);
 
   useEffect(() => {
     if (!session?.uid || isAuthLoading) {
@@ -407,32 +561,18 @@ function AppContent() {
   // Daily Proverb & First Entry Scroll
   useEffect(() => {
     const today = new Date().toDateString();
-    const savedDate = localStorage.getItem('proverb_date');
-    const savedProverb = localStorage.getItem('proverb_content');
+    const savedDate = getLocalStorageValue('proverb_date');
+    const savedProverb = getLocalStorageValue('proverb_content');
 
     if (savedDate === today && savedProverb) {
       setDailyProverb(savedProverb);
     } else {
       const randomProverb = PAVILION_PROVERBS[Math.floor(Math.random() * PAVILION_PROVERBS.length)];
       setDailyProverb(randomProverb);
-      localStorage.setItem('proverb_date', today);
-      localStorage.setItem('proverb_content', randomProverb);
+      setLocalStorageValue('proverb_date', today);
+      setLocalStorageValue('proverb_content', randomProverb);
     }
   }, [session]);
-
-  // Security check for restricted pages
-  useEffect(() => {
-    if (isAuthLoading) return;
-
-    if (!session && activeTab === 'profile') {
-      setActiveTab('home');
-      setLoginPrompt({
-        isOpen: true,
-        title: '🔒 阁主印鉴受限',
-        content: '“阁主印鉴”记录着您的位阶晋升与私人注疏。请执印入阁后查看您的专属成就。'
-      });
-    }
-  }, [activeTab, session, isAuthLoading]);
 
   // Profile loading
   useEffect(() => {
@@ -442,10 +582,18 @@ function AppContent() {
         return;
       }
 
+      const cachedProfile = getCachedUserProfile(session.uid);
+      if (cachedProfile) {
+        setProfile(cachedProfile);
+      }
+
       try {
         setProfile(await getOrCreateUserProfile(session));
       } catch (error) {
         console.error('Failed to load profile:', error);
+        if (cachedProfile) {
+          setProfile(cachedProfile);
+        }
       }
     };
 
@@ -479,9 +627,9 @@ function AppContent() {
     setIsSyncing(true);
     try {
       // Get local data from localStorage
-      const localReadings = localStorage.getItem('tarot_readings');
-      const guestReadings = localStorage.getItem('tarot_guest_data');
-      const localSpreads = localStorage.getItem('tarot_spreads');
+      const localReadings = getLocalStorageValue('tarot_readings');
+      const guestReadings = getLocalStorageValue('tarot_guest_data');
+      const localSpreads = getLocalStorageValue('tarot_spreads');
       let parsedLocalSpreads: unknown = [];
 
       try {
@@ -618,145 +766,6 @@ function AppContent() {
     }
   };
 
-  const handleRefreshVerificationFromSettings = async () => {
-    setIsVerificationActionLoading(true);
-    try {
-      await refreshUser();
-      setSnackbar({ isOpen: true, message: '✨ 邮箱验证状态已刷新。' });
-    } catch (error: any) {
-      setSnackbar({ isOpen: true, message: `❌ ${error.message || '刷新验证状态失败，请稍后再试。'}` });
-    } finally {
-      setIsVerificationActionLoading(false);
-    }
-  };
-
-  // Handle Export Data
-  const handleExportData = () => {
-    try {
-      const exportData = {
-        readings: readings.filter(r => !r.isExample),
-        spreads,
-        cardMetadata,
-        profile,
-        exportDate: new Date().toISOString(),
-        version: '1.2.0'
-      };
-      
-      const blob = createTarotExportPdfBlob(exportData);
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = `tarot_pavilion_export_${new Date().toISOString().split('T')[0]}.pdf`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      URL.revokeObjectURL(url);
-      
-      setSnackbar({ isOpen: true, message: '✨ 典籍 PDF 已撰录成册，请妥善保存。' });
-    } catch (error) {
-      console.error('Export failed:', error);
-      setSnackbar({ isOpen: true, message: '❌ PDF 撰录失败，请稍后再试。' });
-    }
-  };
-
-  // Handle Import Data
-  const handleImportData = async () => {
-    const input = document.createElement('input');
-    input.type = 'file';
-    input.accept = '.json';
-    input.onchange = async (e) => {
-      const file = (e.target as HTMLInputElement).files?.[0];
-      if (!file) return;
-      
-      try {
-        const text = await file.text();
-        const importedData = JSON.parse(text);
-        
-        let importedCount = 0;
-        const uid = session?.uid;
-        const importedSpreadNameMap = Array.isArray(importedData.spreads)
-          ? getLegacyCustomSpreadNameMap(importedData.spreads, OFFICIAL_SPREADS)
-          : {};
-        
-        if (importedData.readings && Array.isArray(importedData.readings)) {
-          const importableReadings = normalizeLegacyReadingSpreadNames<TarotReading>(
-            importedData.readings.filter((reading: TarotReading) => (
-              !reading.isExample && reading.question && reading.cards && reading.cards.length > 0
-            )),
-            importedSpreadNameMap,
-          );
-
-          if (importableReadings.length > 0) {
-            const currentReadings = readings.filter((r: TarotReading) => !r.isExample);
-            const existingIds = new Set(currentReadings.map(reading => reading.id));
-            const newReadings = importableReadings.filter((reading: TarotReading) => !existingIds.has(reading.id));
-            const nextReadings = [...newReadings, ...currentReadings];
-
-            importedCount += newReadings.length;
-            setReadings(prev => [...newReadings, ...prev]);
-
-            if (uid) {
-              await replaceUserReadings(uid, nextReadings);
-            }
-          }
-        }
-        
-        if (importedData.spreads && Array.isArray(importedData.spreads)) {
-          const existingNames = new Set(spreads.map((s: SpreadDefinition) => s.name));
-          const importedSpreads = normalizeLegacyCustomSpreads(importedData.spreads, OFFICIAL_SPREADS);
-          const newSpreads = importedSpreads.filter((s: SpreadDefinition) => !existingNames.has(s.name));
-          const nextSpreads = [...spreads, ...newSpreads];
-
-          importedCount += newSpreads.length;
-          setSpreads(nextSpreads);
-          
-          if (uid) {
-            await saveUserSpreads(uid, nextSpreads);
-          }
-        }
-        
-        if (importedData.cardMetadata && Array.isArray(importedData.cardMetadata)) {
-          const existingNames = new Set(cardMetadata.map((m: TarotCardMetadata) => m.name));
-          const newMetadata = importedData.cardMetadata.filter((m: TarotCardMetadata) => !existingNames.has(m.name));
-          const nextMetadata = [...cardMetadata, ...newMetadata];
-
-          importedCount += newMetadata.length;
-          setCardMetadata(nextMetadata);
-          
-          if (uid) {
-            await saveUserCardMetadata(uid, nextMetadata);
-          }
-        }
-        
-        setSnackbar({ isOpen: true, message: `✨ 成功导入 ${importedCount} 条记录。` });
-      } catch (error) {
-        console.error('Import failed:', error);
-        setSnackbar({ isOpen: true, message: '❌ 载入失败，请检查文件格式。' });
-      }
-    };
-    input.click();
-  };
-
-  // Check Rank Promotion
-  const checkRankPromotion = (count: number) => {
-    const ranks: { threshold: number; rank: string }[] = [
-      { threshold: 3, rank: '初窥门径' },
-      { threshold: 7, rank: '登堂入室' },
-      { threshold: 15, rank: '融会贯通' },
-      { threshold: 30, rank: '炉火纯青' },
-      { threshold: 50, rank: '登峰造极' },
-    ];
-
-    const achievedRank = ranks.find(r => count >= r.threshold);
-    if (achievedRank) {
-      const lastRank = localStorage.getItem('last_rank');
-      if (lastRank !== achievedRank.rank) {
-        localStorage.setItem('last_rank', achievedRank.rank);
-        setShowPromotionCeremony({ isOpen: true, rank: achievedRank.rank });
-      }
-    }
-  };
-
   // Handle add reading with snackbar
   const handleAddReadingWithSnackbar = async (newReading: any) => {
     const savedReading = await handleAddReading(newReading, profile, (msg: string) => {
@@ -796,25 +805,10 @@ function AppContent() {
 
   // Handle author click
   const handleAuthorClick = (author: string) => {
-    setSelectedAuthor(author);
-    navigateToTab('profile');
+    setSnackbar({ isOpen: true, message: `${author} 的公开案例可在广场继续查看。` });
   };
 
   const ownAuthorName = getAuthorDisplayName(profile, session);
-  const isViewingOwnProfile = !selectedAuthor || selectedAuthor === ownAuthorName;
-  const profileReadings = useMemo(() => {
-    if (isViewingOwnProfile) return readings;
-
-    const byId = new Map<string, TarotReading>();
-    [...publicReadingsCache, ...readings].forEach(reading => {
-      if (!reading.isPublic && reading.userId === 'public') return;
-      byId.set(reading.id, reading);
-    });
-
-    return Array.from(byId.values()).sort(
-      (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
-    );
-  }, [isViewingOwnProfile, publicReadingsCache, readings]);
 
   const sidebarInsights = useMemo(() => {
     const toDayStart = (value?: string) => {
@@ -839,31 +833,41 @@ function AppContent() {
     closeSidebar();
   }, [closeSidebar, navigateToTab]);
 
+  const openAuthFromSidebar = useCallback(() => {
+    setShowAuthPage(true);
+    closeSidebar();
+  }, [closeSidebar]);
+
   // Sidebar Content
   const sidebarContent = (
-    <div className="p-6">
-      <div className="flex items-center gap-3 mb-8">
-        <div className="w-12 h-12 rounded-full bg-gradient-to-br from-forest-accent to-forest-pink flex items-center justify-center">
-          <Sparkles className="text-white" size={20} />
-        </div>
-        <div>
-          <h2 className="font-serif font-bold text-forest-ink">塔罗研习阁</h2>
-          <p className="text-[10px] text-forest-muted">灵见手记 · 智慧传承</p>
+    <div className="flex min-h-full flex-col px-4 py-5">
+      <div className="mb-5 flex items-center gap-3 px-1">
+        <img
+          src="/app-icon-192.png"
+          alt="塔罗研习阁图标"
+          className="h-11 w-11 rounded-2xl shadow-sm"
+          draggable={false}
+        />
+        <div className="min-w-0">
+          <h2 className="font-serif text-base font-semibold text-forest-ink">塔罗研习阁</h2>
+          <p className="text-[10px] text-forest-muted">灵见手记 · 稳稳同步</p>
         </div>
       </div>
 
-      <div className="space-y-4">
+      <div className="space-y-3">
         <button
           onClick={() => navigateFromSidebar('home')}
-          className={`w-full min-h-12 flex items-center justify-between p-3 rounded-xl transition-all group ${
-            activeTab === 'home' ? 'bg-forest-accent/10 text-forest-accent' : 'bg-white hover:bg-forest-accent/5 text-forest-text'
+          className={`group flex min-h-12 w-full items-center justify-between rounded-2xl border px-3 transition-all ${
+            activeTab === 'home'
+              ? 'border-forest-accent/10 bg-forest-accent/8 text-forest-accent'
+              : 'border-forest-accent/7 bg-white/34 text-forest-text hover:bg-white/58'
           }`}
         >
           <div className="flex items-center gap-3">
             <Home size={18} className="text-forest-accent" />
             <span className="text-sm font-medium">回到研习台</span>
           </div>
-          <ChevronRight size={14} className="text-forest-muted group-hover:translate-x-1 transition-transform" />
+          <ChevronRight size={14} className="text-forest-muted transition-transform group-hover:translate-x-1" />
         </button>
 
         <CloudSyncPanel
@@ -871,122 +875,68 @@ function AppContent() {
           cloudSyncInfo={cloudSyncInfo}
           isCloudSyncPaused={isCloudSyncPaused}
           readingCount={readingCount}
-          customSpreadCount={customSpreadCount}
+          reviewedReadingCount={reviewedReadingCount}
           todayCount={sidebarInsights.todayCount}
-          onManualSync={handleManualCloudSync}
-          onLogin={() => { setShowAuthPage(true); closeSidebar(); }}
+          onManualSync={handleManualCloudSyncWithProfile}
+          onLogin={openAuthFromSidebar}
           onOpenLibrary={() => navigateFromSidebar('private')}
           onStartReading={() => navigateFromSidebar('add')}
+          showPrimaryAction={false}
         />
 
-        <section className="space-y-2">
-          <p className="text-[10px] text-forest-muted font-bold px-2 uppercase tracking-widest">备份与恢复</p>
-        <button 
-          onClick={() => {
-            if (!session) {
-              setLoginPrompt({
-                isOpen: true,
-                title: '🔒 开启数据导出功能',
-                content: '登录后，您可以一键导出所有的占卜记录与研习心得。'
-              });
+        <div className="space-y-1.5 rounded-[1.35rem] border border-forest-accent/7 bg-white/24 p-1.5">
+          <button
+            type="button"
+            onClick={() => {
+              requestPwaInstallPrompt({ autoInstall: true, force: true, source: 'sidebar' });
               closeSidebar();
-              return;
-            }
-            handleExportData();
-            closeSidebar();
-          }}
-          className="w-full flex items-center justify-between p-3 rounded-xl hover:bg-forest-accent/5 text-forest-text transition-all group"
-        >
-          <div className="flex items-center gap-3">
-            <Database size={18} className="text-forest-accent" />
-            <span className="text-sm font-medium">下载典籍 PDF</span>
-          </div>
-          <ChevronRight size={14} className="text-forest-muted group-hover:translate-x-1 transition-transform" />
-        </button>
-        <button 
-          onClick={() => { handleImportData(); closeSidebar(); }}
-          className="w-full flex items-center justify-between p-3 rounded-xl hover:bg-forest-accent/5 text-forest-text transition-all group"
-        >
-          <div className="flex items-center gap-3">
-            <Upload size={18} className="text-forest-accent" />
-            <span className="text-sm font-medium">载入 JSON 备份</span>
-          </div>
-          <ChevronRight size={14} className="text-forest-muted group-hover:translate-x-1 transition-transform" />
-        </button>
-        </section>
-
-        <section className="space-y-2">
-          <p className="text-[10px] text-forest-muted font-bold px-2 uppercase tracking-widest">账号与设置</p>
-          <div className="space-y-1 rounded-2xl bg-white border border-forest-accent/10 p-1.5 shadow-sm">
-            {session ? (
-              <>
-            <button
-              onClick={() => {
-                setSelectedAuthor(profile?.display_name || profile?.nickname || session.email?.split('@')[0]);
-                navigateToTab('profile');
-                closeSidebar();
-              }}
-              className={`w-full flex items-center justify-between p-3 rounded-xl transition-all group ${
-                activeTab === 'profile' ? 'bg-forest-accent/5 text-forest-accent' : 'hover:bg-forest-accent/5 text-forest-text'
-              }`}
-            >
-              <div className="flex items-center gap-3">
-                <User size={18} />
-                <span className="text-sm font-medium">阁主印鉴</span>
+            }}
+            className="group flex min-h-11 w-full items-center justify-between rounded-xl px-2.5 text-forest-text transition-all hover:bg-white/54"
+          >
+            <div className="flex items-center gap-3">
+              <Download size={17} className="text-forest-accent" />
+              <div className="text-left">
+                <span className="block text-sm font-medium">添加到手机桌面</span>
+                <span className="text-[10px] text-forest-muted">像 App 一样打开</span>
               </div>
-              <ChevronRight size={14} className="text-forest-muted group-hover:translate-x-1 transition-transform" />
-            </button>
-            <button
-              onClick={() => { setIsSecurityModalOpen(true); closeSidebar(); }}
-              className="w-full flex items-center gap-3 p-3 rounded-xl hover:bg-forest-accent/5 text-forest-text transition-all"
-            >
-              <ShieldCheck size={18} className="text-forest-accent" />
-              <span className="text-sm font-medium">账号安全</span>
-            </button>
-              </>
-            ) : (
+            </div>
+            <ChevronRight size={14} className="text-forest-muted transition-transform group-hover:translate-x-1" />
+          </button>
+
+          {session && (
+            <>
               <button
-                onClick={() => { setShowAuthPage(true); closeSidebar(); }}
-                className="w-full flex items-center justify-between p-3 rounded-xl hover:bg-forest-accent/5 text-forest-text transition-all group"
+                type="button"
+                onClick={() => navigateFromSidebar('profile')}
+                className={`group flex min-h-11 w-full items-center justify-between rounded-xl px-2.5 transition-all hover:bg-white/54 ${
+                  activeTab === 'profile' ? 'text-forest-accent' : 'text-forest-text'
+                }`}
               >
                 <div className="flex items-center gap-3">
-                  <LogIn size={18} className="text-forest-accent" />
-                  <span className="text-sm font-medium">登录并开启同步</span>
+                  <User size={17} className="text-forest-accent" />
+                  <div className="text-left">
+                    <span className="block text-sm font-medium">账号设置</span>
+                    <span className="text-[10px] text-forest-muted">{ownAuthorName}</span>
+                  </div>
                 </div>
-                <ChevronRight size={14} className="text-forest-muted group-hover:translate-x-1 transition-transform" />
+                <ChevronRight size={14} className="text-forest-muted transition-transform group-hover:translate-x-1" />
               </button>
-            )}
-        <button
-          onClick={() => {
-            setEditingReading(null);
-            navigateToTab('home');
-            scrollPageToTop('auto');
-            setIsFeatureSpotlightOpen(true);
-            closeSidebar();
-          }}
-          className="w-full flex items-center justify-between p-3 rounded-xl hover:bg-forest-accent/5 text-forest-text transition-all group"
-        >
-          <div className="flex items-center gap-3">
-            <Info size={18} className="text-forest-accent" />
-            <span className="text-sm font-medium">重新查看功能导览</span>
-          </div>
-          <ChevronRight size={14} className="text-forest-muted group-hover:translate-x-1 transition-transform" />
-        </button>
-            {session && (
+
               <button
+                type="button"
                 onClick={() => { setShowLogoutConfirm(true); closeSidebar(); }}
-                className="w-full flex items-center gap-3 p-3 rounded-xl hover:bg-forest-accent/5 text-forest-accent transition-all"
+                className="flex min-h-11 w-full items-center gap-3 rounded-xl px-2.5 text-forest-muted transition-all hover:bg-white/54 hover:text-forest-accent"
               >
-                <LogOut size={18} />
-                <span className="text-sm font-medium">封印离阁</span>
+                <LogOut size={17} />
+                <span className="text-sm font-medium">退出登录</span>
               </button>
-            )}
-          </div>
-        </section>
+            </>
+          )}
+        </div>
       </div>
 
-      <div className="p-6 border-t border-forest-border text-center">
-        <p className="text-[10px] text-forest-muted">版本 v1.2.0 · 研精覃思</p>
+      <div className="mt-auto px-2 pt-5 text-center">
+        <p className="text-[10px] text-forest-muted/75">版本 v1.2.0 · 研精覃思</p>
       </div>
     </div>
   );
@@ -1008,11 +958,16 @@ function AppContent() {
     );
   }
 
+  if (!hasEnteredApp) {
+    return <SplashScreen onEnter={handleEnterApp} />;
+  }
+
+  if (isAuthLoading) {
+    return <AuthRestoringScreen />;
+  }
+
   return (
     <>
-    <AnimatePresence>
-      {showBrandIntro && <BrandIntro onDone={finishBrandIntro} />}
-    </AnimatePresence>
     <div>
       <MainLayout
         activeTab={activeTab}
@@ -1024,11 +979,6 @@ function AppContent() {
           if (open) openSidebar();
           else closeSidebar();
         }}
-        session={session}
-        profile={profile}
-        selectedAuthor={selectedAuthor}
-        setSelectedAuthor={setSelectedAuthor}
-        onShowAuth={() => setShowAuthPage(true)}
         sidebarContent={sidebarContent}
       >
       <AnimatePresence>
@@ -1078,15 +1028,14 @@ function AppContent() {
       <Modal
         isOpen={showLogoutConfirm}
         onClose={() => setShowLogoutConfirm(false)}
-        title="封印离阁"
+        title="退出登录"
         icon={<LogOut size={24} className="text-forest-accent" />}
       >
         <div className="space-y-6 text-center">
           <div className="py-2 space-y-4">
-            <p className="text-forest-ink font-serif text-xl font-bold italic">“阁中烛火未熄，以此一别，期待归期。”</p>
+            <p className="font-serif text-xl font-bold text-forest-ink">确认退出当前账号？</p>
             <p className="text-sm text-forest-muted leading-loose px-4">
-              阁主确定要暂时封印您的印鉴吗？<br />
-              离阁后，私人注疏将受到保护，再次入阁需重新执印验证。
+              退出后仍可浏览本机内容；再次同步云端数据时需要重新登录。
             </p>
           </div>
           <div className="flex flex-col gap-3">
@@ -1094,13 +1043,13 @@ function AppContent() {
               onClick={() => void handleLogout()}
               className="w-full py-3.5 bg-forest-accent text-white rounded-xl font-bold text-sm shadow-lg shadow-forest-accent/20 hover:opacity-90 transition-all active:scale-[0.98]"
             >
-              确定离阁
+              确认退出
             </button>
             <button 
               onClick={() => setShowLogoutConfirm(false)}
               className="w-full py-3 text-forest-muted hover:text-forest-accent transition-colors text-xs font-bold"
             >
-              稍作停留
+              取消
             </button>
           </div>
         </div>
@@ -1148,7 +1097,7 @@ function AppContent() {
         <div className="space-y-6">
           <div className="space-y-2">
             <p className="text-forest-ink font-medium">检测到您在本设备有未同步的研习记录或浏览手记。</p>
-            <p className="text-sm text-forest-muted">是否将其同步到您的云端账户，以便开启多端执印入阁？</p>
+            <p className="text-sm text-forest-muted">是否将其同步到您的云端账户，以便多端继续使用？</p>
           </div>
           <div className="flex flex-col gap-3">
             <button 
@@ -1279,9 +1228,9 @@ function AppContent() {
               onClick={async () => {
                 const currentInput = document.getElementById('password-modal-current-input') as HTMLInputElement;
                 const input = document.getElementById('password-modal-new-input') as HTMLInputElement;
-                const button = document.getElementById('password-modal-update-btn') as HTMLButtonElement;
                 const currentPwd = currentInput?.value;
                 const pwd = input?.value;
+                if (isPasswordUpdateLoading) return;
                 if (!currentPwd) {
                   setSnackbar({ isOpen: true, message: '❌ 请先输入当前密码。' });
                   return;
@@ -1291,10 +1240,7 @@ function AppContent() {
                   return;
                 }
                 
-                if (button) {
-                  button.disabled = true;
-                  button.innerHTML = '<div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mx-auto"></div>';
-                }
+                setIsPasswordUpdateLoading(true);
                 
                 try {
                   await updatePassword(currentPwd, pwd);
@@ -1310,16 +1256,18 @@ function AppContent() {
                     setSnackbar({ isOpen: true, message: `❌ ${errorMsg}` });
                   }
                 } finally {
-                  if (button) {
-                    button.disabled = false;
-                    button.innerHTML = '确认修改';
-                  }
+                  setIsPasswordUpdateLoading(false);
                 }
               }}
               id="password-modal-update-btn"
+              disabled={isPasswordUpdateLoading}
               className="w-full py-3 bg-forest-accent text-white rounded-xl font-bold text-sm hover:bg-forest-accent/90 transition-all disabled:opacity-50"
             >
-              确认修改
+              {isPasswordUpdateLoading ? (
+                <span className="mx-auto block h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
+              ) : (
+                '确认修改'
+              )}
             </button>
           </div>
         </div>
@@ -1337,7 +1285,7 @@ function AppContent() {
             onDragEnd={(_, info) => {
               if (info.offset.x > 50) setSnackbar(prev => ({ ...prev, isOpen: false }));
             }}
-            className="fixed bottom-8 left-1/2 z-[250] bg-white/95 text-forest-text px-5 py-3.5 rounded-2xl shadow-2xl text-sm font-medium backdrop-blur-md border border-forest-border flex items-center gap-4 min-w-[320px] max-w-[90vw]"
+            className="fixed bottom-24 left-1/2 z-[250] flex w-[calc(100vw-2rem)] max-w-sm items-center gap-3 rounded-2xl border border-forest-border bg-white/95 px-4 py-3 text-xs font-medium text-forest-text shadow-2xl backdrop-blur-md sm:bottom-8 sm:w-auto sm:min-w-[320px] sm:text-sm"
           >
             <span className="flex-1">{snackbar.message}</span>
             <div className={`flex items-center gap-3 ${snackbar.showLoginAction ? 'border-l border-forest-border pl-4' : ''}`}>
@@ -1394,45 +1342,6 @@ function AppContent() {
         />
       )}
 
-      {/* Promotion Ceremony */}
-      <AnimatePresence>
-        {showPromotionCeremony.isOpen && (
-          <motion.div 
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            onClick={() => setShowPromotionCeremony({ isOpen: false, rank: '' })}
-            className="fixed inset-0 z-[300] flex items-center justify-center p-6 bg-white/30 backdrop-blur-xl cursor-pointer overscroll-contain"
-          >
-            <motion.div 
-              initial={{ scale: 0.5, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              className="text-center space-y-6"
-            >
-              <div className="relative inline-block">
-                <motion.div 
-                  animate={{ rotate: 360 }}
-                  transition={{ duration: 10, repeat: Infinity, ease: "linear" }}
-                  className="absolute inset-0 bg-forest-accent/20 rounded-full blur-3xl scale-150"
-                />
-                <div className="relative p-8 bg-white/70 rounded-full border-4 border-forest-accent shadow-2xl">
-                  <ShieldCheck size={80} className="text-forest-accent" />
-                </div>
-              </div>
-              
-              <div className="space-y-2">
-                <h2 className="text-4xl font-serif text-forest-accent font-bold tracking-widest">位阶晋升</h2>
-                <p className="text-xl text-forest-text font-serif">
-                  恭贺阁主，灵见通达，特擢升为 <span className="text-forest-accent underline underline-offset-8 decoration-wavy">“{showPromotionCeremony.rank}”</span>
-                </p>
-              </div>
-              
-              <p className="text-sm text-forest-muted animate-bounce mt-12">点击任意处继续研习</p>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
       {/* Tab Content */}
       <AnimatePresence initial={false}>
         {activeTab === 'home' && (
@@ -1442,9 +1351,14 @@ function AppContent() {
             dailyProverb={dailyProverb}
             readings={readings}
             cardMetadata={cardMetadata}
+            quizMemory={quizMemory}
+            onUpdateQuizMemory={setQuizMemory}
+            isAuthLoading={isAuthLoading}
+            dailyFortune={dailyFortune}
             onNavigate={(tab: 'home' | 'add' | 'private' | 'public' | 'metadata' | 'profile') => {
               navigateToTab(tab);
             }}
+            onOpenCardLibrary={handleOpenCardLibrary}
             onSearch={setSearchQuery}
             onSelectSpread={(spread: string, category?: string) => {
               const spreadDef = spreads.find(s => s.name === spread);
@@ -1479,6 +1393,7 @@ function AppContent() {
           <Suspense fallback={<SuspenseFallback />}>
             <PrivateTab
               readings={readings}
+              ownerName={ownAuthorName}
               searchQuery={searchQuery}
               setSearchQuery={setSearchQuery}
               searchTags={searchTags}
@@ -1539,11 +1454,17 @@ function AppContent() {
         {activeTab === 'profile' && (
           <Suspense fallback={<SuspenseFallback />}>
             <ProfileTab
-              authorName={selectedAuthor || ownAuthorName}
-              profile={isViewingOwnProfile ? profile : null}
-              readings={profileReadings}
+              authorName={ownAuthorName}
+              profile={profile}
+              readings={realReadings}
               cardMetadata={cardMetadata}
+              email={session?.email}
+              isLoggedIn={!!session}
+              isEmailVerified={isEmailVerified}
+              onLogin={() => setShowAuthPage(true)}
               onLogout={() => setShowLogoutConfirm(true)}
+              onOpenSecurity={() => setIsSecurityModalOpen(true)}
+              onBackHome={() => navigateToTab('home')}
               onUpdateProfile={async (updated) => {
                 try {
                   if (updated.password) {
@@ -1551,28 +1472,26 @@ function AppContent() {
                   }
 
                   if (Object.keys(updated).length > 0 && session?.uid) {
-                    const previousAuthorName = ownAuthorName;
                     const nextProfile = await updateUserProfile(session.uid, updated);
                     const nextAuthorName = getAuthorDisplayName(nextProfile, session);
+                    const profileCloudPending = hasPendingUserProfileUpdate(session.uid);
 
                     setProfile(nextProfile);
                     setReadings(prev => syncReadingAuthorName(prev, session.uid!, nextAuthorName));
-                    setSelectedAuthor(current => current === previousAuthorName ? nextAuthorName : current);
+                    setSnackbar({
+                      isOpen: true,
+                      message: profileCloudPending
+                        ? '✨ 账号资料已先保存在本机，联网后会同步到云端。'
+                        : '✨ 账号资料已更新。',
+                    });
+                    return;
                   }
 
-                  setSnackbar({ isOpen: true, message: '✨ 印鉴已更新，阁主气象一新。' });
+                  setSnackbar({ isOpen: true, message: '✨ 账号资料已更新。' });
                 } catch (error: any) {
                   setSnackbar({ isOpen: true, message: `❌ 更新失败: ${error.message}` });
                 }
               }}
-              onTagClick={(tag) => {
-                setSearchTags([tag]);
-                navigateToTab('private');
-              }}
-              onViewAll={() => navigateToTab('private')}
-              onEditReading={handleEditReadingNavigate}
-              onDeleteReading={handleDeleteReading}
-              onTogglePublic={togglePublic}
             />
           </Suspense>
         )}
@@ -1584,10 +1503,12 @@ function AppContent() {
                 metadata={cardMetadata}
                 onUpdate={setCardMetadata}
                 readings={readings}
+                dailyFortunes={dailyFortune.fortunes}
                 cardKeywordMemory={cardKeywordMemory}
                 isLoggedIn={!!session}
                 userId={session?.uid}
-                onAddReading={handleAddReadingWithSnackbar}
+                initialCardId={metadataInitialCardId}
+                ownerName={ownAuthorName}
                 onShowSnackbar={(msg) => {
                   setSnackbar({ isOpen: true, message: msg });
                 }}
@@ -1606,11 +1527,6 @@ function AppContent() {
       </Suspense>
       </MainLayout>
     </div>
-    <FeatureSpotlightGuide
-      isOpen={isFeatureSpotlightOpen && activeTab === 'home'}
-      steps={FEATURE_SPOTLIGHT_STEPS}
-      onFinish={finishFeatureSpotlight}
-    />
     </>
   );
 }

@@ -1,5 +1,5 @@
 import React from 'react';
-import { Plus, X, Layers } from 'lucide-react';
+import { Plus, X, Layers, RotateCcw } from 'lucide-react';
 import { ReadingSlotData } from '../types';
 import { TAROT_CARDS, getCardImageUrl } from '../constants';
 import { TarotCardImage } from './TarotCardImage';
@@ -17,12 +17,13 @@ interface ReadingSlotProps {
   onLongPressEnd: () => void;
   onRemove: (idx: number, e: React.MouseEvent) => void;
   allowRemove?: boolean;
+  onToggleReverse?: (idx: number, e: React.MouseEvent) => void;
   onCycle?: (idx: number, e: React.MouseEvent) => void;
 }
 
 export const ReadingSlot: React.FC<ReadingSlotProps> = ({
   slot, index, isActive, isCelticCenter, stackIndex, isSmall, showSlotNumbers,
-  onSlotClick, onLongPressStart, onLongPressEnd, onRemove, allowRemove = true, onCycle
+  onSlotClick, onLongPressStart, onLongPressEnd, onRemove, allowRemove = true, onToggleReverse, onCycle
 }) => {
   const cardData = TAROT_CARDS.find(c => 
     c.name === slot.name || 
@@ -64,7 +65,14 @@ export const ReadingSlot: React.FC<ReadingSlotProps> = ({
                 {index + 1}
               </span>
             )}
-            <TarotCardImage src={getCardImageUrl(cardData?.id || 'ar00')} alt={slot.name} name={slot.name} className="w-full h-full object-contain bg-forest-bg" />
+            <TarotCardImage
+              src={getCardImageUrl(cardData?.id || 'ar00')}
+              alt={slot.name}
+              name={slot.name}
+              loading="eager"
+              fetchPriority="high"
+              className="w-full h-full object-contain bg-forest-bg"
+            />
             <div className="absolute inset-x-0 bottom-0 bg-forest-text/60 text-white text-[7px] py-0.5 text-center font-sans">{slot.name}</div>
           </div>
         ) : (
@@ -84,9 +92,18 @@ export const ReadingSlot: React.FC<ReadingSlotProps> = ({
         )}
       </button>
       {slot.name && (
-        <div className="absolute -bottom-2 left-2 px-1.5 py-0.5 bg-white border border-forest-accent/10 rounded-full shadow-sm text-[8px] font-bold text-forest-accent z-10 pointer-events-none">
-          {slot.isReversed ? '逆' : '正'}
-        </div>
+        <button
+          type="button"
+          onClick={(e) => onToggleReverse?.(index, e)}
+          className="absolute -bottom-5 left-0 z-20 flex min-h-11 min-w-11 items-start justify-start p-1 text-forest-accent transition-all hover:text-forest-accent/80 active:scale-95"
+          aria-label={`切换第 ${index + 1} 张为${slot.isReversed ? '正位' : '逆位'}`}
+          title="切换正逆位"
+        >
+          <span className="inline-flex items-center gap-0.5 rounded-full border border-forest-accent/10 bg-white/92 px-1.5 py-0.5 text-[8px] font-bold shadow-sm backdrop-blur-sm">
+            <RotateCcw size={9} strokeWidth={2.2} />
+            {slot.isReversed ? '逆' : '正'}
+          </span>
+        </button>
       )}
       {allowRemove && (
         <button

@@ -4,6 +4,8 @@ import { X, RotateCcw, FlipVertical } from 'lucide-react';
 import { useSpreadCanvasStore, getCardMeaning, getCardData } from '../../store/spreadCanvasStore';
 import { ConfirmDialog } from '../ConfirmDialog';
 import { useBodyScrollLock } from '../../hooks/useBodyScrollLock';
+import { getCardImageUrl } from '../../constants';
+import { TarotCardImage } from '../TarotCardImage';
 
 export const CardModal: React.FC = () => {
   const {
@@ -22,7 +24,7 @@ export const CardModal: React.FC = () => {
   if (!selectedCardForModal) return null;
 
   const cardData = getCardData(selectedCardForModal.cardId);
-  const meanings = getCardMeaning(selectedCardForModal.cardId, selectedCardForModal.isReversed);
+  const meanings = getCardMeaning(selectedCardForModal.cardId);
 
   const handleFlip = () => {
     if (selectedCardForModal.id) {
@@ -101,11 +103,11 @@ export const CardModal: React.FC = () => {
                       transform: `rotate(${selectedCardForModal.rotation}deg) scale(${selectedCardForModal.scale})`
                     }}
                   >
-                    <img
-                      src={`https://tarot-copilot.bytedance.net/api/cards/${selectedCardForModal.cardId}`}
-                      alt={cardData?.name}
-                      className="w-full h-full object-contain"
-                      referrerPolicy="no-referrer"
+                    <TarotCardImage
+                      src={getCardImageUrl(selectedCardForModal.cardId)}
+                      alt={cardData?.name || '塔罗牌'}
+                      name={cardData?.name || '塔罗牌'}
+                      className="h-full w-full object-contain"
                     />
                   </div>
                   <div className="mt-4 flex items-center gap-4">

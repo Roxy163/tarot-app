@@ -3,6 +3,9 @@ build/
 dist/
 coverage/
 backups/
+output/
+.playwright-cli/
+tarot-pavilion-dist.zip
 .DS_Store
 *.log
 .env*

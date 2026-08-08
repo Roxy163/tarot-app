@@ -5,6 +5,10 @@ import { TarotReading, TarotCardMetadata } from '../../types';
 import { ReadingCard } from '../ReadingCard';
 import { getPublicReadings } from '../../lib/firebaseData';
 import { useProgressiveList } from '../../hooks/useProgressiveList';
+import { QuietEmptyState, SoftSkeleton } from '../ui/SoftUI';
+import { readJsonArrayWithBackup, writeJsonWithBackup } from '../../lib/safeLocalStorage';
+
+const PUBLIC_READINGS_CACHE_KEY = 'tarot_public_readings_cache_v1';
 
 interface PublicTabProps {
   readings: TarotReading[];
@@ -25,8 +29,13 @@ export const PublicTab: React.FC<PublicTabProps> = ({
   onPublicReadingsLoaded,
   initialPublicReadings = []
 }) => {
-  const [cloudPublicReadings, setCloudPublicReadings] = useState<TarotReading[]>(initialPublicReadings);
-  const [isLoading, setIsLoading] = useState(initialPublicReadings.length === 0);
+  const [cloudPublicReadings, setCloudPublicReadings] = useState<TarotReading[]>(() => (
+    initialPublicReadings.length > 0
+      ? initialPublicReadings
+      : readJsonArrayWithBackup<TarotReading>(PUBLIC_READINGS_CACHE_KEY) || []
+  ));
+  const [isLoading, setIsLoading] = useState(true);
+  const [loadNotice, setLoadNotice] = useState('');
   const hasLoadedRef = useRef(false);
 
   useEffect(() => {
@@ -40,10 +49,19 @@ export const PublicTab: React.FC<PublicTabProps> = ({
       }
       try {
         const loaded = await getPublicReadings();
-        if (!cancelled) setCloudPublicReadings(loaded);
+        if (!cancelled) {
+          setCloudPublicReadings(loaded);
+          writeJsonWithBackup(PUBLIC_READINGS_CACHE_KEY, loaded.filter(reading => reading.isPublic).slice(0, 50));
+          setLoadNotice('');
+        }
       } catch (error) {
         console.error('Failed to load public readings:', error);
-        if (!cancelled) setCloudPublicReadings([]);
+        if (!cancelled) {
+          setLoadNotice(cloudPublicReadings.length > 0
+            ? '云端读取慢，先展示上次保存的公开手记。'
+            : '广场暂时没有连上，可以稍后再看。'
+          );
+        }
       } finally {
         if (!cancelled) setIsLoading(false);
       }
@@ -70,6 +88,9 @@ export const PublicTab: React.FC<PublicTabProps> = ({
       (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
     );
   }, [cloudPublicReadings, readings]);
+  const publicGridClassName = publicReadings.length === 1
+    ? 'grid grid-cols-1 gap-4 md:grid-cols-[minmax(0,520px)] md:justify-center'
+    : 'grid grid-cols-1 gap-4 md:grid-cols-2';
 
   useEffect(() => {
     onPublicReadingsLoaded?.(publicReadings);
@@ -87,28 +108,34 @@ export const PublicTab: React.FC<PublicTabProps> = ({
       initial={{ opacity: 0, x: -20 }} 
       animate={{ opacity: 1, x: 0 }} 
       exit={{ opacity: 0, x: 20 }} 
-      className="space-y-6"
+      className="space-y-4 sm:space-y-5"
     >
-      {isLoading ? (
-        <div className="text-center py-20 text-forest-muted text-sm">
-          正在翻阅广场手记...
+      {isLoading && publicReadings.length === 0 ? (
+        <div className="space-y-2 rounded-[1.45rem] border border-forest-accent/7 bg-white/22 p-4" role="status" aria-live="polite">
+          <p className="text-xs font-medium text-forest-muted">正在读取广场手记…</p>
+          <SoftSkeleton rows={2} className="border-0 bg-transparent p-0" />
         </div>
       ) : publicReadings.length === 0 ? (
-        <div className="text-center py-20">
-          <div className="w-20 h-20 mx-auto mb-6 rounded-full bg-forest-accent/10 flex items-center justify-center">
-            <Globe className="text-forest-accent/40" size={40} />
-          </div>
-          <h3 className="text-xl font-serif font-bold text-forest-ink mb-2">广场静候佳音</h3>
-          <p className="text-forest-muted text-sm mb-6 max-w-xs mx-auto">
-            这里是研习者分享心得的公共空间。完成占卜后，将记录设为公开，与同好交流感悟。
-          </p>
-          <div className="inline-flex items-center gap-2 px-4 py-2 bg-forest-accent/5 text-forest-accent rounded-full text-sm font-medium">
+        <QuietEmptyState
+          icon={<Globe size={24} />}
+          title="广场暂时安静"
+          description="公开手记会在这里汇成交流空间。完成占卜后，可选择分享给同好回看。"
+          action={(
+            <div className="inline-flex min-h-10 items-center gap-2 rounded-full bg-forest-accent/6 px-4 text-sm font-medium text-forest-accent">
             <Sparkles size={14} />
             <span>成为第一个分享者</span>
-          </div>
-        </div>
+            </div>
+          )}
+          className="sm:py-12"
+        />
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div className="space-y-3">
+          {(isLoading || loadNotice) && (
+            <p className="inline-flex rounded-full bg-white/34 px-3 py-1 text-[10px] font-medium text-forest-muted">
+              {loadNotice || '正在更新广场手记…'}
+            </p>
+          )}
+          <div className={publicGridClassName}>
           {visiblePublicReadings.map(reading => (
             <ReadingCard 
               key={reading.id} 
@@ -121,11 +148,14 @@ export const PublicTab: React.FC<PublicTabProps> = ({
             />
           ))}
           <div ref={sentinelRef} className="col-span-full h-1" aria-hidden />
+          </div>
         </div>
       )}
       {hasMore && (
-        <div className="py-2 text-center text-[10px] font-bold text-forest-muted">
-          正在继续展开广场手记...
+        <div className="flex justify-center py-2">
+          <span className="rounded-full bg-white/24 px-3 py-1 text-[10px] font-medium text-forest-muted">
+            正在继续展开广场手记…
+          </span>
         </div>
       )}
     </motion.div>

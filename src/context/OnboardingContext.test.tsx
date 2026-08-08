@@ -3,12 +3,16 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { OnboardingProvider, useOnboarding } from './OnboardingContext';
 
 const OnboardingProbe = () => {
-  const { state } = useOnboarding();
+  const { state, checkAndUnlockAchievements } = useOnboarding();
+  const unlockedCount = state.achievements.filter(achievement => achievement.unlockedAt).length;
 
   return (
     <div>
-      <span data-testid="first-entry-open">{state.showFirstEntry ? 'yes' : 'no'}</span>
-      <span data-testid="first-entry-complete">{state.hasCompletedFirstEntry ? 'yes' : 'no'}</span>
+      <span data-testid="achievement-count">{state.achievements.length}</span>
+      <span data-testid="unlocked-count">{unlockedCount}</span>
+      <button type="button" onClick={() => checkAndUnlockAchievements(1, false, 0, 0)}>
+        unlock first
+      </button>
     </div>
   );
 };
@@ -24,26 +28,27 @@ describe('OnboardingProvider', () => {
     localStorage.clear();
   });
 
-  it('does not auto-open the legacy full-screen first-entry guide for new users', async () => {
+  it('loads achievement state without reopening legacy guides', async () => {
     renderProbe();
 
     await waitFor(() => {
-      expect(screen.getByTestId('first-entry-complete')).toHaveTextContent('yes');
+      expect(screen.getByTestId('achievement-count')).toHaveTextContent('6');
     });
 
-    expect(screen.getByTestId('first-entry-open')).toHaveTextContent('no');
     expect(localStorage.getItem('has_seen_first_entry_scroll')).toBe('true');
   });
 
-  it('upgrades older stored onboarding state without reopening the legacy guide', async () => {
-    localStorage.setItem('tarot_onboarding_state', JSON.stringify({ hasCompletedFirstEntry: false }));
+  it('ignores old guide flags while preserving stored achievements shape', async () => {
+    localStorage.setItem('tarot_onboarding_state', JSON.stringify({ hasCompletedFirstEntry: false, completedGuides: ['legacy'] }));
 
     renderProbe();
 
     await waitFor(() => {
-      expect(screen.getByTestId('first-entry-complete')).toHaveTextContent('yes');
+      expect(screen.getByTestId('achievement-count')).toHaveTextContent('6');
     });
 
-    expect(screen.getByTestId('first-entry-open')).toHaveTextContent('no');
+    const saved = JSON.parse(localStorage.getItem('tarot_onboarding_state') || '{}');
+    expect(saved.completedGuides).toBeUndefined();
+    expect(saved.hasCompletedFirstEntry).toBeUndefined();
   });
 });

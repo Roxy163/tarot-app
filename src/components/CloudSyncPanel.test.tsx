@@ -19,7 +19,7 @@ const renderPanel = (overrides: Partial<ComponentProps<typeof CloudSyncPanel>> =
     cloudSyncInfo: baseSyncInfo,
     isCloudSyncPaused: false,
     readingCount: 2,
-    customSpreadCount: 1,
+    reviewedReadingCount: 1,
     todayCount: 0,
     onManualSync: vi.fn(),
     onLogin: vi.fn(),
@@ -39,9 +39,9 @@ describe('CloudSyncPanel', () => {
     renderPanel({ onLogin });
 
     expect(screen.getByTestId('cloud-sync-panel')).toBeInTheDocument();
-    expect(screen.getByText('访客本机暂存')).toBeInTheDocument();
-    expect(screen.getByText('当前记录只在这台设备，登录后可同步到云端。')).toBeInTheDocument();
-    expect(screen.getByText('待读取')).toBeInTheDocument();
+    expect(screen.getByText('本机已保存')).toBeInTheDocument();
+    expect(screen.getByText('本机记录已保留，登录后可同步到云端。')).toBeInTheDocument();
+    expect(screen.getByText('登录后读取')).toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: '登录开启同步' }));
     expect(onLogin).toHaveBeenCalledTimes(1);
@@ -63,8 +63,8 @@ describe('CloudSyncPanel', () => {
     });
 
     expect(screen.getByText('云端已同步')).toBeInTheDocument();
-    expect(screen.getByText('本机典籍')).toBeInTheDocument();
-    expect(screen.getByText('云端典籍')).toBeInTheDocument();
+    expect(screen.getByText('本机记录')).toBeInTheDocument();
+    expect(screen.getByText('云端记录')).toBeInTheDocument();
     expect(screen.getByText('5 条')).toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: '重新同步' }));
@@ -82,7 +82,7 @@ describe('CloudSyncPanel', () => {
       },
     });
 
-    expect(screen.getByText('同步需要重试')).toBeInTheDocument();
+    expect(screen.getByText('稍后再同步')).toBeInTheDocument();
     expect(screen.getByText('Missing or insufficient permissions.')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '重新同步' })).toBeEnabled();
   });

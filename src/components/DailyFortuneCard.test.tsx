@@ -22,8 +22,10 @@ const defaultProps = {
   fortunes: [],
   onGenerateWithNumber: vi.fn(),
   onCreateFromCard: vi.fn(),
+  onUpdateCard: vi.fn(),
   onArchive: vi.fn(),
   onUpdateReflection: vi.fn(),
+  onSaveToCardAnnotation: vi.fn(),
 };
 
 const renderCard = (props: Partial<React.ComponentProps<typeof DailyFortuneCard>> = {}) => {
@@ -39,6 +41,7 @@ const renderCard = (props: Partial<React.ComponentProps<typeof DailyFortuneCard>
 
 describe('DailyFortuneCard', () => {
   beforeEach(() => {
+    vi.clearAllMocks();
     Object.defineProperty(window, 'scrollTo', {
       configurable: true,
       value: vi.fn(),
@@ -74,17 +77,37 @@ describe('DailyFortuneCard', () => {
     expect(screen.getByRole('button', { name: '从洗好的牌组随机一张' })).toBeInTheDocument();
   });
 
-  it('archives a revealed daily fortune with one reflection dialog', async () => {
+  it('archives a revealed daily fortune with split reflection fields', async () => {
     const user = userEvent.setup();
     const props = renderCard({ fortune: baseFortune, fortunes: [baseFortune] });
 
-    expect(screen.getByText('这张牌和今天的什么事对应？')).toBeInTheDocument();
+    expect(screen.getByText('今天这张牌，先看见了什么？')).toBeInTheDocument();
+    expect(screen.getByText('还没写下今天的第一眼感受。可以先记一点，晚上再回看。')).toBeInTheDocument();
+    expect(screen.queryByText('今日回看')).not.toBeInTheDocument();
 
-    await user.click(screen.getByRole('button', { name: '写下今天并归档' }));
-    await user.type(screen.getByLabelText('日运记录内容'), '今天第一直觉是保持安静观察。');
+    await user.click(screen.getByRole('button', { name: '记录日运手札' }));
+    await user.type(screen.getByLabelText('第一直觉'), '保持安静观察。');
+    await user.type(screen.getByLabelText('今日回看'), '晚上对应到一次真实判断。');
     await user.click(screen.getByRole('button', { name: '保存到日运复盘' }));
 
-    expect(props.onArchive).toHaveBeenCalledWith(baseFortune.id, '今天第一直觉是保持安静观察。');
+    expect(props.onArchive).toHaveBeenCalledWith(baseFortune.id, {
+      initialImpression: '保持安静观察。',
+      dailyReview: '晚上对应到一次真实判断。',
+    });
+  });
+
+  it('offers a low-pressure shortcut when no daily match is visible', async () => {
+    const user = userEvent.setup();
+    const props = renderCard({ fortune: baseFortune, fortunes: [baseFortune] });
+
+    await user.click(screen.getByRole('button', { name: '记录日运手札' }));
+    await user.click(screen.getByRole('button', { name: '今天暂未看见明显对应' }));
+    await user.click(screen.getByRole('button', { name: '保存到日运复盘' }));
+
+    expect(props.onArchive).toHaveBeenCalledWith(baseFortune.id, {
+      initialImpression: '',
+      dailyReview: '今天暂未看见明显对应',
+    });
   });
 
   it('shows archived status and opens the daily archive zone', async () => {
@@ -99,12 +122,114 @@ describe('DailyFortuneCard', () => {
     renderCard({ fortune: archivedFortune, fortunes: [archivedFortune] });
 
     expect(screen.getByText('已归档')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: '补写今日对应' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '继续补写' })).toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: '打开日运复盘' }));
     expect(screen.getByRole('dialog', { name: '日运复盘' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /时间线/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /按牌/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /本月/ })).toBeInTheDocument();
     expect(screen.getByText('现实抽牌')).toBeInTheDocument();
     expect(screen.getAllByText('晚上对应到一次真实的直觉判断。').length).toBeGreaterThan(0);
+  });
+
+  it('lets users save an archived daily fortune into card annotations once', async () => {
+    const user = userEvent.setup();
+    const archivedFortune: DailyFortune = {
+      ...baseFortune,
+      archivedAt: '2026-07-02T09:00:00.000Z',
+      initialImpression: '第一眼觉得要慢下来。',
+      dailyReview: '晚上发现确实需要减少争辩。',
+      reflection: '第一直觉：第一眼觉得要慢下来。\n\n今日回看：晚上发现确实需要减少争辩。',
+    };
+    const props = renderCard({ fortune: archivedFortune, fortunes: [archivedFortune] });
+
+    await user.click(screen.getByRole('button', { name: '打开日运复盘' }));
+    await user.click(screen.getByRole('button', { name: '归入牌义注疏' }));
+
+    expect(props.onSaveToCardAnnotation).toHaveBeenCalledWith(archivedFortune.id);
+  });
+
+  it('marks saved daily fortune examples as already added to card annotations', async () => {
+    const user = userEvent.setup();
+    const archivedFortune: DailyFortune = {
+      ...baseFortune,
+      archivedAt: '2026-07-02T09:00:00.000Z',
+      reflection: '已经沉淀为一条例证。',
+      savedToCardAnnotationAt: '2026-07-02T22:00:00.000Z',
+    };
+    const props = renderCard({ fortune: archivedFortune, fortunes: [archivedFortune] });
+
+    await user.click(screen.getByRole('button', { name: '打开日运复盘' }));
+
+    const button = screen.getByRole('button', { name: '已归入牌义注疏' });
+    expect(button).toBeDisabled();
+    expect(props.onSaveToCardAnnotation).not.toHaveBeenCalled();
+  });
+
+  it('preserves line breaks when showing daily reflection on the home card', () => {
+    const archivedFortune: DailyFortune = {
+      ...baseFortune,
+      archivedAt: '2026-07-02T09:00:00.000Z',
+      reflection: '问：今日主线\n第一印象：保持安静观察\n复盘：对应到真实判断。',
+    };
+
+    renderCard({ fortune: archivedFortune, fortunes: [archivedFortune] });
+
+    expect(screen.getByText(/问：今日主线/)).toHaveClass('whitespace-pre-wrap');
+  });
+
+  it('shows split daily reflection blocks on the home card', () => {
+    const archivedFortune: DailyFortune = {
+      ...baseFortune,
+      archivedAt: '2026-07-02T09:00:00.000Z',
+      initialImpression: '第一眼觉得要慢下来。',
+      dailyReview: '晚上发现确实需要减少争辩。',
+      reflection: '第一直觉：第一眼觉得要慢下来。\n\n今日回看：晚上发现确实需要减少争辩。',
+    };
+
+    renderCard({ fortune: archivedFortune, fortunes: [archivedFortune] });
+
+    expect(screen.getByText('第一直觉')).toBeInTheDocument();
+    expect(screen.getByText('第一眼觉得要慢下来。')).toBeInTheDocument();
+    expect(screen.getByText('今日回看')).toBeInTheDocument();
+    expect(screen.getByText('晚上发现确实需要减少争辩。')).toBeInTheDocument();
+  });
+
+  it('only shows written reflection blocks and points users to finish daily review', () => {
+    const archivedFortune: DailyFortune = {
+      ...baseFortune,
+      archivedAt: '2026-07-02T09:00:00.000Z',
+      initialImpression: '第一眼觉得要慢下来。',
+      reflection: '第一直觉：第一眼觉得要慢下来。',
+    };
+
+    renderCard({ fortune: archivedFortune, fortunes: [archivedFortune] });
+
+    expect(screen.getByText('第一直觉')).toBeInTheDocument();
+    expect(screen.getByText('第一眼觉得要慢下来。')).toBeInTheDocument();
+    expect(screen.queryByText('晚上回来看看今天有没有对应。')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '补写今日回看' })).toBeInTheDocument();
+  });
+
+  it('lets users adjust a physical daily card from the home card', async () => {
+    const user = userEvent.setup();
+    const physicalFortune: DailyFortune = {
+      ...baseFortune,
+      source: 'physical-draw',
+    };
+    const props = renderCard({ fortune: physicalFortune, fortunes: [physicalFortune] });
+
+    await user.click(screen.getByRole('button', { name: '切换为逆位' }));
+    expect(props.onUpdateCard).toHaveBeenCalledWith(physicalFortune.id, 'ar02', true);
+
+    await user.click(screen.getByRole('button', { name: '更换牌' }));
+    expect(screen.getByRole('heading', { name: '更换今日日运牌' })).toBeInTheDocument();
+
+    expect(screen.queryByRole('button', { name: '逆位' })).not.toBeInTheDocument();
+    await user.click(screen.getByText('皇帝'));
+
+    expect(props.onUpdateCard).toHaveBeenCalledWith(physicalFortune.id, 'ar04', false);
   });
 
   it('asks for a number before replacing today fortune when redrawing', async () => {

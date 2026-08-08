@@ -1,5 +1,4 @@
 import { useEffect, useState, useCallback } from 'react';
-import { useOnboarding } from '../context/OnboardingContext';
 
 export interface SmartTip {
   id: string;
@@ -36,13 +35,10 @@ const SMART_TIPS: SmartTip[] = [
 ];
 
 export function useSmartTips(readingsCount: number, hasQuestion: boolean, hasCards: boolean) {
-  const { state } = useOnboarding();
   const [currentTip, setCurrentTip] = useState<SmartTip | null>(null);
   const [isVisible, setIsVisible] = useState(false);
 
   const shouldShowTip = useCallback((): SmartTip | null => {
-    if (!state.hasCompletedFirstEntry) return null;
-    
     const hasSeenLongPress = localStorage.getItem('saw_longpress_hint');
     
     if (readingsCount === 0) {
@@ -69,7 +65,7 @@ export function useSmartTips(readingsCount: number, hasQuestion: boolean, hasCar
     }
     
     return null;
-  }, [readingsCount, hasQuestion, hasCards, state.hasCompletedFirstEntry]);
+  }, [readingsCount, hasQuestion, hasCards]);
 
   useEffect(() => {
     const tip = shouldShowTip();
