@@ -66,6 +66,7 @@ interface ReadingCardProps {
   onViewDetails?: () => void;
   isHighlighted?: boolean;
   variant?: 'card' | 'list';
+  hideDeleteAction?: boolean;
 }
 
 export const ReadingCard: React.FC<ReadingCardProps> = ({
@@ -82,6 +83,7 @@ export const ReadingCard: React.FC<ReadingCardProps> = ({
   onViewDetails,
   isHighlighted = false,
   variant = 'card',
+  hideDeleteAction = false,
 }) => {
   const [selectedCardIdx, setSelectedCardIdx] = useState<number | null>(null);
   const [isExpanded, setIsExpanded] = useState(false);
@@ -879,7 +881,8 @@ export const ReadingCard: React.FC<ReadingCardProps> = ({
     );
   };
 
-  const hasCardActions = !isPublicView && (onTogglePublic || onEdit || onDelete);
+  const canShowDeleteAction = Boolean(onDelete && !reading.isExample && !hideDeleteAction);
+  const hasCardActions = !isPublicView && (onTogglePublic || onEdit || canShowDeleteAction);
   const renderCardActions = (className: string) => {
     if (!hasCardActions) return null;
 
@@ -909,7 +912,7 @@ export const ReadingCard: React.FC<ReadingCardProps> = ({
             <PencilLine size={16} className="text-forest-accent" />
           </button>
         )}
-        {onDelete && !reading.isExample && (
+        {canShowDeleteAction && (
           <button
             onClick={() => setShowDeleteConfirm(true)}
             className="flex min-h-11 min-w-11 items-center justify-center rounded-xl transition-colors hover:bg-red-50/70"

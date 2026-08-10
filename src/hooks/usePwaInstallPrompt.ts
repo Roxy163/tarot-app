@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { trackEvent } from '../lib/analytics';
 
 interface BeforeInstallPromptEvent extends Event {
   prompt: () => Promise<void>;
@@ -96,6 +97,7 @@ export const markPwaInstallPromptReady = (source = 'milestone') => {
 export function usePwaInstallPrompt() {
   const [installEvent, setInstallEvent] = useState<BeforeInstallPromptEvent | null>(null);
   const installEventRef = useRef<BeforeInstallPromptEvent | null>(null);
+  const installSourceRef = useRef<string>('unknown');
   const [dismissed, setDismissed] = useState(() => wasRecentlyDismissed());
   const [promptRequested, setPromptRequested] = useState(() => hasPromptBeenRequested());
   const [isStandalone, setIsStandalone] = useState(() => (
@@ -119,11 +121,25 @@ export function usePwaInstallPrompt() {
       const choice = await event.userChoice;
       if (choice.outcome === 'accepted') {
         setIsStandalone(true);
+        trackEvent('pwa_install_result', {
+          status: 'accepted',
+          source: installSourceRef.current,
+          platform: choice.platform || 'web',
+        });
       } else {
         dismiss();
+        trackEvent('pwa_install_result', {
+          status: 'dismissed',
+          source: installSourceRef.current,
+          platform: choice.platform || 'web',
+        });
       }
       return true;
     } catch {
+      trackEvent('pwa_install_result', {
+        status: 'failed',
+        source: installSourceRef.current,
+      });
       return false;
     } finally {
       installEventRef.current = null;
@@ -145,11 +161,17 @@ export function usePwaInstallPrompt() {
     const handlePromptRequest = (event: Event) => {
       const detail = (event as CustomEvent<PromptRequestDetail>).detail;
       setPromptRequested(true);
+      installSourceRef.current = detail?.source || 'unknown';
       if (detail?.force) {
         setDismissed(false);
       }
       if (detail?.autoInstall && installEventRef.current) {
         void install();
+      } else if (detail?.autoInstall && !installEventRef.current) {
+        trackEvent('pwa_install_result', {
+          status: 'unavailable',
+          source: installSourceRef.current,
+        });
       }
     };
 

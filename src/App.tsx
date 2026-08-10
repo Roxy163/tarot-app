@@ -28,6 +28,7 @@ import { warmTarotDeckImages } from './lib/tarotImagePreload';
 import { useBodyScrollLock } from './hooks/useBodyScrollLock';
 import { useMobileFocusScroll } from './hooks/useMobileFocusScroll';
 import { requestPwaInstallPrompt } from './hooks/usePwaInstallPrompt';
+import { installCloudflareWebAnalytics, setAnalyticsAuthState, trackEvent } from './lib/analytics';
 
 const loadCardMetadataManager = () => import('./components/CardMetadataManager');
 const loadReadingDetailModal = () => import('./components/ReadingDetailModal');
@@ -169,6 +170,9 @@ function AppContent() {
   const appHistoryReadyRef = useRef(false);
   const skipNextHistoryPushRef = useRef(false);
   const lastBackExitNoticeRef = useRef(0);
+  const hasTrackedAppOpenRef = useRef(false);
+  const previousAnalyticsUidRef = useRef<string | null | undefined>(undefined);
+  const previousTrackedTabRef = useRef<AppTab | null>(null);
 
   // Use custom hook for readings state
   const {
@@ -207,6 +211,42 @@ function AppContent() {
   useMobileFocusScroll();
 
   const [publicReadingsCache, setPublicReadingsCache] = useState<TarotReading[]>([]);
+
+  useEffect(() => {
+    installCloudflareWebAnalytics();
+  }, []);
+
+  useEffect(() => {
+    if (isAuthLoading) return;
+
+    setAnalyticsAuthState(session);
+
+    const currentUid = session?.uid || null;
+    const previousUid = previousAnalyticsUidRef.current;
+    if (previousUid !== undefined && previousUid !== currentUid) {
+      trackEvent(currentUid ? 'login_success' : 'logout', {
+        auth_state: currentUid ? 'signed_in' : 'guest',
+      });
+    }
+    previousAnalyticsUidRef.current = currentUid;
+  }, [isAuthLoading, session]);
+
+  useEffect(() => {
+    if (!hasEnteredApp || isAuthLoading || hasTrackedAppOpenRef.current) return;
+
+    hasTrackedAppOpenRef.current = true;
+    trackEvent('app_open', {
+      auth_state: session?.uid ? 'signed_in' : 'guest',
+    });
+  }, [hasEnteredApp, isAuthLoading, session?.uid]);
+
+  useEffect(() => {
+    if (!hasEnteredApp) return;
+    if (previousTrackedTabRef.current === activeTab) return;
+
+    previousTrackedTabRef.current = activeTab;
+    trackEvent('tab_opened', { tab: activeTab });
+  }, [activeTab, hasEnteredApp]);
 
   useEffect(() => {
     if (snackbarTimerRef.current !== null) {
@@ -394,6 +434,7 @@ function AppContent() {
   }, [handleManualCloudSync, session]);
 
   const handleEnterApp = useCallback(() => {
+    trackEvent('splash_enter');
     setActiveTab('home');
     setHasEnteredApp(true);
     scrollPageToTop('auto');
@@ -888,6 +929,7 @@ function AppContent() {
           <button
             type="button"
             onClick={() => {
+              trackEvent('pwa_install_requested', { source: 'sidebar' });
               requestPwaInstallPrompt({ autoInstall: true, force: true, source: 'sidebar' });
               closeSidebar();
             }}

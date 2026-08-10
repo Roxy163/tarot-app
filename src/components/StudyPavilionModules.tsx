@@ -32,6 +32,7 @@ import {
   type QuizSuit,
   type QuizTrainingFilters,
 } from '../lib/tarotQuizTraining';
+import { trackEvent } from '../lib/analytics';
 import { TarotCardImage } from './TarotCardImage';
 
 interface StudyPavilionModulesProps {
@@ -285,10 +286,15 @@ export const StudyPavilionModules: React.FC<StudyPavilionModulesProps> = ({
         lastCorrectOptionIndexRef.current = actualCorrectIndex;
         correctOptionSlotCountsRef.current[actualCorrectIndex] += 1;
       }
+      trackEvent('quiz_question_refreshed', {
+        quiz_kind: nextQuestion.kind,
+        active_filter_count: activeFilterLabels.length,
+        option_count: nextQuestion.options.length,
+      });
     }
     setQuestion(nextQuestion);
     resetLocalAnswerState();
-  }, [activeDeck, quizMemory, quizMode]);
+  }, [activeDeck, activeFilterLabels.length, quizMemory, quizMode]);
 
   useEffect(() => {
     if (question || activeDeck.length === 0) return;
@@ -403,6 +409,12 @@ export const StudyPavilionModules: React.FC<StudyPavilionModulesProps> = ({
       ...current,
     ].slice(0, 5));
     onUpdateQuizMemory(current => updateQuizMemory(current, questionCard, correct ? 'remembered' : 'wrong', now, attempt));
+    trackEvent('quiz_answered', {
+      quiz_kind: question.kind,
+      is_correct: correct,
+      option_count: question.options.length,
+      active_filter_count: activeFilterLabels.length,
+    });
     if (correct) setWinKey(current => current + 1);
   };
 
@@ -425,6 +437,68 @@ export const StudyPavilionModules: React.FC<StudyPavilionModulesProps> = ({
     setAnnotationRefreshKey(current => current + 1);
     setKeywordInput('');
     setKeywordStatus(addedCount > 0 ? '已存入牌义注疏。' : '这些关键词已经在注疏里了。');
+    trackEvent('quiz_keywords_saved', { added_count: Math.max(addedCount, 0) });
+  };
+
+  const renderQuizHeaderActions = () => {
+    if (!isAnswered) return renderDrawQuestionButton('换题', true);
+
+    return (
+      <div className="grid w-[8.25rem] shrink-0 grid-cols-2 gap-1.5 min-[520px]:w-auto min-[520px]:grid-flow-col min-[520px]:grid-cols-none">
+        {isCorrect && (
+          <motion.span
+            key={winKey}
+            initial={{ opacity: 0, y: 4, scale: 0.96 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            className="hidden min-h-11 items-center justify-center rounded-full bg-forest-accent/10 px-3 text-[11px] font-medium text-forest-accent min-[520px]:inline-flex"
+          >
+            答对了
+          </motion.span>
+        )}
+        <button
+          type="button"
+          aria-label="下一题"
+          onClick={drawQuestion}
+          className="flex min-h-11 items-center justify-center gap-1 rounded-full bg-forest-accent/90 px-2.5 text-[11px] font-medium text-white transition-all hover:bg-forest-accent active:scale-[0.98]"
+        >
+          <RefreshCw size={13} />
+          下一题
+        </button>
+        {questionCard && (
+          <button
+            type="button"
+            aria-label="我记住了"
+            onClick={handleRemembered}
+            className="flex min-h-11 items-center justify-center gap-1 rounded-full border border-forest-accent/8 bg-white/34 px-2 text-[11px] font-medium text-forest-accent transition-all hover:bg-white/62 active:scale-[0.98]"
+          >
+            <Sparkles size={13} />
+            记住
+          </button>
+        )}
+        {canRevealQuestionCard && (
+          <button
+            type="button"
+            aria-label="给这张牌补关键词"
+            onClick={() => setShowKeywordForm(value => !value)}
+            className="flex min-h-11 items-center justify-center gap-1 rounded-full border border-forest-accent/8 bg-white/34 px-2 text-[11px] font-medium text-forest-accent transition-all hover:bg-white/62 active:scale-[0.98]"
+          >
+            <Edit3 size={13} />
+            {showKeywordForm ? '收起' : '补词'}
+          </button>
+        )}
+        {canRevealQuestionCard && onOpenCardLibrary && (
+          <button
+            type="button"
+            aria-label="去牌义注疏"
+            onClick={() => onOpenCardLibrary(questionCard.id)}
+            className="flex min-h-11 items-center justify-center gap-1 rounded-full border border-forest-accent/8 bg-white/34 px-2 text-[11px] font-medium text-forest-muted transition-all hover:bg-white/62 hover:text-forest-accent active:scale-[0.98]"
+          >
+            <Library size={13} />
+            注疏
+          </button>
+        )}
+      </div>
+    );
   };
 
   return (
@@ -453,7 +527,14 @@ export const StudyPavilionModules: React.FC<StudyPavilionModulesProps> = ({
         </div>
         <button
           type="button"
-          onClick={() => setShowArchive(true)}
+          onClick={() => {
+            trackEvent('quiz_archive_opened', {
+              repeated_count: repeatedCount,
+              practice_count: totalPracticeCount,
+              active_filter_count: activeFilterLabels.length,
+            });
+            setShowArchive(true);
+          }}
           aria-haspopup="dialog"
           className="flex min-h-11 shrink-0 items-center gap-1.5 rounded-full border border-forest-accent/9 bg-white/32 px-2.5 text-xs font-medium text-forest-accent transition-all hover:border-forest-accent/22 hover:bg-white/58 active:scale-[0.97]"
         >
@@ -806,20 +887,6 @@ export const StudyPavilionModules: React.FC<StudyPavilionModulesProps> = ({
       )}
 
       <div className="relative mt-2 rounded-[1.35rem] border border-forest-accent/8 bg-white/20 p-1.5 sm:p-2.5">
-        <AnimatePresence>
-          {isCorrect && (
-            <motion.div
-              key={winKey}
-              initial={{ opacity: 0, scale: 0.82, y: 12 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.92, y: -8 }}
-              className="pointer-events-none absolute right-3 top-3 z-10 rounded-full bg-forest-accent/90 px-3 py-1.5 text-[11px] font-bold text-white"
-            >
-              答对了
-            </motion.div>
-          )}
-        </AnimatePresence>
-
         {activeDeck.length === 0 ? (
           <div className="rounded-3xl border border-dashed border-forest-accent/20 bg-white/35 p-4 text-center">
             <p className="font-serif text-base font-bold text-forest-ink">这个专项暂时没有牌</p>
@@ -858,7 +925,7 @@ export const StudyPavilionModules: React.FC<StudyPavilionModulesProps> = ({
                       {question.prompt}
                     </h4>
                   </div>
-                  {!isAnswered && renderDrawQuestionButton('换题', true)}
+                  {renderQuizHeaderActions()}
                 </div>
               )}
 
@@ -877,7 +944,7 @@ export const StudyPavilionModules: React.FC<StudyPavilionModulesProps> = ({
                         <p className="mt-0.5 truncate text-[11px] leading-snug text-forest-muted">{question.promptHint}</p>
                       )}
                     </div>
-                    {!isAnswered && renderDrawQuestionButton('换题', true)}
+                    {renderQuizHeaderActions()}
                   </div>
                 </div>
               )}
@@ -970,45 +1037,8 @@ export const StudyPavilionModules: React.FC<StudyPavilionModulesProps> = ({
               )}
             </AnimatePresence>
 
-            {isAnswered && (
-              <div className="grid grid-cols-2 gap-2">
-                {renderDrawQuestionButton('下一题')}
-              {questionCard && isAnswered && (
-                <button
-                  type="button"
-                  onClick={handleRemembered}
-                  className="flex min-h-11 items-center justify-center gap-2 rounded-full border border-forest-accent/8 bg-white/28 px-4 text-sm font-medium text-forest-accent transition-all hover:bg-white/58 active:scale-[0.98]"
-                >
-                  <Sparkles size={16} />
-                  我记住了
-                </button>
-              )}
-              </div>
-            )}
-
             {canRevealQuestionCard && questionCard && (
               <div className="space-y-2">
-                <div className="flex flex-wrap gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setShowKeywordForm(value => !value)}
-                    className="flex min-h-11 flex-1 items-center justify-center gap-2 rounded-full border border-forest-accent/8 bg-white/28 px-3 text-xs font-medium text-forest-accent transition-all hover:bg-white/58 active:scale-[0.98]"
-                  >
-                    <Edit3 size={14} />
-                    给这张牌补关键词
-                  </button>
-                  {onOpenCardLibrary && (
-                    <button
-                      type="button"
-                      onClick={() => onOpenCardLibrary(questionCard.id)}
-                      className="flex min-h-11 flex-1 items-center justify-center gap-2 rounded-full border border-forest-accent/8 bg-white/28 px-3 text-xs font-medium text-forest-muted transition-all hover:bg-white/58 hover:text-forest-accent active:scale-[0.98]"
-                    >
-                      <Library size={14} />
-                      去牌义注疏
-                    </button>
-                  )}
-                </div>
-
                 <AnimatePresence initial={false}>
                   {showKeywordForm && (
                     <motion.div

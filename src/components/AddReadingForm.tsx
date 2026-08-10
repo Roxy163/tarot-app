@@ -1454,7 +1454,7 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
 	          className="flex min-h-12 w-full items-center justify-center gap-2 rounded-2xl bg-forest-accent/88 px-4 py-3 font-medium text-white shadow-sm transition-all hover:bg-forest-accent active:scale-[0.98] disabled:opacity-50 sm:min-h-[3.1rem] sm:gap-3 sm:py-3.5"
         >
           {isLoading ? (
-            <><motion.div animate={{ rotate: 360 }} transition={{ repeat: Infinity, duration: 1, ease: "linear" }}><Sparkles size={20} /></motion.div> 灵光引路中...</>
+            <><motion.div animate={{ rotate: 360 }} transition={{ repeat: Infinity, duration: 1, ease: "linear" }}><Sparkles size={20} /></motion.div> 保存中...</>
           ) : (
             <>
               {isLoggedIn ? <BookOpen size={22} /> : <Save size={22} />}

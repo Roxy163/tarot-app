@@ -35,6 +35,7 @@ import { useClickOutside } from '../hooks/useClickOutside';
 import { MysticWatermark } from './MysticWatermark';
 import { QuietEmptyState } from './ui/SoftUI';
 import { AutoResizeTextarea } from './ui/AutoResizeTextarea';
+import { trackEvent } from '../lib/analytics';
 
 interface DailyFortuneArchiveModalProps {
   fortunes: DailyFortune[];
@@ -298,6 +299,11 @@ export const DailyFortuneArchiveModal: React.FC<DailyFortuneArchiveModalProps> =
       exportDailyFortunesToMarkdown(exportFortunes, '塔罗研习阁｜日运复盘记录'),
       'text/markdown;charset=utf-8',
     );
+    trackEvent('daily_review_exported', {
+      format: 'markdown',
+      record_count: exportFortunes.length,
+      view: activeView,
+    });
     setShowMoreExportFormats(false);
   };
 
@@ -316,6 +322,11 @@ export const DailyFortuneArchiveModal: React.FC<DailyFortuneArchiveModalProps> =
     link.click();
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
+    trackEvent('daily_review_exported', {
+      format: 'pdf',
+      record_count: exportFortunes.length,
+      view: activeView,
+    });
   };
 
   const handleExportCsv = () => {
@@ -326,6 +337,11 @@ export const DailyFortuneArchiveModal: React.FC<DailyFortuneArchiveModalProps> =
       exportDailyFortunesToCsv(exportFortunes),
       'text/csv;charset=utf-8',
     );
+    trackEvent('daily_review_exported', {
+      format: 'csv',
+      record_count: exportFortunes.length,
+      view: activeView,
+    });
   };
 
   const renderFortuneList = (items: DailyFortune[]) => (

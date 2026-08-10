@@ -14,6 +14,7 @@ export interface ReadingArchiveCardIndexItem {
   reversedCount: number;
   reviewedCount: number;
   lastSeenAt: number;
+  latestQuestion: string;
 }
 
 export interface ReadingArchiveSpreadIndexItem {
@@ -21,6 +22,7 @@ export interface ReadingArchiveSpreadIndexItem {
   count: number;
   reviewedCount: number;
   lastSeenAt: number;
+  latestQuestion: string;
 }
 
 export interface ReadingArchiveTagIndexItem {
@@ -28,6 +30,7 @@ export interface ReadingArchiveTagIndexItem {
   count: number;
   reviewedCount: number;
   lastSeenAt: number;
+  latestQuestion: string;
 }
 
 export interface ReadingArchiveQuestionIndexItem {
@@ -75,9 +78,13 @@ export const buildReadingArchiveIndex = (readings: TarotReading[]): ReadingArchi
       count: 0,
       reviewedCount: 0,
       lastSeenAt,
+      latestQuestion: question,
     };
     spreadItem.count += 1;
     spreadItem.reviewedCount += reviewed ? 1 : 0;
+    if (lastSeenAt >= spreadItem.lastSeenAt) {
+      spreadItem.latestQuestion = question;
+    }
     spreadItem.lastSeenAt = Math.max(spreadItem.lastSeenAt, lastSeenAt);
     spreadGroups.set(spread, spreadItem);
 
@@ -96,9 +103,13 @@ export const buildReadingArchiveIndex = (readings: TarotReading[]): ReadingArchi
         count: 0,
         reviewedCount: 0,
         lastSeenAt,
+        latestQuestion: question,
       };
       tagItem.count += 1;
       tagItem.reviewedCount += reviewed ? 1 : 0;
+      if (lastSeenAt >= tagItem.lastSeenAt) {
+        tagItem.latestQuestion = question;
+      }
       tagItem.lastSeenAt = Math.max(tagItem.lastSeenAt, lastSeenAt);
       tagGroups.set(tag, tagItem);
     });
@@ -114,11 +125,15 @@ export const buildReadingArchiveIndex = (readings: TarotReading[]): ReadingArchi
         reversedCount: 0,
         reviewedCount: 0,
         lastSeenAt,
+        latestQuestion: question,
       };
       cardItem.count += 1;
       cardItem.uprightCount += card.isReversed ? 0 : 1;
       cardItem.reversedCount += card.isReversed ? 1 : 0;
       cardItem.reviewedCount += reviewed ? 1 : 0;
+      if (lastSeenAt >= cardItem.lastSeenAt) {
+        cardItem.latestQuestion = question;
+      }
       cardItem.lastSeenAt = Math.max(cardItem.lastSeenAt, lastSeenAt);
       cardGroups.set(cardName, cardItem);
     });
@@ -159,4 +174,3 @@ export const readingMatchesArchiveIndexFilter = (
   const q = filter.value.trim().toLowerCase();
   return Boolean(q) && reading.question.toLowerCase().includes(q);
 };
-

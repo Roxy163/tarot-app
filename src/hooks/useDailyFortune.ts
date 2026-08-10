@@ -7,6 +7,7 @@ import {
 } from '../lib/dailyFortuneReflection';
 import { buildDailyFortuneAnnotationNote } from '../lib/dailyFortuneReview';
 import { mergeDailyFortuneSources } from '../lib/dailyFortuneCloudSync';
+import { trackEvent } from '../lib/analytics';
 import { getUserDailyFortunes, saveUserDailyFortunes } from '../lib/firebaseData';
 import { readJsonArrayWithBackup, writeJsonWithBackup } from '../lib/safeLocalStorage';
 
@@ -19,6 +20,22 @@ const serializeCloudFortunes = (fortunes: DailyFortune[]) => JSON.stringify(fort
 const getDailyFortuneStorageKey = (uid?: string) => (
   uid ? `${STORAGE_KEY}_${uid}` : STORAGE_KEY
 );
+
+const getReflectionAnalyticsFlags = (reflection?: string | DailyFortuneReflectionParts) => {
+  if (typeof reflection === 'string') {
+    return {
+      has_initial: false,
+      has_review: Boolean(reflection.trim()),
+      has_combined: Boolean(reflection.trim()),
+    };
+  }
+
+  return {
+    has_initial: Boolean(reflection?.initialImpression?.trim()),
+    has_review: Boolean(reflection?.dailyReview?.trim()),
+    has_combined: false,
+  };
+};
 
 const createFortuneId = () => (
   typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
@@ -191,8 +208,12 @@ export const useDailyFortune = (
       [deck[i], deck[j]] = [deck[j], deck[i]];
     }
     setShuffledDeck(deck);
+    trackEvent('daily_deck_shuffled', {
+      deck_size: deck.length,
+      auth_state: session?.uid ? 'signed_in' : 'guest',
+    });
     return deck;
-  }, []);
+  }, [session?.uid]);
 
   const getToday = useCallback(() => {
     const today = new Date().toISOString().split('T')[0];
@@ -224,6 +245,11 @@ export const useDailyFortune = (
     setFortunes(prev => {
       const filtered = prev.filter(f => f.date !== today);
       return [...filtered, fortune];
+    });
+    trackEvent('daily_fortune_saved', {
+      source,
+      is_reversed: isReversed,
+      auth_state: session?.uid ? 'signed_in' : 'guest',
     });
     return fortune;
   }, [session?.uid]);
@@ -310,6 +336,7 @@ export const useDailyFortune = (
           }
         : f
     )));
+    trackEvent('daily_fortune_updated', { is_reversed: isReversed });
   }, []);
 
   const addReflection = useCallback((fortuneId: string, reflection: string | DailyFortuneReflectionParts) => {
@@ -317,6 +344,7 @@ export const useDailyFortune = (
     setFortunes(prev => prev.map(f => 
       f.id === fortuneId ? { ...f, ...createDailyReflectionPatch(reflection), updatedAt } : f
     ));
+    trackEvent('daily_reflection_saved', getReflectionAnalyticsFlags(reflection));
   }, []);
 
   const archiveDailyFortune = useCallback((fortuneId: string, reflection?: string | DailyFortuneReflectionParts) => {
@@ -332,6 +360,10 @@ export const useDailyFortune = (
           }
         : f
     )));
+    trackEvent('daily_fortune_archived', {
+      ...getReflectionAnalyticsFlags(reflection),
+      with_review_input: reflection !== undefined,
+    });
   }, []);
 
   const updateDailyFortuneReflection = useCallback((fortuneId: string, reflection: string | DailyFortuneReflectionParts) => {
@@ -339,6 +371,7 @@ export const useDailyFortune = (
     setFortunes(prev => prev.map(f => (
       f.id === fortuneId ? { ...f, ...createDailyReflectionPatch(reflection), updatedAt } : f
     )));
+    trackEvent('daily_reflection_saved', getReflectionAnalyticsFlags(reflection));
   }, []);
 
   const saveDailyFortuneToCardAnnotation = useCallback((fortuneId: string, note?: string) => {
@@ -354,6 +387,7 @@ export const useDailyFortune = (
         updatedAt,
       };
     }));
+    trackEvent('daily_annotation_saved');
   }, []);
 
   const getArchivedFortunes = useCallback(() => (

@@ -105,7 +105,14 @@ VITE_FIREBASE_STORAGE_BUCKET=your-project.appspot.com
 VITE_FIREBASE_MESSAGING_SENDER_ID=your-sender-id
 VITE_FIREBASE_APP_ID=your-app-id
 VITE_FIREBASE_MEASUREMENT_ID=your-measurement-id
+VITE_CLOUDFLARE_WEB_ANALYTICS_TOKEN=optional-cloudflare-web-analytics-token
 ```
+
+访问统计建议：
+
+- Cloudflare Web Analytics 看站点访问、设备、地区与性能。
+- Firebase Analytics 看日运、小考、导出、登录等 App 内行为。
+- 两者都不要传用户写下的问题、复盘、客户姓名或提示词正文。
 
 如果后续绑定自定义域名，或想允许额外预览地址调用 AI 接口，可在 Cloudflare Pages 环境变量里追加：
 

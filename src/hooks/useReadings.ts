@@ -27,6 +27,7 @@ import {
   mergeReadingsForSignedInUser,
   mergeSpreadSources,
 } from '../lib/readingSessionMerge';
+import { trackEvent } from '../lib/analytics';
 import { readJsonArrayWithBackup, writeJsonWithBackup } from '../lib/safeLocalStorage';
 
 const CLOUD_SAVE_DEBOUNCE_MS = 1200;
@@ -710,6 +711,20 @@ export const useReadings = (
         }
       }
 
+      if (savedReading) {
+        trackEvent('reading_saved', {
+          action: editingReading?.id ? 'edit' : 'create',
+          audience: savedReading.isForClient ? 'querent' : 'self',
+          card_count: savedReading.cards?.length || 0,
+          spread_count: savedReading.slotLabels?.length || savedReading.cards?.length || 0,
+          has_review: Boolean(savedReading.userFeedback?.trim()),
+          is_public: Boolean(savedReading.isPublic),
+          is_anonymous: Boolean(savedReading.isAnonymous),
+          label_count: savedReading.manualTags?.length || 0,
+          auth_state: session?.uid ? 'signed_in' : 'guest',
+        });
+      }
+
       return savedReading;
     } catch (error) {
       console.error("Error adding/editing reading:", error);
@@ -792,6 +807,10 @@ export const useReadings = (
       if (keywordCandidates.length > 0) {
         setCardKeywordMemory(prev => mergeKeywordMemory(prev, reading, keywordCandidates));
       }
+      trackEvent('reading_ai_processed', {
+        card_count: recognizedCards.length || reading.cards?.length || 0,
+        suggestion_count: keywordCandidates.length,
+      });
     } catch (error) {
       console.error("AI processing error:", error);
     }

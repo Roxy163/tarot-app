@@ -32,6 +32,7 @@ import { useBodyScrollLock } from '../hooks/useBodyScrollLock';
 import { MysticWatermark } from './MysticWatermark';
 import { QuietEmptyState } from './ui/SoftUI';
 import { AutoResizeTextarea } from './ui/AutoResizeTextarea';
+import { trackEvent } from '../lib/analytics';
 
 interface CardMetadataManagerProps {
   metadata: TarotCardMetadata[];
@@ -460,6 +461,7 @@ export function CardMetadataManager({ metadata, onUpdate, readings, dailyFortune
     () => localMetadata.find(card => card.id === detailCardId) || null,
     [detailCardId, localMetadata],
   );
+  const detailExportItem = detailCard ? exportItemById.get(detailCard.id) : undefined;
   const detailInsights = useMemo(
     () => (detailCard ? getDetailedInsights(detailCard.name) : []),
     [detailCard, readings],
@@ -566,6 +568,11 @@ export function CardMetadataManager({ metadata, onUpdate, readings, dailyFortune
       setExportStatus(message);
       onShowSnackbar?.(message);
       setIsExportMenuOpen(false);
+      trackEvent('card_library_exported', {
+        format,
+        scope,
+        item_count: items.length,
+      });
     } catch (error) {
       console.warn('Failed to export card library:', error);
       const message = '导出失败，请稍后再试。';
@@ -885,7 +892,7 @@ export function CardMetadataManager({ metadata, onUpdate, readings, dailyFortune
       <AnimatePresence>
         {detailCard && (
           <motion.div
-            className="fixed inset-0 z-[500] flex items-end justify-center p-0 sm:items-center sm:p-4"
+            className="fixed inset-0 z-[500] flex items-end justify-center p-0 sm:items-center sm:p-4 lg:items-stretch lg:justify-end lg:p-3"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
@@ -900,13 +907,15 @@ export function CardMetadataManager({ metadata, onUpdate, readings, dailyFortune
               role="dialog"
               aria-modal="true"
               aria-label={`${detailCard.name}研习资料`}
-              initial={{ y: 36, opacity: 0, scale: 0.98 }}
+              initial={{ y: 36, opacity: 0, scale: 0.985 }}
               animate={{ y: 0, opacity: 1, scale: 1 }}
-              exit={{ y: 28, opacity: 0, scale: 0.98 }}
+              exit={{ y: 28, opacity: 0, scale: 0.985 }}
               transition={{ type: 'spring', stiffness: 320, damping: 30 }}
-              className="relative flex max-h-[88dvh] w-full max-w-2xl flex-col overflow-hidden rounded-t-[1.6rem] border border-forest-accent/10 bg-[#FFFCF7]/95 shadow-[0_24px_70px_-38px_rgba(62,58,54,0.65)] backdrop-blur-md sm:max-h-[84vh] sm:rounded-[1.7rem]"
+              className="relative flex max-h-[86dvh] w-full flex-col overflow-hidden rounded-t-[1.55rem] border border-forest-accent/10 bg-[#FFFCF7]/96 shadow-[0_24px_70px_-40px_rgba(62,58,54,0.62)] backdrop-blur-md sm:max-h-[90dvh] sm:w-[min(460px,calc(100vw-2rem))] sm:rounded-[1.65rem] lg:h-full lg:max-h-none lg:w-[min(460px,calc(100vw-2rem))] lg:rounded-[1.7rem]"
             >
-              <div className="flex items-start justify-between gap-3 border-b border-forest-accent/8 bg-[#FFFCF7]/90 p-3 sm:p-4">
+              <div className="mx-auto mt-2 h-1 w-10 rounded-full bg-forest-accent/16 sm:hidden" aria-hidden="true" />
+
+              <div className="flex items-start justify-between gap-3 border-b border-forest-accent/8 bg-[#FFFCF7]/90 p-3 pt-2 sm:p-4">
                 <div className="flex min-w-0 items-center gap-3">
                   <div className="h-20 w-14 shrink-0 overflow-hidden rounded-xl border border-forest-accent/12 bg-forest-bg shadow-inner">
                     <TarotCardImage
@@ -956,6 +965,40 @@ export function CardMetadataManager({ metadata, onUpdate, readings, dailyFortune
                   <Edit3 size={15} />
                   编辑这张牌义
                 </button>
+
+                <section className="space-y-2 rounded-[1.2rem] border border-forest-accent/8 bg-white/42 p-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <h4 className="flex items-center gap-2 text-[10px] font-medium uppercase tracking-widest text-forest-accent">
+                      <Book size={12} />
+                      官方牌义
+                    </h4>
+                    <span className="rounded-full bg-forest-accent/8 px-2 py-0.5 text-[9px] font-medium text-forest-accent">
+                      {getArcanaLabel(detailCard.id)}
+                    </span>
+                  </div>
+                  {detailExportItem?.keywords && detailExportItem.keywords.length > 0 && (
+                    <div className="flex flex-wrap gap-1.5">
+                      {detailExportItem.keywords.slice(0, 8).map(keyword => (
+                        <span
+                          key={keyword}
+                          className="rounded-full border border-forest-accent/8 bg-forest-accent/5 px-2 py-0.5 text-[10px] text-forest-muted"
+                        >
+                          {keyword}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                  <div className="grid gap-2 text-xs leading-relaxed text-forest-ink/78">
+                    <div className="rounded-xl bg-forest-bg/36 p-2.5">
+                      <p className="mb-1 text-[10px] font-medium tracking-[0.12em] text-forest-accent">正位</p>
+                      <p>{detailExportItem?.uprightMeaning || detailCard.meaning || '暂无官方释义。'}</p>
+                    </div>
+                    <div className="rounded-xl bg-forest-bg/26 p-2.5">
+                      <p className="mb-1 text-[10px] font-medium tracking-[0.12em] text-forest-accent">逆位</p>
+                      <p>{detailExportItem?.reversedMeaning || detailCard.reversedMeaning || '暂无逆位释义。'}</p>
+                    </div>
+                  </div>
+                </section>
 
                 <CardNumerologyCard
                   cardName={detailCard.name}

@@ -21,8 +21,10 @@ import {
 } from 'lucide-react';
 import { ReadingKeywordCandidate, TarotReading, TarotCardMetadata } from '../../types';
 import { ReadingCard } from '../ReadingCard';
+import { TarotCardImage } from '../TarotCardImage';
 import { ConfirmDialog } from '../ConfirmDialog';
 import { useProgressiveList } from '../../hooks/useProgressiveList';
+import { getCardImageUrl, TAROT_CARDS } from '../../constants';
 import {
   buildReadingReviewPdfLines,
   exportReadingsToCsv,
@@ -36,6 +38,7 @@ import {
   buildReadingArchiveIndex,
   readingMatchesArchiveIndexFilter,
 } from '../../lib/readingArchiveIndex';
+import { trackEvent } from '../../lib/analytics';
 import type { ReadingArchiveIndexFilter } from '../../lib/readingArchiveIndex';
 
 const getReadingSortTime = (reading: TarotReading) => (
@@ -107,6 +110,14 @@ export const PrivateTab: React.FC<PrivateTabProps> = ({
   const longPressTimerRef = useRef<number | null>(null);
   const hasRealReadings = useMemo(() => readings.some(reading => !reading.isExample), [readings]);
   const archiveIndex = useMemo(() => buildReadingArchiveIndex(readings), [readings]);
+  const cardLookupByName = useMemo(() => {
+    const lookup = new Map<string, TarotCardMetadata>();
+    [...TAROT_CARDS, ...cardMetadata].forEach(card => {
+      if (card.name) lookup.set(card.name, card);
+    });
+
+    return lookup;
+  }, [cardMetadata]);
 
   const clientNames = useMemo(() => (
     Array.from(new Set(
@@ -239,6 +250,11 @@ export const PrivateTab: React.FC<PrivateTabProps> = ({
       );
       downloadBlobFile(`${getReviewFileBaseName()}.pdf`, blob);
       setIsExportMenuOpen(false);
+      trackEvent('archive_exported', {
+        format: 'pdf',
+        record_count: selectedReadings.length,
+        reviewed_count: selectedReadings.filter(reading => reading.userFeedback?.trim()).length,
+      });
     } catch (error) {
       console.warn('Failed to export reading review PDF:', error);
     }
@@ -252,6 +268,11 @@ export const PrivateTab: React.FC<PrivateTabProps> = ({
       'text/csv;charset=utf-8',
     );
     setIsExportMenuOpen(false);
+    trackEvent('archive_exported', {
+      format: 'csv',
+      record_count: selectedReadings.length,
+      reviewed_count: selectedReadings.filter(reading => reading.userFeedback?.trim()).length,
+    });
   };
 
   const handleExportMarkdown = () => {
@@ -262,6 +283,11 @@ export const PrivateTab: React.FC<PrivateTabProps> = ({
       'text/markdown;charset=utf-8',
     );
     setIsExportMenuOpen(false);
+    trackEvent('archive_exported', {
+      format: 'markdown',
+      record_count: selectedReadings.length,
+      reviewed_count: selectedReadings.filter(reading => reading.userFeedback?.trim()).length,
+    });
   };
 
   const handleClearFilters = () => {
@@ -702,7 +728,7 @@ export const PrivateTab: React.FC<PrivateTabProps> = ({
             initial={{ opacity: 0, y: 18, x: 0 }}
             animate={{ opacity: 1, y: 0, x: 0 }}
             exit={{ opacity: 0, y: 18, x: 0 }}
-            className="fixed inset-x-3 bottom-[calc(4.75rem+env(safe-area-inset-bottom))] z-50 max-h-[68vh] overflow-hidden rounded-[1.4rem] border border-forest-accent/10 bg-[#fffdf8]/92 shadow-[0_18px_54px_-36px_rgba(62,58,54,0.62)] backdrop-blur-xl sm:inset-y-4 sm:left-auto sm:right-4 sm:w-[390px] sm:max-h-[calc(100vh-2rem)] sm:rounded-[1.5rem]"
+            className="fixed inset-x-3 bottom-[calc(4.75rem+env(safe-area-inset-bottom))] z-50 max-h-[72vh] overflow-hidden rounded-[1.4rem] border border-forest-accent/10 bg-[#fffdf8]/92 shadow-[0_18px_54px_-36px_rgba(62,58,54,0.62)] backdrop-blur-xl sm:inset-y-4 sm:left-auto sm:right-4 sm:w-[420px] sm:max-h-[calc(100vh-2rem)] sm:rounded-[1.5rem]"
           >
             <div className="flex items-start justify-between gap-3 border-b border-forest-accent/8 px-4 py-3">
               <div>
@@ -730,6 +756,7 @@ export const PrivateTab: React.FC<PrivateTabProps> = ({
                       key={tab.id}
                       type="button"
                       onClick={() => setArchiveIndexTab(tab.id)}
+                      aria-label={tab.label}
                       className={`flex min-h-10 items-center justify-center gap-1 rounded-full px-2 text-[11px] font-medium transition-all ${
                         active
                           ? 'bg-forest-accent/88 text-white'
@@ -738,6 +765,14 @@ export const PrivateTab: React.FC<PrivateTabProps> = ({
                     >
                       <Icon size={12} />
                       <span>{tab.label}</span>
+                      <span
+                        aria-hidden="true"
+                        className={`rounded-full px-1.5 py-0.5 text-[9px] leading-none ${
+                          active ? 'bg-white/20 text-white' : 'bg-forest-accent/7 text-forest-muted'
+                        }`}
+                      >
+                        {tab.count}
+                      </span>
                     </button>
                   );
                 })}
@@ -747,30 +782,51 @@ export const PrivateTab: React.FC<PrivateTabProps> = ({
                 <div className="space-y-2">
                   {archiveIndex.cards.length === 0 ? (
                     <p className="rounded-2xl bg-white/34 px-3 py-4 text-center text-xs text-forest-muted">还没有可索引的牌面记录。</p>
-                  ) : archiveIndex.cards.map(item => (
-                    <button
-                      key={item.cardName}
-                      type="button"
-                      onClick={() => applyArchiveIndexFilter({
-                        type: 'card',
-                        value: item.cardName,
-                        label: `${item.cardName}出现过的记录`,
-                      })}
-                      aria-label={`按牌索引：${item.cardName}`}
-                      className="flex min-h-14 w-full items-center justify-between gap-3 rounded-2xl border border-forest-accent/8 bg-white/34 px-3 py-2 text-left transition-all hover:border-forest-accent/18 hover:bg-white/58"
-                    >
-                      <div className="min-w-0">
-                        <p className="truncate text-sm font-medium text-forest-ink">{item.cardName}</p>
-                        <p className="mt-0.5 text-[11px] text-forest-muted">
-                          正 {item.uprightCount} · 逆 {item.reversedCount} · 已复盘 {item.reviewedCount}
-                        </p>
-                      </div>
-                      <div className="shrink-0 text-right">
-                        <p className="text-sm font-medium text-forest-accent">{item.count} 次</p>
-                        <p className="text-[10px] text-forest-muted">{formatIndexDate(item.lastSeenAt)}</p>
-                      </div>
-                    </button>
-                  ))}
+                  ) : archiveIndex.cards.map(item => {
+                    const card = cardLookupByName.get(item.cardName);
+
+                    return (
+                      <button
+                        key={item.cardName}
+                        type="button"
+                        onClick={() => applyArchiveIndexFilter({
+                          type: 'card',
+                          value: item.cardName,
+                          label: `${item.cardName}出现过的记录`,
+                        })}
+                        aria-label={`按牌索引：${item.cardName}`}
+                        className="flex min-h-[4.25rem] w-full items-center justify-between gap-3 rounded-2xl border border-forest-accent/8 bg-white/34 px-3 py-2 text-left transition-all hover:border-forest-accent/18 hover:bg-white/58"
+                      >
+                        <div className="flex min-w-0 items-center gap-2.5">
+                          <div className="flex h-12 w-9 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-forest-accent/10 bg-forest-bg/70 shadow-inner">
+                            {card ? (
+                              <TarotCardImage
+                                src={getCardImageUrl(card.id)}
+                                alt={item.cardName}
+                                name={item.cardName}
+                                className="h-full w-full object-cover"
+                              />
+                            ) : (
+                              <BookOpen size={16} className="text-forest-accent/55" />
+                            )}
+                          </div>
+                          <div className="min-w-0">
+                            <p className="truncate text-sm font-medium text-forest-ink">{item.cardName}</p>
+                            <p className="mt-0.5 text-[11px] text-forest-muted">
+                              正 {item.uprightCount} · 逆 {item.reversedCount} · 已复盘 {item.reviewedCount}
+                            </p>
+                            <p className="mt-0.5 line-clamp-1 text-[10px] text-forest-muted/75">
+                              最近：{item.latestQuestion}
+                            </p>
+                          </div>
+                        </div>
+                        <div className="shrink-0 text-right">
+                          <p className="text-sm font-medium text-forest-accent">{item.count} 次</p>
+                          <p className="text-[10px] text-forest-muted">{formatIndexDate(item.lastSeenAt)}</p>
+                        </div>
+                      </button>
+                    );
+                  })}
                 </div>
               )}
 
@@ -793,6 +849,9 @@ export const PrivateTab: React.FC<PrivateTabProps> = ({
                       <div className="min-w-0">
                         <p className="truncate text-sm font-medium text-forest-ink">{item.spread}</p>
                         <p className="mt-0.5 text-[11px] text-forest-muted">已复盘 {item.reviewedCount} 条</p>
+                        <p className="mt-0.5 line-clamp-1 text-[10px] text-forest-muted/75">
+                          最近：{item.latestQuestion}
+                        </p>
                       </div>
                       <div className="shrink-0 text-right">
                         <p className="text-sm font-medium text-forest-accent">{item.count} 条</p>
@@ -819,12 +878,18 @@ export const PrivateTab: React.FC<PrivateTabProps> = ({
                       aria-label={`按标签索引：${item.tag}`}
                       className="flex min-h-12 w-full items-center justify-between gap-3 rounded-2xl border border-forest-accent/8 bg-white/34 px-3 py-2 text-left transition-all hover:border-forest-accent/18 hover:bg-white/58"
                     >
-                      <span className="flex min-w-0 items-center gap-2 text-sm font-medium text-forest-ink">
-                        <Tag size={13} className="shrink-0 text-forest-accent" />
-                        <span className="truncate">{item.tag}</span>
+                      <span className="flex min-w-0 items-start gap-2">
+                        <Tag size={13} className="mt-0.5 shrink-0 text-forest-accent" />
+                        <span className="min-w-0">
+                          <span className="block truncate text-sm font-medium text-forest-ink">{item.tag}</span>
+                          <span className="mt-0.5 line-clamp-1 text-[10px] text-forest-muted/75">
+                            最近：{item.latestQuestion}
+                          </span>
+                        </span>
                       </span>
-                      <span className="shrink-0 text-[11px] text-forest-muted">
-                        {item.count} 条 · 复盘 {item.reviewedCount}
+                      <span className="shrink-0 text-right text-[11px] text-forest-muted">
+                        {item.count} 条<br />
+                        复盘 {item.reviewedCount}
                       </span>
                     </button>
                   ))}
@@ -1037,6 +1102,7 @@ export const PrivateTab: React.FC<PrivateTabProps> = ({
                   onConfirmKeywordCandidates={onConfirmKeywordCandidates}
                   isHighlighted={reading.id === highlightedReadingId}
                   variant={readingViewMode === 'list' ? 'list' : 'card'}
+                  hideDeleteAction
                 />
               </div>
             );
