@@ -65,6 +65,20 @@ type SpreadSaveConflict = {
   spread: SpreadDefinition;
 };
 
+type SpreadManagerDraftBackup = {
+  spread: string;
+  layoutType: string;
+  cardSlots: ReadingSlotData[];
+  history: ReadingSlotData[][];
+  gridCols: number;
+  gridRows: number;
+  freeLayoutSaveMode: FreeLayoutSaveMode;
+  newSpreadName: string;
+  designActiveSlot: number;
+  activeSlotIndex: number;
+  isEditingSession: boolean;
+};
+
 export const AddReadingForm: React.FC<AddReadingFormProps> = ({ 
   onSubmit, 
   isLoading, 
@@ -151,6 +165,7 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
   const [submitIssue, setSubmitIssue] = useState<ReadingRequiredFieldIssue | null>(null);
   const [pendingDeleteSpreadNames, setPendingDeleteSpreadNames] = useState<string[]>([]);
   const readingDetailRef = useRef<HTMLDivElement | null>(null);
+  const spreadManagerDraftBackupRef = useRef<SpreadManagerDraftBackup | null>(null);
   useBodyScrollLock(Boolean(showRestoreConfirm || spreadSaveConflict));
 
   const {
@@ -164,6 +179,57 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
   const isMultiCard = cardSlots.length > 1;
   const isOfficialSelectedSpread = OFFICIAL_SPREADS.some(spread => spread.name === formData.spread);
   const canAddSlot = !isOfficialSelectedSpread;
+  const toFreeEditorSlots = (slots: ReadingSlotData[], layout: string) => (
+    ensureFreeLayoutSlots(layout === 'free' ? slots : convertGridSlotsToFreeLayout(slots, layout))
+  );
+  const captureSpreadManagerDraftBackup = () => {
+    if (spreadManagerDraftBackupRef.current) return;
+
+    spreadManagerDraftBackupRef.current = {
+      spread: formData.spread,
+      layoutType: formData.layoutType,
+      cardSlots,
+      history,
+      gridCols,
+      gridRows,
+      freeLayoutSaveMode,
+      newSpreadName,
+      designActiveSlot,
+      activeSlotIndex,
+      isEditingSession,
+    };
+  };
+
+  const clearSpreadManagerDraftBackup = () => {
+    spreadManagerDraftBackupRef.current = null;
+  };
+
+  const handleCancelSpreadManager = () => {
+    const backup = spreadManagerDraftBackupRef.current;
+
+    if (backup) {
+      setFormData(prev => ({
+        ...prev,
+        spread: backup.spread,
+        layoutType: backup.layoutType,
+      }));
+      setCardSlots(backup.cardSlots);
+      setHistory(backup.history);
+      setGridCols(backup.gridCols);
+      setGridRows(backup.gridRows);
+      setFreeLayoutSaveMode(backup.freeLayoutSaveMode);
+      setNewSpreadName(backup.newSpreadName);
+      setDesignActiveSlot(backup.designActiveSlot);
+      setActiveSlotIndex(backup.activeSlotIndex);
+      setIsEditingSession(backup.isEditingSession);
+    }
+
+    setSpreadNameNotice('');
+    setSpreadSaveConflict(null);
+    setShowRestoreConfirm(null);
+    clearSpreadManagerDraftBackup();
+    setShowSpreadManager(false);
+  };
   const influenceFields = [
     {
       key: 'numerologyInfluence',
@@ -435,6 +501,7 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
     setSpreadSaveConflict(null);
     setSaveSuccess(true);
     setIsEditingSession(false);
+    clearSpreadManagerDraftBackup();
     setShowSpreadManager(false);
   };
 
@@ -490,8 +557,18 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
       updatedSpreads = restoredSpreads;
       
       if (formData.spread === name) {
-        setFormData(prev => ({ ...prev, layoutType: official.layout }));
-        setCardSlots(createBlankSlotsForSpread(official));
+        const restoredSlots = createBlankSlotsForSpread(official);
+
+        if (showSpreadManager) {
+          setFormData(prev => ({ ...prev, layoutType: 'free' }));
+          setGridCols(20);
+          setGridRows(12);
+          setFreeLayoutSaveMode('original');
+          setCardSlots(toFreeEditorSlots(restoredSlots, official.layout));
+        } else {
+          setFormData(prev => ({ ...prev, layoutType: official.layout }));
+          setCardSlots(restoredSlots);
+        }
       }
     } else {
       updatedSpreads = restoreAllOfficialSpreads(spreads, OFFICIAL_SPREADS);
@@ -499,8 +576,18 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
       
       if (officialNames.includes(formData.spread)) {
         const restored = OFFICIAL_SPREADS.find(os => os.name === formData.spread) || OFFICIAL_SPREADS[0];
-        setFormData(prev => ({ ...prev, spread: restored.name, layoutType: restored.layout }));
-        setCardSlots(createBlankSlotsForSpread(restored));
+        const restoredSlots = createBlankSlotsForSpread(restored);
+
+        if (showSpreadManager) {
+          setFormData(prev => ({ ...prev, spread: restored.name, layoutType: 'free' }));
+          setGridCols(20);
+          setGridRows(12);
+          setFreeLayoutSaveMode('original');
+          setCardSlots(toFreeEditorSlots(restoredSlots, restored.layout));
+        } else {
+          setFormData(prev => ({ ...prev, spread: restored.name, layoutType: restored.layout }));
+          setCardSlots(restoredSlots);
+        }
       }
     }
     
@@ -538,14 +625,22 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
   };
 
   const handleOpenSpreadManager = () => {
+    captureSpreadManagerDraftBackup();
+
     const currentSpreadDef = spreads.find(spread => spread.name === formData.spread);
     const isCurrentOfficial = OFFICIAL_SPREADS.some(spread => spread.name === formData.spread);
 
     if (currentSpreadDef) {
-      setGridCols(currentSpreadDef.gridCols || gridCols || 5);
-      setGridRows(currentSpreadDef.gridRows || gridRows || 5);
+      const sourceSlots = cardSlots.length > 0 ? cardSlots : createBlankSlotsForSpread(currentSpreadDef);
+      const editorSlots = toFreeEditorSlots(sourceSlots, formData.layoutType || currentSpreadDef.layout);
+
+      setFormData(prev => ({ ...prev, layoutType: 'free' }));
+      setCardSlots(editorSlots);
+      setGridCols(20);
+      setGridRows(12);
+      setFreeLayoutSaveMode('original');
       setNewSpreadName(isCurrentOfficial ? `${currentSpreadDef.name} (自定义)` : currentSpreadDef.name);
-      setDesignActiveSlot(cardSlots.length > 0 ? 0 : -1);
+      setDesignActiveSlot(editorSlots.length > 0 ? 0 : -1);
       setShowSpreadManager(true);
       setIsEditingSession(!isCurrentOfficial);
       return;
@@ -606,6 +701,8 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
   };
 
   const handleCreateNewSpread = () => {
+    captureSpreadManagerDraftBackup();
+
     setFormData(prev => ({ ...prev, spread: '', layoutType: 'free' }));
     setCardSlots([]);
     setGridCols(20);
@@ -992,15 +1089,20 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
               }}
               gridCols={gridCols}
               onSelectSpread={(s) => {
-                setFormData(prev => ({ ...prev, spread: s.name, layoutType: s.layout }));
-                setGridCols(s.gridCols || 5);
-                setGridRows(s.gridRows || 5);
-                const nextSlots = mapSlotsToSpread([], s);
-                setCardSlots(s.layout === 'free' ? ensureFreeLayoutSlots(nextSlots) : nextSlots);
-                setIsEditingSession(false);
+                const nextSlots = createBlankSlotsForSpread(s);
+                const editorSlots = toFreeEditorSlots(nextSlots, s.layout);
+                const isOfficial = OFFICIAL_SPREADS.some(os => os.name === s.name);
+
+                setFormData(prev => ({ ...prev, spread: s.name, layoutType: 'free' }));
+                setGridCols(20);
+                setGridRows(12);
+                setFreeLayoutSaveMode('original');
+                setCardSlots(editorSlots);
+                setDesignActiveSlot(editorSlots.length > 0 ? 0 : -1);
+                setIsEditingSession(!isOfficial);
               }}
               onStartNewSession={handleCreateNewSpread}
-              onClose={() => setShowSpreadManager(false)}
+              onClose={handleCancelSpreadManager}
               onDeleteSpread={requestDeleteSpread}
               onDeleteSpreads={requestDeleteSpreads}
               onSaveSpread={saveSpread}

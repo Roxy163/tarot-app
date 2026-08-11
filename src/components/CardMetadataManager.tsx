@@ -290,6 +290,7 @@ function CardNumerologyCard({ cardName, isLoggedIn, userId }: CardNumerologyCard
 export function CardMetadataManager({ metadata, onUpdate, readings, dailyFortunes = [], cardKeywordMemory = [], onShowSnackbar, isLoggedIn, userId, initialCardId, ownerName = '见习阁主' }: CardMetadataManagerProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [detailCardId, setDetailCardId] = useState<string | null>(null);
+  const [isDetailSheetOpen, setIsDetailSheetOpen] = useState(false);
   const [localMetadata, setLocalMetadata] = useState<TarotCardMetadata[]>(() => buildCardLibrary(metadata));
   const [filterType, setFilterType] = useState<'all' | 'major' | 'wands' | 'cups' | 'swords' | 'pentacles'>('all');
   const [libraryViewMode, setLibraryViewMode] = useState<'grid' | 'list'>('grid');
@@ -298,6 +299,7 @@ export function CardMetadataManager({ metadata, onUpdate, readings, dailyFortune
   const [isExportMenuOpen, setIsExportMenuOpen] = useState(false);
   const [exportStatus, setExportStatus] = useState('');
   const exportMenuRef = useRef<HTMLDivElement | null>(null);
+  const detailScrollYRef = useRef(0);
   const [showAnnotationEditor, setShowAnnotationEditor] = useState(false);
   const [annotationEditorCardId, setAnnotationEditorCardId] = useState<string | undefined>(undefined);
   const [modifiedCount, setModifiedCount] = useState(0);
@@ -346,14 +348,34 @@ export function CardMetadataManager({ metadata, onUpdate, readings, dailyFortune
     setModifiedCount(cardAnnotationService.getModifiedCardIds().length);
   };
 
-  const handleOpenCard = useCallback((cardId: string) => {
-    setDetailCardId(cardId);
+  const rememberDetailScrollPosition = useCallback(() => {
+    if (typeof window === 'undefined' || typeof document === 'undefined') return;
+
+    detailScrollYRef.current = window.scrollY || document.documentElement.scrollTop || document.body.scrollTop || 0;
   }, []);
+
+  const restoreDetailScrollPosition = useCallback(() => {
+    if (typeof window === 'undefined') return;
+
+    const scrollY = detailScrollYRef.current;
+    const restore = () => window.scrollTo({ top: scrollY, left: 0, behavior: 'auto' });
+
+    window.requestAnimationFrame(restore);
+    window.setTimeout(restore, 0);
+  }, []);
+
+  const handleOpenCard = useCallback((cardId: string) => {
+    rememberDetailScrollPosition();
+    setDetailCardId(cardId);
+    setIsDetailSheetOpen(true);
+  }, [rememberDetailScrollPosition]);
 
   const handleToggleCardDetails = useCallback((cardId: string, event?: React.MouseEvent) => {
     event?.stopPropagation();
+    rememberDetailScrollPosition();
     setDetailCardId(cardId);
-  }, []);
+    setIsDetailSheetOpen(true);
+  }, [rememberDetailScrollPosition]);
   
   // Load personal meanings
   useEffect(() => {
@@ -474,10 +496,10 @@ export function CardMetadataManager({ metadata, onUpdate, readings, dailyFortune
   const detailDailyFortuneExamples = getSavedDailyFortuneExamples(detailDailyFortuneGroup?.fortunes || []);
   const detailDailyFortuneHistory = detailDailyFortuneGroup?.fortunes || [];
   const closeCardDetail = useCallback(() => {
-    setDetailCardId(null);
+    setIsDetailSheetOpen(false);
   }, []);
 
-  useBodyScrollLock(Boolean(detailCard));
+  useBodyScrollLock(Boolean(detailCardId));
 
   useEffect(() => {
     if (!detailCard) return;
@@ -889,28 +911,40 @@ export function CardMetadataManager({ metadata, onUpdate, readings, dailyFortune
         />
       )}
 
-      <AnimatePresence>
-        {detailCard && (
+      <AnimatePresence
+        onExitComplete={() => {
+          if (isDetailSheetOpen) return;
+          setDetailCardId(null);
+          restoreDetailScrollPosition();
+        }}
+      >
+        {detailCard && isDetailSheetOpen && (
           <motion.div
             className="fixed inset-0 z-[500] flex items-end justify-center p-0 sm:items-center sm:p-4 lg:items-stretch lg:justify-end lg:p-3"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
+            transition={{ duration: 0.16, ease: 'easeOut' }}
           >
-            <button
+            <motion.button
               type="button"
               aria-label="关闭牌义详情"
-              className="absolute inset-0 bg-forest-ink/18 backdrop-blur-[3px]"
+              className="absolute inset-0 cursor-default bg-forest-ink/16 backdrop-blur-[2px]"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.14, ease: 'easeOut' }}
+              onMouseDown={event => event.preventDefault()}
               onClick={closeCardDetail}
             />
             <motion.section
               role="dialog"
               aria-modal="true"
               aria-label={`${detailCard.name}研习资料`}
-              initial={{ y: 36, opacity: 0, scale: 0.985 }}
+              initial={{ y: 28, opacity: 0, scale: 0.99 }}
               animate={{ y: 0, opacity: 1, scale: 1 }}
-              exit={{ y: 28, opacity: 0, scale: 0.985 }}
-              transition={{ type: 'spring', stiffness: 320, damping: 30 }}
+              exit={{ y: 18, opacity: 0, scale: 0.99 }}
+              transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
               className="relative flex max-h-[86dvh] w-full flex-col overflow-hidden rounded-t-[1.55rem] border border-forest-accent/10 bg-[#FFFCF7]/96 shadow-[0_24px_70px_-40px_rgba(62,58,54,0.62)] backdrop-blur-md sm:max-h-[90dvh] sm:w-[min(460px,calc(100vw-2rem))] sm:rounded-[1.65rem] lg:h-full lg:max-h-none lg:w-[min(460px,calc(100vw-2rem))] lg:rounded-[1.7rem]"
             >
               <div className="mx-auto mt-2 h-1 w-10 rounded-full bg-forest-accent/16 sm:hidden" aria-hidden="true" />

@@ -6,7 +6,7 @@ import { ReadingSlot } from './ReadingSlot';
 import {
   FREE_LAYOUT_CANVAS_HEIGHT,
   FREE_LAYOUT_CANVAS_WIDTH,
-  getFreeLayoutDisplayFrame,
+  getCompactFreeLayoutDisplayFrame,
   FREE_LAYOUT_SLOT_HEIGHT,
   FREE_LAYOUT_SLOT_WIDTH,
 } from '../lib/freeLayout';
@@ -113,7 +113,7 @@ export const ReadingSpreadDisplay: React.FC<ReadingSpreadDisplayProps> = ({
   const { ref: spreadViewportRef, width: spreadViewportWidth } = useElementWidth<HTMLDivElement>();
   const complexGridScrollRef = useRef<HTMLDivElement | null>(null);
   const isFreeLayout = formData.layoutType === 'free';
-  const freeLayoutFrame = isFreeLayout ? getFreeLayoutDisplayFrame(cardSlots) : null;
+  const freeLayoutFrame = isFreeLayout ? getCompactFreeLayoutDisplayFrame(cardSlots) : null;
   const isCustomGridLayout = formData.layoutType === 'custom';
   const customGridGapClass = cardSlots.length > 3 ? 'gap-2 sm:gap-4' : 'gap-3 sm:gap-4';
   const isCelticCross = formData.layoutType === 'celtic' || formData.spread === '凯尔特十字牌阵';

@@ -1,39 +1,13 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { motion } from 'motion/react';
-import { Layers, X, Plus, RotateCcw, Grid3X3, FolderOpen, Trash2, RefreshCw, Sparkles } from 'lucide-react';
+import { Layers, X, Plus, RotateCcw, FolderOpen, Trash2, RefreshCw, Sparkles } from 'lucide-react';
 import { SpreadDefinition, ReadingSlotData } from '../types';
-import { LAYOUT_TEMPLATES, OFFICIAL_SPREADS } from '../constants';
-import { DesignerSlot } from './DesignerSlot';
-import { SpreadGridControls } from './SpreadGridControls';
+import { OFFICIAL_SPREADS } from '../constants';
 import { FreeLayoutEditor } from './FreeLayoutEditor';
 import { useBodyScrollLock } from '../hooks/useBodyScrollLock';
 
 export type FreeLayoutSaveMode = 'original' | 'adaptive';
-
-const useContainerWidth = <T extends HTMLElement>() => {
-  const ref = useRef<T | null>(null);
-  const [width, setWidth] = useState(0);
-
-  useEffect(() => {
-    const element = ref.current;
-    if (!element) return;
-
-    const updateWidth = () => setWidth(element.getBoundingClientRect().width);
-    updateWidth();
-
-    if (typeof ResizeObserver === 'undefined') {
-      window.addEventListener('resize', updateWidth);
-      return () => window.removeEventListener('resize', updateWidth);
-    }
-
-    const observer = new ResizeObserver(updateWidth);
-    observer.observe(element);
-    return () => observer.disconnect();
-  }, []);
-
-  return { ref, width };
-};
 
 const isMobileViewport = () => (
   typeof window !== 'undefined' && window.innerWidth < 640
@@ -77,7 +51,6 @@ interface SpreadDesignerProps {
 export const SpreadDesigner: React.FC<SpreadDesignerProps> = ({
   spreads,
   currentSpread,
-  layoutType,
   cardSlots,
   designActiveSlot,
   newSpreadName,
@@ -88,38 +61,25 @@ export const SpreadDesigner: React.FC<SpreadDesignerProps> = ({
   onSaveSpread,
   onUpdateNewSpreadName,
   saveNotice,
-  onUpdateSlotPosition,
   onSwapSlotIndex,
-  onUpdateSlotLabel,
   onSetDesignActiveSlot,
   onRemoveSlot,
   onRestoreDefaults,
-  onUpdateGrid,
-  gridCols = 5,
-  gridRows = 5,
   onStartNewSession,
   onClose,
   canUndo,
   onUndo,
   onUpdateSlots,
-  onShiftSlots,
-  onCenterSpread,
   freeLayoutSaveMode = 'original',
   onUpdateFreeLayoutSaveMode
 }) => {
   useBodyScrollLock(true);
 
-  const [editMode, setEditMode] = useState<'grid' | 'free'>(layoutType === 'free' ? 'free' : 'grid');
   const [selectedCustomSpreadNames, setSelectedCustomSpreadNames] = useState<string[]>([]);
   const [isMobileWorkbench, setIsMobileWorkbench] = useState(isMobileViewport);
   const [showCustomManager, setShowCustomManager] = useState(() => !isMobileViewport());
-  const { ref: designerPreviewRef, width: designerPreviewWidth } = useContainerWidth<HTMLDivElement>();
   const longPressDeleteTimerRef = useRef<number | null>(null);
   const longPressTriggeredRef = useRef(false);
-
-  useEffect(() => {
-    setEditMode(layoutType === 'free' ? 'free' : 'grid');
-  }, [layoutType]);
 
   useEffect(() => {
     const updateResponsiveState = () => {
@@ -142,28 +102,14 @@ export const SpreadDesigner: React.FC<SpreadDesignerProps> = ({
     }
   }, []);
 
-  const currentTemplate = LAYOUT_TEMPLATES[layoutType as keyof typeof LAYOUT_TEMPLATES] || LAYOUT_TEMPLATES['horizontal'];
-  const itemClasses = currentTemplate.itemClasses;
-  const designerSlotSizeClass = cardSlots.length > 3 ? 'w-16 sm:w-20' : 'w-20 sm:w-24';
-  const designerGridGapClass = cardSlots.length > 3 ? 'gap-2 sm:gap-4' : 'gap-3 sm:gap-4';
-  const designerBaseSlotWidth = cardSlots.length > 3 ? 64 : 80;
-  const designerGap = cardSlots.length > 3 ? 8 : 12;
-  const designerRawGridWidth = gridCols * designerBaseSlotWidth + Math.max(0, gridCols - 1) * designerGap;
-  const designerScale = useMemo(() => {
-    if (editMode !== 'grid' || designerPreviewWidth <= 0) return 1;
-    return Math.min(1, designerPreviewWidth / Math.max(1, designerRawGridWidth + 8));
-  }, [designerPreviewWidth, designerRawGridWidth, editMode]);
-  
   const isOfficialSpread = OFFICIAL_SPREADS.some(s => s.name === currentSpread);
   const officialSpreadNames = useMemo(() => new Set(OFFICIAL_SPREADS.map(spread => spread.name)), []);
   const customSpreads = useMemo(
     () => spreads.filter(spread => !officialSpreadNames.has(spread.name)),
     [officialSpreadNames, spreads],
   );
-  const isCelticCross = layoutType === 'celtic' || currentSpread === '凯尔特十字牌阵';
   const saveButtonLabel = currentSpread && isEditingSession ? '保存修改' : '保存并使用';
   const editorStateLabel = currentSpread ? (isEditingSession ? '正在编辑' : '套用模板') : '空白创作';
-  const canShowGridControls = Boolean(onUpdateGrid && onShiftSlots && onCenterSpread);
   const canDeleteCurrentSpread = Boolean(
     currentSpread
     && !isOfficialSpread
@@ -209,10 +155,6 @@ export const SpreadDesigner: React.FC<SpreadDesignerProps> = ({
     ));
   };
 
-  const handleSlotClick = (col: number, row: number) => {
-    onUpdateSlotPosition(col, row);
-  };
-
   const handleTemplateChange = (spreadName: string) => {
     if (!spreadName) {
       onStartNewSession?.();
@@ -251,7 +193,7 @@ export const SpreadDesigner: React.FC<SpreadDesignerProps> = ({
             <div className="min-w-0">
               <h2 className="font-serif text-base font-semibold text-forest-ink sm:text-lg">牌阵工作台</h2>
               <p className="truncate text-[10px] font-medium uppercase tracking-wider text-forest-muted">
-                {editorStateLabel} · {editMode === 'free' ? '自由画布' : '模板布局'}
+                {editorStateLabel} · 自由画布
               </p>
             </div>
           </div>
@@ -413,12 +355,12 @@ export const SpreadDesigner: React.FC<SpreadDesignerProps> = ({
             )
           )}
 
-          {(canUndo || isOfficialSpread || canDeleteCurrentSpread || (editMode === 'grid' && canShowGridControls)) && (
+          {(canUndo || isOfficialSpread || canDeleteCurrentSpread) && (
           <div className="rounded-xl border border-forest-accent/8 bg-white/22 p-1 sm:p-1.5">
             <div className="flex flex-wrap items-center justify-between gap-1.5">
               <div className="flex min-h-9 items-center gap-1.5 px-1 text-[10px] font-semibold text-forest-muted">
-                {editMode === 'free' ? <Sparkles size={13} /> : <Grid3X3 size={13} />}
-                <span>{editMode === 'free' ? '自由画布' : `${gridCols}×${gridRows} 模板`}</span>
+                <Sparkles size={13} />
+                <span>自由画布</span>
               </div>
 
               <div className="flex flex-wrap gap-1.5 justify-end">
@@ -453,107 +395,25 @@ export const SpreadDesigner: React.FC<SpreadDesignerProps> = ({
               </div>
             </div>
 
-            {editMode === 'grid' && canShowGridControls && (
-              <div className="mt-1.5 border-t border-forest-accent/10 pt-1.5">
-                <SpreadGridControls
-                  gridCols={gridCols}
-                  gridRows={gridRows}
-                  onUpdateGrid={onUpdateGrid!}
-                  onShiftSlots={onShiftSlots!}
-                  onCenterSpread={onCenterSpread!}
-                />
-              </div>
-            )}
           </div>
           )}
 
             <div className="rounded-xl border border-forest-accent/8 bg-white/18 p-1 sm:p-1.5">
-              <div ref={designerPreviewRef} className="flex w-full justify-center overflow-hidden pb-2">
-                {editMode === 'free' ? (
-                  <FreeLayoutEditor
-                    cardSlots={cardSlots}
-                    designActiveSlot={designActiveSlot}
-                    onSetDesignActiveSlot={(idx) => onSetDesignActiveSlot(idx, true)}
-                    onRemoveSlot={onRemoveSlot}
-                    onSwapSlotIndex={onSwapSlotIndex}
-                    onUpdateSlots={(slots) => {
-                      onUpdateSlots?.(slots);
-                    }}
-                  />
-                ) : (
-                  <div
-                    className="mx-auto"
-                    style={{
-                      width: designerRawGridWidth * designerScale,
-                      minHeight: gridRows * designerBaseSlotWidth * 1.75 * designerScale,
-                    }}
-                  >
-                  <div
-                    className={`grid ${designerGridGapClass} p-2 rounded-2xl border border-forest-accent/10 bg-white/70`}
-                    style={{
-                      gridTemplateColumns: `repeat(${gridCols}, max-content)`,
-                      width: 'max-content',
-                      transform: `scale(${designerScale})`,
-                      transformOrigin: 'top center',
-                    }}
-                  >
-                    {Array.from({ length: gridCols * gridRows }).map((_, i) => {
-                      const row = Math.floor(i / gridCols) + 1;
-                      const col = (i % gridCols) + 1;
-                      const posStr = `col-start-${col} row-start-${row}`;
-                      const slotIndices = cardSlots.map((slot, idx) => {
-                        const slotPos = slot.position || (itemClasses[idx] || '');
-                        return slotPos === posStr ? idx : -1;
-                      }).filter(idx => idx !== -1);
-                      const isCelticCenter = isCelticCross && posStr === 'col-start-2 row-start-2';
-                      const hasSlots = slotIndices.length > 0;
-
-                      return (
-                        <div key={posStr} className={`relative aspect-[2/3.5] ${designerSlotSizeClass}`}>
-                          <div className={`absolute inset-0 rounded-xl border-2 transition-all pointer-events-none ${
-                            hasSlots
-                              ? designActiveSlot === slotIndices[0] ? 'border-forest-accent/40 bg-forest-accent/5' : 'border-forest-accent/10'
-                              : 'border-transparent hover:border-forest-accent/20 hover:bg-forest-accent/5'
-                          }`} />
-
-                          <div className="w-full h-full relative flex items-center justify-center">
-                            {hasSlots ? (
-                              slotIndices.map((idx: number, sIdx: number) => (
-                                <DesignerSlot
-                                  key={idx}
-                                  idx={idx}
-                                  totalSlots={cardSlots.length}
-                                  isActive={designActiveSlot === idx}
-                                  slot={{...cardSlots[idx], isStacked: slotIndices.length > 1}}
-                                  isCelticCenter={isCelticCenter && slotIndices.length > 1}
-                                  stackIndex={sIdx}
-                                  onSetActive={(idx) => onSetDesignActiveSlot(idx, true)}
-                                  onUpdateLabel={onUpdateSlotLabel}
-                                  onSwapSlotIndex={onSwapSlotIndex}
-                                  onRemove={onRemoveSlot}
-                                />
-                              ))
-                            ) : (
-                              <button
-                                type="button"
-                                onClick={() => handleSlotClick(col, row)}
-                                aria-label={`在第 ${row} 行第 ${col} 列创建位置`}
-                                className="flex h-full w-full items-center justify-center rounded-lg border border-dashed border-forest-accent/10 transition-all hover:border-forest-accent/30 hover:bg-white/50"
-                              >
-                                <Plus size={14} className="text-forest-accent/30" />
-                              </button>
-                            )}
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                  </div>
-                )}
+              <div className="flex w-full justify-center overflow-hidden pb-2">
+                <FreeLayoutEditor
+                  cardSlots={cardSlots}
+                  designActiveSlot={designActiveSlot}
+                  onSetDesignActiveSlot={(idx) => onSetDesignActiveSlot(idx, true)}
+                  onRemoveSlot={onRemoveSlot}
+                  onSwapSlotIndex={onSwapSlotIndex}
+                  onUpdateSlots={(slots) => {
+                    onUpdateSlots?.(slots);
+                  }}
+                />
               </div>
             </div>
 
-          {editMode === 'free' && onUpdateFreeLayoutSaveMode && (
+          {onUpdateFreeLayoutSaveMode && (
             <div className="rounded-xl border border-forest-accent/10 bg-forest-accent/5 p-1.5">
               <div className="flex flex-col gap-1.5 sm:flex-row sm:items-center sm:justify-between">
                 <p className="text-[10px] font-bold text-forest-accent">保存自由牌阵时</p>
@@ -587,7 +447,6 @@ export const SpreadDesigner: React.FC<SpreadDesignerProps> = ({
 
           <div className="-mx-2 -mb-2 rounded-b-[1.35rem] border-t border-forest-accent/10 bg-white/95 px-3 py-2 text-xs text-forest-muted backdrop-blur sm:-mx-4 sm:-mb-4 sm:rounded-b-[2rem] sm:px-6 sm:py-3">
             <span>位置数量：{cardSlots.length}</span>
-            {isCelticCross && <span className="ml-2 text-forest-accent">· 凯尔特十字模式</span>}
           </div>
         </div>
       </motion.div>

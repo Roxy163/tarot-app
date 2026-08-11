@@ -10,6 +10,7 @@ import {
   createFreeLayoutSlotAt,
   ensureFreeLayoutSlots,
   getBoundedFreeLayoutPosition,
+  getCompactFreeLayoutDisplayFrame,
   getFreeLayoutBounds,
   getFreeLayoutDisplayFrame,
   snapFreeLayoutValue,
@@ -92,6 +93,24 @@ describe('freeLayout', () => {
     expect(frame.offsetY).toBe(0);
     expect(frame.width).toBe(FREE_LAYOUT_CANVAS_WIDTH);
     expect(frame.height).toBe(FREE_LAYOUT_CANVAS_HEIGHT);
+  });
+
+  it('trims empty canvas space for compact free layout previews', () => {
+    const slots: ReadingSlotData[] = [
+      { name: '', isReversed: false, label: '位置1', x: 120, y: 120, scale: 1 },
+      { name: '', isReversed: false, label: '位置2', x: 250, y: 170, scale: 1 },
+      { name: '', isReversed: false, label: '位置3', x: 380, y: 110, scale: 1 },
+    ];
+    const frame = getCompactFreeLayoutDisplayFrame(slots);
+
+    expect(frame.width).toBeLessThan(FREE_LAYOUT_CANVAS_WIDTH);
+    expect(frame.height).toBeLessThan(FREE_LAYOUT_CANVAS_HEIGHT);
+    slots.forEach(slot => {
+      expect((slot.x || 0) + frame.offsetX).toBeGreaterThanOrEqual(0);
+      expect((slot.y || 0) + frame.offsetY).toBeGreaterThanOrEqual(0);
+      expect((slot.x || 0) + frame.offsetX + FREE_LAYOUT_SLOT_WIDTH).toBeLessThanOrEqual(frame.width);
+      expect((slot.y || 0) + frame.offsetY + FREE_LAYOUT_SLOT_HEIGHT).toBeLessThanOrEqual(frame.height);
+    });
   });
 
   it('can adapt an oversized free spread into the default canvas', () => {

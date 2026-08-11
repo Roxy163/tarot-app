@@ -444,13 +444,13 @@ export const StudyPavilionModules: React.FC<StudyPavilionModulesProps> = ({
     if (!isAnswered) return renderDrawQuestionButton('换题', true);
 
     return (
-      <div className="grid w-[8.25rem] shrink-0 grid-cols-2 gap-1.5 min-[520px]:w-auto min-[520px]:grid-flow-col min-[520px]:grid-cols-none">
+      <div className="flex shrink-0 items-center gap-1.5">
         {isCorrect && (
           <motion.span
             key={winKey}
             initial={{ opacity: 0, y: 4, scale: 0.96 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
-            className="hidden min-h-11 items-center justify-center rounded-full bg-forest-accent/10 px-3 text-[11px] font-medium text-forest-accent min-[520px]:inline-flex"
+            className="hidden min-h-11 items-center justify-center rounded-full bg-forest-accent/10 px-3 text-[11px] font-medium text-forest-accent min-[560px]:inline-flex"
           >
             答对了
           </motion.span>
@@ -459,17 +459,28 @@ export const StudyPavilionModules: React.FC<StudyPavilionModulesProps> = ({
           type="button"
           aria-label="下一题"
           onClick={drawQuestion}
-          className="flex min-h-11 items-center justify-center gap-1 rounded-full bg-forest-accent/90 px-2.5 text-[11px] font-medium text-white transition-all hover:bg-forest-accent active:scale-[0.98]"
+          className="flex min-h-11 min-w-[4.9rem] items-center justify-center gap-1 rounded-full bg-forest-accent/90 px-2.5 text-[11px] font-medium text-white transition-all hover:bg-forest-accent active:scale-[0.98]"
         >
           <RefreshCw size={13} />
           下一题
         </button>
+      </div>
+    );
+  };
+
+  const renderQuizFollowupActions = () => {
+    if (!isAnswered || !questionCard) return null;
+
+    const secondaryActionClass = 'flex min-h-11 flex-1 basis-[4.4rem] items-center justify-center gap-1 rounded-full border border-forest-accent/8 bg-white/34 px-2 text-[11px] font-medium transition-all hover:bg-white/62 active:scale-[0.98] sm:flex-none';
+
+    return (
+      <div className="mt-2 flex flex-wrap gap-1.5">
         {questionCard && (
           <button
             type="button"
             aria-label="我记住了"
             onClick={handleRemembered}
-            className="flex min-h-11 items-center justify-center gap-1 rounded-full border border-forest-accent/8 bg-white/34 px-2 text-[11px] font-medium text-forest-accent transition-all hover:bg-white/62 active:scale-[0.98]"
+            className={`${secondaryActionClass} text-forest-accent`}
           >
             <Sparkles size={13} />
             记住
@@ -480,7 +491,7 @@ export const StudyPavilionModules: React.FC<StudyPavilionModulesProps> = ({
             type="button"
             aria-label="给这张牌补关键词"
             onClick={() => setShowKeywordForm(value => !value)}
-            className="flex min-h-11 items-center justify-center gap-1 rounded-full border border-forest-accent/8 bg-white/34 px-2 text-[11px] font-medium text-forest-accent transition-all hover:bg-white/62 active:scale-[0.98]"
+            className={`${secondaryActionClass} text-forest-accent`}
           >
             <Edit3 size={13} />
             {showKeywordForm ? '收起' : '补词'}
@@ -491,7 +502,7 @@ export const StudyPavilionModules: React.FC<StudyPavilionModulesProps> = ({
             type="button"
             aria-label="去牌义注疏"
             onClick={() => onOpenCardLibrary(questionCard.id)}
-            className="flex min-h-11 items-center justify-center gap-1 rounded-full border border-forest-accent/8 bg-white/34 px-2 text-[11px] font-medium text-forest-muted transition-all hover:bg-white/62 hover:text-forest-accent active:scale-[0.98]"
+            className={`${secondaryActionClass} text-forest-muted hover:text-forest-accent`}
           >
             <Library size={13} />
             注疏
@@ -1033,6 +1044,7 @@ export const StudyPavilionModules: React.FC<StudyPavilionModulesProps> = ({
                       ))}
                     </div>
                   )}
+                  {renderQuizFollowupActions()}
                 </motion.div>
               )}
             </AnimatePresence>

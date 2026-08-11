@@ -147,6 +147,28 @@ export const getFreeLayoutDisplayFrame = (
   };
 };
 
+export const getCompactFreeLayoutDisplayFrame = (
+  slots: ReadingSlotData[],
+  padding = 24,
+) => {
+  const bounds = getFreeLayoutBounds(slots);
+  const boundedWidth = bounds.width + padding * 2;
+  const boundedHeight = bounds.height + padding * 2;
+  const minWidth = slots.length <= 1 ? 168 : 220;
+  const minHeight = slots.length <= 1 ? 208 : 220;
+  const width = Math.max(minWidth, boundedWidth);
+  const height = Math.max(minHeight, boundedHeight);
+  const centerOffsetX = Math.max(0, (width - boundedWidth) / 2);
+  const centerOffsetY = Math.max(0, (height - boundedHeight) / 2);
+
+  return {
+    width,
+    height,
+    offsetX: padding + centerOffsetX - bounds.minX,
+    offsetY: padding + centerOffsetY - bounds.minY,
+  };
+};
+
 export const ensureFreeLayoutSlots = (slots: ReadingSlotData[]) => (
   slots.map((slot, index) => {
     const fallback = getDefaultFreePosition(index, slots.length);
