@@ -88,25 +88,6 @@ export interface QuizMemoryEntry {
   updatedAt: string;
 }
 
-export type AiInspirationMode = 'angle' | 'questions' | 'shadow';
-
-export interface AiInspirationRequest {
-  cardName: string;
-  isReversed: boolean;
-  slotLabel: string;
-  question: string;
-  spread: string;
-  category?: string;
-  currentInsight?: string;
-  combinationContext?: string;
-  personalKeywords?: string[];
-  cardKeywords?: string[];
-  cardCorrespondences?: string[];
-  cardMeaning?: string;
-  reversedMeaning?: string;
-  mode: AiInspirationMode;
-}
-
 export interface CardAnnotation {
   cardId: string;
   userId: string;

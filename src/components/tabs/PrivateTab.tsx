@@ -865,7 +865,7 @@ export const PrivateTab: React.FC<PrivateTabProps> = ({
               {archiveIndexTab === 'tag' && (
                 <div className="space-y-2">
                   {archiveIndex.tags.length === 0 ? (
-                    <p className="rounded-2xl bg-white/34 px-3 py-4 text-center text-xs text-forest-muted">还没有用户标签。写手记时加标签，之后就能从这里复盘。</p>
+                    <p className="rounded-2xl bg-white/34 px-3 py-4 text-center text-xs text-forest-muted">还没有用户标签。记录时添加标签，之后就能从这里复盘。</p>
                   ) : archiveIndex.tags.map(item => (
                     <button
                       key={item.tag}

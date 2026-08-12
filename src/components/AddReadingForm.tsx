@@ -1529,14 +1529,14 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
                 setFormData({...formData, skipAi: !willProcess});
                 localStorage.setItem('tarot_ai_preference', willProcess ? 'process' : 'skip');
               }} />
-              <span className="group-hover:scale-105 transition-transform">参与AI深度解析</span>
+              <span className="group-hover:scale-105 transition-transform">启用AI辅助整理</span>
             </label>
           </div>
           <div className="mt-4 rounded-2xl border border-forest-accent/8 bg-white/28 px-4 py-3 text-xs leading-relaxed text-forest-muted">
             <p className="flex items-start gap-2">
               <Info size={14} className="mt-0.5 shrink-0 text-forest-accent" />
               <span>
-                参与 AI 深度解析后，系统会尝试识别牌名、整理关键词和提供灵感线索，帮助你复盘；它不会替你发布内容，也不会代替你的最终判断。
+                开启后，系统会尝试识别牌名并整理候选关键词，方便后续复盘；它不会替你发布内容，也不会代替你的最终判断。
               </span>
             </p>
           </div>
