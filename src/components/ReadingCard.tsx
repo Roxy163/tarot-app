@@ -349,6 +349,8 @@ export const ReadingCard: React.FC<ReadingCardProps> = ({
 
   const canReviewKeywords = !isPublicView && !reading.isExample && !!onExtractKeywordCandidates && !!onConfirmKeywordCandidates;
   const hasFeedback = !!reading.userFeedback?.trim();
+  const hasAiReference = !!reading.aiAnswer?.trim();
+  const aiReferenceModeLabel = reading.aiAnswerMode === 'consultant' ? '咨询解牌' : '导师复盘';
   const displayAuthorName = reading.isAnonymous ? '匿名研习者' : reading.authorName;
   const clientDisplayName = reading.clientName?.trim() || '未命名客户';
   const displayDate = formatReadingDateTime(reading.readingDate || reading.date);
@@ -1063,6 +1065,12 @@ export const ReadingCard: React.FC<ReadingCardProps> = ({
                   已复盘
                 </span>
               )}
+              {hasAiReference && (
+                <span className="px-1.5 py-0.5 bg-forest-accent/10 text-forest-accent text-[10px] rounded-full font-bold inline-flex items-center gap-1 shrink-0">
+                  <Sparkles size={10} strokeWidth={2.5} />
+                  AI参照
+                </span>
+              )}
               {!hasFeedback && !reading.isExample && (
                 <span className="px-1.5 py-0.5 bg-forest-pink/10 text-forest-pink text-[10px] rounded-full font-bold inline-flex items-center gap-1 shrink-0">
                   <Clock3 size={10} strokeWidth={2.5} />
@@ -1189,6 +1197,17 @@ export const ReadingCard: React.FC<ReadingCardProps> = ({
                 <div className="space-y-2">
                   <h4 className="text-xs font-bold text-forest-accent uppercase tracking-wider">总结建议</h4>
                   <p className="text-sm text-forest-ink leading-relaxed">{reading.interpretation.summary}</p>
+                </div>
+              )}
+              {hasAiReference && (
+                <div className="space-y-2">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h4 className="text-xs font-bold uppercase tracking-wider text-forest-accent">AI参照</h4>
+                    <span className="rounded-full bg-forest-accent/8 px-2 py-0.5 text-[10px] font-semibold text-forest-muted">
+                      {aiReferenceModeLabel}
+                    </span>
+                  </div>
+                  <p className="text-sm leading-relaxed text-forest-ink whitespace-pre-wrap">{reading.aiAnswer}</p>
                 </div>
               )}
               {influenceNotes.length > 0 && (

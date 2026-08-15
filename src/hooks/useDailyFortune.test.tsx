@@ -89,6 +89,39 @@ describe('useDailyFortune', () => {
     expect(saveUserDailyFortunes).not.toHaveBeenCalled();
   });
 
+  it('uses signed-in local daily fortunes when auth is in local fallback', async () => {
+    localStorage.setItem('tarot_daily_fortunes_user-1', JSON.stringify([
+      {
+        id: 'fortune-local-fallback',
+        userId: 'user-1',
+        date: '2026-07-02',
+        cardName: '女祭司',
+        isReversed: false,
+        interpretation: '无 VPN 时先读本机日运',
+        keywords: ['女祭司', '正位'],
+        source: 'physical-draw',
+        createdAt: '2026-07-02T08:00:00.000Z',
+        updatedAt: '2026-07-02T08:00:00.000Z',
+        isRevealed: true,
+      },
+    ]));
+
+    const { result } = renderHook(() => useDailyFortune({ uid: 'user-1' }, false, true));
+
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1500);
+    });
+
+    expect(getUserDailyFortunes).not.toHaveBeenCalled();
+    expect(saveUserDailyFortunes).not.toHaveBeenCalled();
+    expect(result.current.fortunes).toHaveLength(1);
+    expect(result.current.fortunes[0].id).toBe('fortune-local-fallback');
+  });
+
   it('merges signed-in cloud records with the user-scoped local cache and saves the merged result', async () => {
     vi.mocked(getUserDailyFortunes).mockResolvedValue([
       {

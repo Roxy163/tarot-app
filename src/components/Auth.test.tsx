@@ -19,6 +19,7 @@ const setupAuth = (overrides: Partial<ReturnType<typeof useAuth>> = {}) => {
   mockUseAuth.mockReturnValue({
     session: null,
     isLoading: false,
+    isLocalFallback: false,
     isEmailVerified: false,
     lastLogin: null,
     signIn: vi.fn(),

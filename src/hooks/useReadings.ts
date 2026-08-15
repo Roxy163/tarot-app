@@ -155,6 +155,7 @@ const mergeKeywordMemory = (
 export const useReadings = (
   session: { uid?: string; email?: string | null } | null,
   isAuthLoading = false,
+  isLocalFallback = false,
 ) => {
   const activeDataKey = isAuthLoading ? 'auth-loading' : (session?.uid || 'guest');
   const exampleReadings = useMemo(() => INITIAL_READINGS.map(r => ({ ...r, isExample: true })), []);
@@ -259,6 +260,48 @@ export const useReadings = (
       const localQuizMemory = session?.uid
         ? parseSavedArray<QuizMemoryEntry>(getUserScopedStorageKey(QUIZ_MEMORY_STORAGE_KEY, session.uid)) || []
         : parseSavedArray<QuizMemoryEntry>(QUIZ_MEMORY_STORAGE_KEY) || [];
+
+      if (isLocalFallback) {
+        pendingGuestReadingsSyncRef.current = Boolean(session?.uid && getPersistableReadings(localGuestReadings).length > 0);
+        cloudSyncedSnapshotsRef.current = createCloudSnapshots();
+        const fallbackReadings = session?.uid
+          ? mergeReadingsForSignedInUser(session.uid, [
+              localUserReadings,
+              localGuestReadings,
+            ])
+          : localGuestReadings;
+
+        setReadings(withExamplesOnlyWhenEmpty(exampleReadings, fallbackReadings));
+        setSpreads(localSpreads);
+        setCardMetadata(localMetadata);
+        setCardKeywordMemory(localKeywordMemory);
+        setQuizMemory(localQuizMemory);
+        setIsCloudSyncPaused(Boolean(session?.uid));
+        if (session?.uid) {
+          markCloudSnapshot('readings', getPersistableReadings(fallbackReadings));
+          markCloudSnapshot('spreads', localSpreads);
+          markCloudSnapshot('cardMetadata', localMetadata);
+          markCloudSnapshot('cardKeywordMemory', localKeywordMemory);
+          markCloudSnapshot('quizMemory', localQuizMemory);
+          setCloudSyncInfo(prev => ({
+            ...prev,
+            status: 'error',
+            lastAttemptAt: new Date().toISOString(),
+            cloudReadingsCount: null,
+            lastError: '云端暂时连不上，可能没开 VPN；已进入本地模式。',
+          }));
+        } else {
+          setCloudSyncInfo({
+            status: 'guest',
+            lastSyncedAt: null,
+            lastAttemptAt: null,
+            cloudReadingsCount: null,
+            lastError: null,
+          });
+        }
+        setLoadedDataKey(activeDataKey);
+        return;
+      }
       
       if (!session?.uid) {
         pendingGuestReadingsSyncRef.current = false;
@@ -371,7 +414,7 @@ export const useReadings = (
     return () => {
       cancelled = true;
     };
-  }, [activeDataKey, exampleReadings, isAuthLoading, markCloudSnapshot, markCloudSyncError, session?.uid]);
+  }, [activeDataKey, exampleReadings, isAuthLoading, isLocalFallback, markCloudSnapshot, markCloudSyncError, session?.uid]);
 
   // 保存数据：登录用户写入 Firebase，访客写入本地。
   useEffect(() => {
@@ -382,7 +425,7 @@ export const useReadings = (
 
     if (session?.uid) {
       writeJsonWithBackup(getUserScopedStorageKey(USER_READINGS_STORAGE_KEY, session.uid), userReadings);
-      if (isCloudSyncPaused) return;
+      if (isCloudSyncPaused || isLocalFallback) return;
 
       const deletedReadingIds = Array.from(pendingDeletedReadingIdsRef.current);
       const shouldSaveReadings = (
@@ -434,7 +477,7 @@ export const useReadings = (
     } else {
       writeJsonWithBackup(GUEST_READINGS_STORAGE_KEY, userReadings);
     }
-  }, [activeDataKey, hasCloudSnapshotChanged, isAuthLoading, isCloudSyncPaused, loadedDataKey, markCloudSnapshot, markCloudSyncError, markCloudSyncSuccess, readings, session?.uid]);
+  }, [activeDataKey, hasCloudSnapshotChanged, isAuthLoading, isCloudSyncPaused, isLocalFallback, loadedDataKey, markCloudSnapshot, markCloudSyncError, markCloudSyncSuccess, readings, session?.uid]);
 
   useEffect(() => {
     if (isAuthLoading) return;
@@ -442,7 +485,7 @@ export const useReadings = (
 
     if (session?.uid) {
       writeJsonWithBackup(getUserScopedStorageKey(SPREADS_STORAGE_KEY, session.uid), spreads);
-      if (isCloudSyncPaused) return;
+      if (isCloudSyncPaused || isLocalFallback) return;
       if (!hasCloudSnapshotChanged('spreads', spreads)) return;
 
       setCloudSyncInfo(prev => ({
@@ -468,7 +511,7 @@ export const useReadings = (
     }
 
     writeJsonWithBackup(SPREADS_STORAGE_KEY, spreads);
-  }, [activeDataKey, hasCloudSnapshotChanged, isAuthLoading, isCloudSyncPaused, loadedDataKey, markCloudSnapshot, markCloudSyncError, markCloudSyncSuccess, session?.uid, spreads]);
+  }, [activeDataKey, hasCloudSnapshotChanged, isAuthLoading, isCloudSyncPaused, isLocalFallback, loadedDataKey, markCloudSnapshot, markCloudSyncError, markCloudSyncSuccess, session?.uid, spreads]);
 
   useEffect(() => {
     if (isAuthLoading) return;
@@ -476,7 +519,7 @@ export const useReadings = (
 
     if (session?.uid) {
       writeJsonWithBackup(getUserScopedStorageKey(CARD_METADATA_STORAGE_KEY, session.uid), cardMetadata);
-      if (isCloudSyncPaused) return;
+      if (isCloudSyncPaused || isLocalFallback) return;
       if (!hasCloudSnapshotChanged('cardMetadata', cardMetadata)) return;
 
       setCloudSyncInfo(prev => ({
@@ -502,7 +545,7 @@ export const useReadings = (
     }
 
     writeJsonWithBackup(CARD_METADATA_STORAGE_KEY, cardMetadata);
-  }, [activeDataKey, cardMetadata, hasCloudSnapshotChanged, isAuthLoading, isCloudSyncPaused, loadedDataKey, markCloudSnapshot, markCloudSyncError, markCloudSyncSuccess, session?.uid]);
+  }, [activeDataKey, cardMetadata, hasCloudSnapshotChanged, isAuthLoading, isCloudSyncPaused, isLocalFallback, loadedDataKey, markCloudSnapshot, markCloudSyncError, markCloudSyncSuccess, session?.uid]);
 
   useEffect(() => {
     if (isAuthLoading) return;
@@ -510,7 +553,7 @@ export const useReadings = (
 
     if (session?.uid) {
       writeJsonWithBackup(getUserScopedStorageKey(CARD_KEYWORD_MEMORY_STORAGE_KEY, session.uid), cardKeywordMemory);
-      if (isCloudSyncPaused) return;
+      if (isCloudSyncPaused || isLocalFallback) return;
       if (!hasCloudSnapshotChanged('cardKeywordMemory', cardKeywordMemory)) return;
 
       setCloudSyncInfo(prev => ({
@@ -536,7 +579,7 @@ export const useReadings = (
     }
 
     writeJsonWithBackup(CARD_KEYWORD_MEMORY_STORAGE_KEY, cardKeywordMemory);
-  }, [activeDataKey, cardKeywordMemory, hasCloudSnapshotChanged, isAuthLoading, isCloudSyncPaused, loadedDataKey, markCloudSnapshot, markCloudSyncError, markCloudSyncSuccess, session?.uid]);
+  }, [activeDataKey, cardKeywordMemory, hasCloudSnapshotChanged, isAuthLoading, isCloudSyncPaused, isLocalFallback, loadedDataKey, markCloudSnapshot, markCloudSyncError, markCloudSyncSuccess, session?.uid]);
 
   useEffect(() => {
     if (isAuthLoading) return;
@@ -544,7 +587,7 @@ export const useReadings = (
 
     if (session?.uid) {
       writeJsonWithBackup(getUserScopedStorageKey(QUIZ_MEMORY_STORAGE_KEY, session.uid), quizMemory);
-      if (isCloudSyncPaused) return;
+      if (isCloudSyncPaused || isLocalFallback) return;
       if (!hasCloudSnapshotChanged('quizMemory', quizMemory)) return;
 
       setCloudSyncInfo(prev => ({
@@ -570,7 +613,7 @@ export const useReadings = (
     }
 
     writeJsonWithBackup(QUIZ_MEMORY_STORAGE_KEY, quizMemory);
-  }, [activeDataKey, hasCloudSnapshotChanged, isAuthLoading, isCloudSyncPaused, loadedDataKey, markCloudSnapshot, markCloudSyncError, markCloudSyncSuccess, quizMemory, session?.uid]);
+  }, [activeDataKey, hasCloudSnapshotChanged, isAuthLoading, isCloudSyncPaused, isLocalFallback, loadedDataKey, markCloudSnapshot, markCloudSyncError, markCloudSyncSuccess, quizMemory, session?.uid]);
 
   const handleManualCloudSync = useCallback(async () => {
     if (!session?.uid) {

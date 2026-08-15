@@ -17,7 +17,7 @@ export function PwaInstallPrompt() {
           initial={{ opacity: 0, y: 16 }}
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0, y: 16 }}
-          className="fixed inset-x-3 bottom-[5.4rem] z-[95] mx-auto max-w-md rounded-2xl border border-forest-accent/15 bg-white/95 p-2.5 shadow-xl shadow-forest-accent/10 backdrop-blur-md sm:bottom-5"
+          className="fixed inset-x-3 bottom-[calc(5.75rem+env(safe-area-inset-bottom))] z-[120] mx-auto max-w-md rounded-2xl border border-forest-accent/15 bg-white/95 p-2.5 shadow-xl shadow-forest-accent/10 backdrop-blur-md sm:bottom-[calc(5.25rem+env(safe-area-inset-bottom))]"
           role="status"
         >
           <div className="flex items-center gap-2.5">

@@ -122,6 +122,7 @@ export const exportReadingsToCsv = (readings: TarotReading[]) => {
     '单牌解读',
     '组合解读',
     '总结',
+    'AI参照',
     '我的复盘',
     '客户反馈',
     '是否公开',
@@ -139,6 +140,7 @@ export const exportReadingsToCsv = (readings: TarotReading[]) => {
     reading.interpretation?.singleCard || '',
     reading.interpretation?.combination || '',
     reading.interpretation?.summary || '',
+    reading.aiAnswer || '',
     reading.userFeedback || '',
     reading.clientFeedback || '',
     reading.isPublic ? '是' : '否',
@@ -183,6 +185,9 @@ export const exportReadingsToMarkdown = (
       `组合：${safeText(reading.interpretation?.combination)}`,
       '',
       `总结：${safeText(reading.interpretation?.summary)}`,
+      '',
+      '### AI参照',
+      reading.aiAnswer?.trim() || '未填写',
       '',
       '### 复盘',
       reading.userFeedback?.trim() || '未填写',
@@ -287,6 +292,9 @@ export const buildReadingReviewPdfLines = (
     }
     if (reading.interpretation?.summary) {
       lines.push({ text: `总结：${reading.interpretation.summary}`, style: 'body', indent: 12, gapBefore: 4 });
+    }
+    if (reading.aiAnswer?.trim()) {
+      lines.push({ text: `AI参照：${reading.aiAnswer}`, style: 'body', indent: 12, gapBefore: 4 });
     }
     lines.push({
       text: `我的复盘：${reading.userFeedback?.trim() || '未填写'}`,

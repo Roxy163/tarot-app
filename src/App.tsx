@@ -1,6 +1,6 @@
 import { Suspense, lazy, useCallback, useMemo, useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Sparkles, X, User, ChevronRight, LogOut, Database, ShieldCheck, ArrowRight, LogIn, CheckCircle, AlertTriangle, Mail, Home, Download } from 'lucide-react';
+import { Sparkles, X, User, ChevronRight, LogOut, Database, ShieldCheck, ArrowRight, LogIn, CheckCircle, AlertTriangle, Mail, Home, Download, MessageSquareText } from 'lucide-react';
 import { TarotReading, SpreadDefinition, UserProfile } from './types';
 import { OFFICIAL_SPREADS, PAVILION_PROVERBS } from './constants';
 import { Modal } from './components/Modal';
@@ -29,6 +29,7 @@ import { useBodyScrollLock } from './hooks/useBodyScrollLock';
 import { useMobileFocusScroll } from './hooks/useMobileFocusScroll';
 import { requestPwaInstallPrompt } from './hooks/usePwaInstallPrompt';
 import { installCloudflareWebAnalytics, setAnalyticsAuthState, trackEvent } from './lib/analytics';
+import { FeedbackModal } from './components/FeedbackModal';
 
 const loadCardMetadataManager = () => import('./components/CardMetadataManager');
 const loadReadingDetailModal = () => import('./components/ReadingDetailModal');
@@ -123,13 +124,14 @@ const removeLocalStorageValue = (key: string) => {
 };
 
 function AppContent() {
-  const { session, isLoading: isAuthLoading, isEmailVerified, signOut, updatePassword, sendVerificationEmail } = useAuth();
+  const { session, isLoading: isAuthLoading, isLocalFallback, isEmailVerified, signOut, updatePassword, sendVerificationEmail } = useAuth();
   const { checkAndUnlockAchievements } = useOnboarding();
   
   const [activeTab, setActiveTab] = usePersistentTab<AppTab>('tarot_active_tab', 'home', isAppTab);
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [selectedReadingDetail, setSelectedReadingDetail] = useState<TarotReading | null>(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [isFeedbackModalOpen, setIsFeedbackModalOpen] = useState(false);
   const [isSecurityModalOpen, setIsSecurityModalOpen] = useState(false);
   const [showAuthPage, setShowAuthPage] = useState(false);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
@@ -173,6 +175,7 @@ function AppContent() {
   const hasTrackedAppOpenRef = useRef(false);
   const previousAnalyticsUidRef = useRef<string | null | undefined>(undefined);
   const previousTrackedTabRef = useRef<AppTab | null>(null);
+  const localFallbackNoticeShownRef = useRef(false);
 
   // Use custom hook for readings state
   const {
@@ -205,8 +208,8 @@ function AppContent() {
     handleManualCloudSync,
     syncNotice,
     clearSyncNotice,
-  } = useReadings(session, isAuthLoading);
-  const dailyFortune = useDailyFortune(session, isAuthLoading);
+  } = useReadings(session, isAuthLoading, isLocalFallback);
+  const dailyFortune = useDailyFortune(session, isAuthLoading, isLocalFallback);
   useBodyScrollLock(isProcessing);
   useMobileFocusScroll();
 
@@ -280,6 +283,22 @@ function AppContent() {
 
     return () => window.clearTimeout(timer);
   }, [clearSyncNotice, syncNotice]);
+
+  useEffect(() => {
+    if (!hasEnteredApp) return;
+
+    if (!isLocalFallback) {
+      localFallbackNoticeShownRef.current = false;
+      return;
+    }
+
+    if (localFallbackNoticeShownRef.current) return;
+    localFallbackNoticeShownRef.current = true;
+    setSnackbar({
+      isOpen: true,
+      message: '云端暂时连不上，可能没开 VPN；已进入本地模式，记录会先保存在本机。',
+    });
+  }, [hasEnteredApp, isLocalFallback]);
 
   useEffect(() => {
     if (!hasEnteredApp) return;
@@ -589,7 +608,7 @@ function AppContent() {
   }, [resetSignedOutView, session, isAuthLoading]);
 
   useEffect(() => {
-    if (!session?.uid || isAuthLoading) {
+    if (!session?.uid || isAuthLoading || isLocalFallback) {
       setShowCloudLoadingNotice(false);
       return;
     }
@@ -597,7 +616,7 @@ function AppContent() {
     setShowCloudLoadingNotice(true);
     const timer = window.setTimeout(() => setShowCloudLoadingNotice(false), 2400);
     return () => window.clearTimeout(timer);
-  }, [session?.uid, isAuthLoading]);
+  }, [session?.uid, isAuthLoading, isLocalFallback]);
 
   // Daily Proverb & First Entry Scroll
   useEffect(() => {
@@ -628,6 +647,10 @@ function AppContent() {
         setProfile(cachedProfile);
       }
 
+      if (isLocalFallback) {
+        return;
+      }
+
       try {
         setProfile(await getOrCreateUserProfile(session));
       } catch (error) {
@@ -639,7 +662,7 @@ function AppContent() {
     };
 
     loadProfile();
-  }, [session]);
+  }, [isLocalFallback, session]);
 
   // Magic link handling
   useEffect(() => {
@@ -940,6 +963,24 @@ function AppContent() {
               <div className="text-left">
                 <span className="block text-sm font-medium">添加到手机桌面</span>
                 <span className="text-[10px] text-forest-muted">像 App 一样打开</span>
+              </div>
+            </div>
+            <ChevronRight size={14} className="text-forest-muted transition-transform group-hover:translate-x-1" />
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              setIsFeedbackModalOpen(true);
+              closeSidebar();
+            }}
+            className="group flex min-h-11 w-full items-center justify-between rounded-xl px-2.5 text-forest-text transition-all hover:bg-white/54"
+          >
+            <div className="flex items-center gap-3">
+              <MessageSquareText size={17} className="text-forest-accent" />
+              <div className="text-left">
+                <span className="block text-sm font-medium">反馈与建议</span>
+                <span className="text-[10px] text-forest-muted">微信 / 邮箱都可以</span>
               </div>
             </div>
             <ChevronRight size={14} className="text-forest-muted transition-transform group-hover:translate-x-1" />
@@ -1315,6 +1356,12 @@ function AppContent() {
         </div>
       </Modal>
 
+      <FeedbackModal
+        isOpen={isFeedbackModalOpen}
+        onClose={() => setIsFeedbackModalOpen(false)}
+        onSent={(message) => setSnackbar({ isOpen: true, message })}
+      />
+
       {/* Snackbar */}
       <AnimatePresence>
         {snackbar.isOpen && (
@@ -1327,7 +1374,7 @@ function AppContent() {
             onDragEnd={(_, info) => {
               if (info.offset.x > 50) setSnackbar(prev => ({ ...prev, isOpen: false }));
             }}
-            className="fixed bottom-24 left-1/2 z-[250] flex w-[calc(100vw-2rem)] max-w-sm items-center gap-3 rounded-2xl border border-forest-border bg-white/95 px-4 py-3 text-xs font-medium text-forest-text shadow-2xl backdrop-blur-md sm:bottom-8 sm:w-auto sm:min-w-[320px] sm:text-sm"
+            className="fixed bottom-[calc(5.75rem+env(safe-area-inset-bottom))] left-1/2 z-[250] flex w-[calc(100vw-2rem)] max-w-sm items-center gap-3 rounded-2xl border border-forest-border bg-white/95 px-4 py-3 text-xs font-medium text-forest-text shadow-2xl backdrop-blur-md sm:bottom-[calc(5.25rem+env(safe-area-inset-bottom))] sm:w-auto sm:min-w-[320px] sm:text-sm"
           >
             <span className="flex-1">{snackbar.message}</span>
             <div className={`flex items-center gap-3 ${snackbar.showLoginAction ? 'border-l border-forest-border pl-4' : ''}`}>

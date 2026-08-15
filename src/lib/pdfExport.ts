@@ -124,6 +124,7 @@ export const buildTarotExportLines = (data: TarotExportData): ExportLine[] => {
     pushTextBlock(lines, '单牌解读', reading.interpretation?.singleCard, 12);
     pushTextBlock(lines, '组合解读', reading.interpretation?.combination, 12);
     pushTextBlock(lines, '总结', reading.interpretation?.summary, 12);
+    pushTextBlock(lines, 'AI参照', reading.aiAnswer, 12);
     pushTextBlock(lines, '我的复盘', reading.userFeedback, 12);
     pushTextBlock(lines, '客户反馈', reading.clientFeedback, 12);
   });

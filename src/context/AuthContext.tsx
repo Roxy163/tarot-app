@@ -24,6 +24,7 @@ interface LoginHistory {
 interface AuthContextType {
   session: User | null;
   isLoading: boolean;
+  isLocalFallback: boolean;
   isEmailVerified: boolean;
   lastLogin: LoginHistory | null;
   signIn: (email: string, password: string) => Promise<void>;
@@ -37,45 +38,59 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+const AUTH_RESTORE_TIMEOUT_MS = 2200;
+
 export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [session, setSession] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [isLocalFallback, setIsLocalFallback] = useState(false);
   const [isEmailVerified, setIsEmailVerified] = useState(false);
   const [lastLogin, setLastLogin] = useState<LoginHistory | null>(null);
 
   useEffect(() => {
-    let unsubscribe: (() => void) | null = null;
     let cancelled = false;
+    const cachedUser = getCurrentUser();
+    if (cachedUser) {
+      setSession(cachedUser);
+      setIsEmailVerified(!!cachedUser.emailVerified);
+      setLastLogin(getLastLoginInfo(cachedUser.uid));
+    }
 
-    ensureAuthPersistence().catch(error => {
-      console.warn('Firebase auth persistence setup failed, continuing with auth listener:', error);
-    }).finally(() => {
+    const restoreTimer = window.setTimeout(() => {
       if (cancelled) return;
+      setIsLocalFallback(true);
+      setIsLoading(false);
+    }, AUTH_RESTORE_TIMEOUT_MS);
 
-      unsubscribe = onAuthStateChangedListener((user) => {
+    const unsubscribe = onAuthStateChangedListener(
+      (user) => {
+        window.clearTimeout(restoreTimer);
         setSession(user);
         setIsEmailVerified(!!user?.emailVerified);
+        setIsLocalFallback(false);
         setIsLoading(false);
         if (user) {
-          const info = getLastLoginInfo(user.uid);
-          setLastLogin(info);
+          setLastLogin(getLastLoginInfo(user.uid));
         } else {
           setLastLogin(null);
         }
-      });
+      },
+      () => {
+        window.clearTimeout(restoreTimer);
+        if (cancelled) return;
+        setIsLocalFallback(true);
+        setIsLoading(false);
+      },
+    );
 
-      const user = getCurrentUser();
-      if (user) {
-        setSession(user);
-        setIsEmailVerified(!!user.emailVerified);
-        const info = getLastLoginInfo(user.uid);
-        setLastLogin(info);
-      }
+    void ensureAuthPersistence().catch(error => {
+      console.warn('Firebase auth persistence setup failed, continuing in local mode when needed:', error);
     });
 
     return () => {
       cancelled = true;
-      unsubscribe?.();
+      window.clearTimeout(restoreTimer);
+      unsubscribe();
     };
   }, []);
 
@@ -92,6 +107,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     setLastLogin({ type: '邮箱', identifier: loginRecord.identifier, displayDate: loginRecord.displayDate });
     setSession(userCredential.user);
     setIsEmailVerified(userCredential.user.emailVerified);
+    setIsLocalFallback(false);
   }, []);
 
   const signUp = useCallback(async (email: string, password: string) => {
@@ -114,6 +130,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     setLastLogin({ type: '邮箱', identifier: loginRecord.identifier, displayDate: loginRecord.displayDate });
     setSession(userCredential.user);
     setIsEmailVerified(userCredential.user.emailVerified);
+    setIsLocalFallback(false);
   }, []);
 
   const signOut = useCallback(async () => {
@@ -121,6 +138,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     setSession(null);
     setIsEmailVerified(false);
     setLastLogin(null);
+    setIsLocalFallback(false);
   }, []);
 
   const resetPassword = useCallback(async (email: string) => {
@@ -139,6 +157,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     const user = await refreshCurrentUser();
     setSession(user);
     setIsEmailVerified(user.emailVerified);
+    setIsLocalFallback(false);
   }, []);
 
   return (
@@ -146,6 +165,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       value={{
         session,
         isLoading,
+        isLocalFallback,
         isEmailVerified,
         lastLogin,
         signIn,

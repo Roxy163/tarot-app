@@ -30,6 +30,8 @@ export const ReadingDetailModal: React.FC<ReadingDetailModalProps> = ({
     ''
   );
   const feedbackText = reading.userFeedback?.trim();
+  const aiReferenceText = reading.aiAnswer?.trim();
+  const aiReferenceModeLabel = reading.aiAnswerMode === 'consultant' ? '咨询解牌' : '导师复盘';
   const clientDisplayName = reading.clientName?.trim() || '未命名客户';
   const displayDate = formatReadingDateTime(reading.readingDate || reading.date);
   const cardRows = (reading.cards || []).map((card, index) => {
@@ -90,6 +92,12 @@ export const ReadingDetailModal: React.FC<ReadingDetailModalProps> = ({
                   <span className="inline-flex items-center gap-1 rounded-full bg-forest-accent/8 px-2 py-0.5 text-[10px] font-semibold text-forest-accent">
                     <CheckCircle2 size={11} />
                     已复盘
+                  </span>
+                )}
+                {aiReferenceText && (
+                  <span className="inline-flex items-center gap-1 rounded-full bg-forest-accent/8 px-2 py-0.5 text-[10px] font-semibold text-forest-accent">
+                    <Sparkles size={11} />
+                    AI参照
                   </span>
                 )}
                 {reading.isForClient && (
@@ -226,6 +234,18 @@ export const ReadingDetailModal: React.FC<ReadingDetailModalProps> = ({
               <section className="space-y-2 rounded-2xl border border-forest-accent/7 bg-white/24 p-3.5">
                 <h3 className="text-xs font-medium uppercase tracking-wider text-forest-accent">总结建议</h3>
                 <p className="text-sm text-forest-ink leading-relaxed whitespace-pre-wrap">{reading.interpretation.summary}</p>
+              </section>
+            )}
+
+            {aiReferenceText && (
+              <section className="space-y-2 rounded-2xl border border-forest-accent/7 bg-white/24 p-3.5">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <h3 className="text-xs font-medium uppercase tracking-wider text-forest-accent">AI参照</h3>
+                  <span className="rounded-full bg-forest-accent/8 px-2 py-0.5 text-[10px] font-semibold text-forest-muted">
+                    {aiReferenceModeLabel}
+                  </span>
+                </div>
+                <p className="text-sm text-forest-ink leading-relaxed whitespace-pre-wrap">{aiReferenceText}</p>
               </section>
             )}
 

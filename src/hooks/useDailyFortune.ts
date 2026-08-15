@@ -80,6 +80,7 @@ const getDailyCardInterpretation = (cardName: string, isReversed: boolean) => {
 export const useDailyFortune = (
   session: { uid?: string; email?: string | null } | null = null,
   isAuthLoading = false,
+  isLocalFallback = false,
 ) => {
   const activeDataKey = isAuthLoading ? 'auth-loading' : (session?.uid || 'guest');
   const storageKey = getDailyFortuneStorageKey(session?.uid);
@@ -105,6 +106,21 @@ export const useDailyFortune = (
       setIsCloudSyncPaused(false);
 
       const localFortunes = readJsonArrayWithBackup<DailyFortune>(storageKey) || [];
+
+      if (isLocalFallback) {
+        const guestFortunes = session?.uid && localStorage.getItem(GUEST_DAILY_FORTUNES_OWNER_KEY) === 'guest'
+          ? readJsonArrayWithBackup<DailyFortune>(STORAGE_KEY) || []
+          : [];
+        const fallbackFortunes = session?.uid
+          ? mergeDailyFortuneSources(session.uid, [localFortunes, guestFortunes])
+          : localFortunes;
+        pendingGuestFortunesSyncRef.current = guestFortunes.length > 0;
+        cloudFortunesSnapshotRef.current = session?.uid ? serializeCloudFortunes(fallbackFortunes) : null;
+        setFortunes(fallbackFortunes);
+        setIsCloudSyncPaused(Boolean(session?.uid));
+        setLoadedDataKey(activeDataKey);
+        return;
+      }
 
       if (!session?.uid) {
         pendingGuestFortunesSyncRef.current = false;
@@ -152,7 +168,7 @@ export const useDailyFortune = (
     return () => {
       cancelled = true;
     };
-  }, [activeDataKey, isAuthLoading, session?.uid, storageKey]);
+  }, [activeDataKey, isAuthLoading, isLocalFallback, session?.uid, storageKey]);
 
   useEffect(() => {
     if (isAuthLoading) return;
@@ -163,7 +179,7 @@ export const useDailyFortune = (
       localStorage.setItem(GUEST_DAILY_FORTUNES_OWNER_KEY, 'guest');
     }
 
-    if (!session?.uid || isCloudSyncPaused) return;
+    if (!session?.uid || isCloudSyncPaused || isLocalFallback) return;
 
     const uid = session.uid;
     const cloudFortunes = mergeDailyFortuneSources(uid, [fortunes]);
@@ -196,6 +212,7 @@ export const useDailyFortune = (
     fortunes,
     isAuthLoading,
     isCloudSyncPaused,
+    isLocalFallback,
     loadedDataKey,
     session?.uid,
     storageKey,

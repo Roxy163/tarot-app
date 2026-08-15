@@ -31,7 +31,7 @@ export const SmartTipBanner: React.FC<SmartTipBannerProps> = ({
           initial={{ opacity: 0, y: 100, x: '-50%' }}
           animate={{ opacity: 1, y: 0, x: '-50%' }}
           exit={{ opacity: 0, y: 100, x: '-50%' }}
-          className="fixed bottom-24 left-1/2 z-[250] bg-white/95 text-forest-text px-5 py-4 rounded-2xl shadow-2xl backdrop-blur-md border border-forest-border flex items-center gap-4 min-w-[320px] max-w-[90vw]"
+          className="fixed bottom-[calc(5.75rem+env(safe-area-inset-bottom))] left-1/2 z-[250] flex w-[calc(100vw-2rem)] max-w-[90vw] items-center gap-4 rounded-2xl border border-forest-border bg-white/95 px-4 py-3 text-forest-text shadow-2xl backdrop-blur-md sm:bottom-[calc(5.25rem+env(safe-area-inset-bottom))] sm:w-auto sm:min-w-[320px] sm:px-5 sm:py-4"
         >
           <div className="w-10 h-10 rounded-full bg-forest-accent/10 flex items-center justify-center shrink-0">
             <Sparkles className="text-forest-accent" size={20} />

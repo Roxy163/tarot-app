@@ -185,4 +185,43 @@ describe('buildReadingSubmitPayload', () => {
     expect(result.payload.isPublic).toBe(true);
     expect(result.payload.isAnonymous).toBe(true);
   });
+
+  it('stores an optional AI answer separately from user interpretations', () => {
+    const result = buildReadingSubmitPayload({
+      formData: {
+        ...baseFormData,
+        aiAnswer: '  AI 认为这里需要先观察。\n\n',
+        aiAnswerMode: 'consultant',
+      },
+      cardSlots: [slots[0]],
+      cardInterpretations: ['我自己的单张解读'],
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    expect(result.payload.cardInterpretations).toEqual(['我自己的单张解读']);
+    expect(result.payload.aiAnswer).toBe('AI 认为这里需要先观察。');
+    expect(result.payload.aiAnswerMode).toBe('consultant');
+    expect(result.payload.aiAnswerUpdatedAt).toEqual(expect.any(String));
+  });
+
+  it('omits AI answer metadata when the AI answer is blank', () => {
+    const result = buildReadingSubmitPayload({
+      formData: {
+        ...baseFormData,
+        aiAnswer: '   ',
+        aiAnswerMode: 'mentor',
+      },
+      cardSlots: [slots[0]],
+      cardInterpretations: ['单张解读'],
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    expect(result.payload.aiAnswer).toBeUndefined();
+    expect(result.payload.aiAnswerMode).toBeUndefined();
+    expect(result.payload.aiAnswerUpdatedAt).toBeUndefined();
+  });
 });

@@ -46,6 +46,8 @@ export interface ReadingKeywordCandidate {
   sourceText?: string;
 }
 
+export type ReadingAiAnswerMode = 'mentor' | 'consultant';
+
 export interface CardKeywordMemoryEntry {
   keyword: string;
   count: number;
@@ -154,6 +156,9 @@ export interface TarotReading {
   clientName?: string;
   clientFeedback?: string;
   userFeedback?: string;
+  aiAnswer?: string;
+  aiAnswerMode?: ReadingAiAnswerMode;
+  aiAnswerUpdatedAt?: string;
   choicePathA?: string;
   choicePathB?: string;
   isExample?: boolean;
@@ -214,6 +219,9 @@ export interface ReadingFormData {
   clientName: string;
   clientFeedback: string;
   userFeedback: string;
+  aiAnswer?: string;
+  aiAnswerMode?: ReadingAiAnswerMode;
+  aiAnswerUpdatedAt?: string;
   choicePathA: string;
   choicePathB: string;
   readingDate: string;

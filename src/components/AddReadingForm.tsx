@@ -108,6 +108,9 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
     clientName: initialData?.clientName || '',
     clientFeedback: initialData?.clientFeedback || '',
     userFeedback: initialData?.userFeedback || '',
+    aiAnswer: initialData?.aiAnswer || '',
+    aiAnswerMode: initialData?.aiAnswerMode || 'mentor',
+    aiAnswerUpdatedAt: initialData?.aiAnswerUpdatedAt,
     choicePathA: initialData?.choicePathA || '',
     choicePathB: initialData?.choicePathB || '',
     readingDate: initialData?.readingDate ? new Date(initialData.readingDate).toISOString().slice(0, 16) : new Date().toISOString().slice(0, 16),
@@ -143,6 +146,7 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [showFeedback, setShowFeedback] = useState(false);
   const [showAiPrompt, setShowAiPrompt] = useState(false);
+  const [showAiReference, setShowAiReference] = useState(Boolean(initialData?.aiAnswer?.trim()));
   const [aiPromptMode, setAiPromptMode] = useState<ReadingAiPromptMode>('mentor');
   const [aiPromptNotice, setAiPromptNotice] = useState('');
   const [showComboReading, setShowComboReading] = useState(false);
@@ -818,8 +822,14 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
         description: '只给问题、牌阵和牌面，让 AI 像接咨询一样直解。',
         note: '这版不包含你的个人解读，只整理咨询问题和牌阵结果。',
       };
+  const aiAnswerModeLabel = formData.aiAnswerMode === 'consultant' ? '咨询解牌' : '导师复盘';
   const handleAiPromptModeChange = (mode: ReadingAiPromptMode) => {
     setAiPromptMode(mode);
+    setFormData(prev => (
+      prev.aiAnswer?.trim()
+        ? prev
+        : { ...prev, aiAnswerMode: mode }
+    ));
     setShowAiPrompt(false);
     setAiPromptNotice('');
   };
@@ -855,6 +865,8 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
 
     try {
       await copyTextToClipboard(aiPromptResult.prompt);
+      setFormData(prev => ({ ...prev, aiAnswerMode: aiPromptMode }));
+      setShowAiReference(true);
       setAiPromptNotice('已复制，可粘贴到你信任的 AI 工具。');
     } catch {
       setAiPromptNotice('复制失败，可以手动全选提示词复制。');
@@ -1384,6 +1396,19 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
               {aiPromptModeMeta.description}
             </p>
 
+            {!showAiPrompt && formData.aiAnswer.trim() && (
+              <button
+                type="button"
+                onClick={() => setShowAiReference(true)}
+                className="flex min-h-11 w-full items-center justify-between rounded-xl border border-forest-accent/7 bg-white/28 px-3 text-left text-xs text-forest-muted transition-colors hover:bg-white/48 hover:text-forest-accent"
+              >
+                <span>
+                  已保存 AI 参照 · {aiAnswerModeLabel}
+                </span>
+                <span className="font-medium text-forest-accent">编辑</span>
+              </button>
+            )}
+
             {aiPromptNotice && !showAiPrompt && (
               <p className="rounded-xl border border-forest-accent/10 bg-white/46 px-3 py-2 text-xs leading-relaxed text-forest-muted">
                 {aiPromptNotice}
@@ -1410,18 +1435,85 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
                     <p className="text-[11px] text-forest-muted">
                       {aiPromptModeMeta.note}
                     </p>
-                    <button
-                      type="button"
-                      onClick={handleCopyAiPrompt}
-                      className="inline-flex min-h-10 items-center justify-center gap-2 rounded-xl border border-forest-accent/10 bg-white/60 px-3 text-xs font-medium text-forest-accent transition-colors hover:bg-white"
-                    >
-                      <Copy size={14} />
-                      复制提示词
-                    </button>
+                    <div className="grid grid-cols-2 gap-2 sm:flex sm:items-center">
+                      <button
+                        type="button"
+                        onClick={handleCopyAiPrompt}
+                        className="inline-flex min-h-10 items-center justify-center gap-2 rounded-xl border border-forest-accent/10 bg-white/60 px-3 text-xs font-medium text-forest-accent transition-colors hover:bg-white"
+                      >
+                        <Copy size={14} />
+                        复制提示词
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setShowAiReference(prev => !prev)}
+                        className="inline-flex min-h-10 items-center justify-center gap-2 rounded-xl bg-forest-accent/88 px-3 text-xs font-medium text-white transition-colors hover:bg-forest-accent"
+                      >
+                        <MessageSquare size={14} />
+                        {showAiReference ? '收起参照' : formData.aiAnswer.trim() ? '编辑参照' : '粘贴回答'}
+                      </button>
+                    </div>
                   </div>
                   {aiPromptNotice && (
                     <p className="text-xs text-forest-accent">{aiPromptNotice}</p>
                   )}
+                </motion.div>
+              )}
+            </AnimatePresence>
+
+            <AnimatePresence>
+              {showAiReference && (
+                <motion.div
+                  initial={{ opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -8 }}
+                  className="space-y-2 rounded-[1rem] border border-forest-accent/7 bg-white/24 p-2.5 sm:p-3"
+                >
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="text-xs font-semibold text-forest-accent">AI 参照</p>
+                      <p className="mt-0.5 text-[10px] leading-relaxed text-forest-muted">只保存在私人典籍里。</p>
+                    </div>
+                    <div className="flex rounded-full border border-forest-accent/7 bg-white/34 p-0.5">
+                      {([
+                        ['mentor', '导师复盘'],
+                        ['consultant', '咨询解牌'],
+                      ] as const).map(([mode, label]) => {
+                        const isActive = formData.aiAnswerMode === mode;
+
+                        return (
+                          <button
+                            key={mode}
+                            type="button"
+                            onClick={() => setFormData(prev => ({ ...prev, aiAnswerMode: mode }))}
+                            className={`min-h-10 rounded-full px-2.5 text-[11px] font-medium transition-all sm:px-3 ${
+                              isActive
+                                ? 'bg-forest-accent/88 text-white'
+                                : 'text-forest-muted hover:bg-white/70 hover:text-forest-accent'
+                            }`}
+                            aria-pressed={isActive}
+                          >
+                            {label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                  <AutoResizeTextarea
+                    minRows={4}
+                    maxRows={16}
+                    value={formData.aiAnswer}
+                    className="w-full rounded-xl border border-forest-accent/8 bg-white/58 px-3 py-2.5 text-sm leading-relaxed text-forest-ink transition-all placeholder:text-forest-muted/70 focus:ring-2 focus:ring-forest-accent/15"
+                    placeholder="把 AI 的回复粘贴到这里。保存后可在详情页和自己的注疏一起回看。"
+                    aria-label="AI 参照答案"
+                    onFocus={scrollFocusedFieldIntoView}
+                    onChange={e => setFormData(prev => ({
+                      ...prev,
+                      aiAnswer: e.target.value,
+                      aiAnswerMode: prev.aiAnswerMode || aiPromptMode,
+                      aiAnswerUpdatedAt: e.target.value.trim() ? new Date().toISOString() : undefined,
+                    }))}
+                  />
                 </motion.div>
               )}
             </AnimatePresence>

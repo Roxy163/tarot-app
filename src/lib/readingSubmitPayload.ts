@@ -141,6 +141,9 @@ export const buildReadingSubmitPayload = ({
     houseInfluence,
     elementInfluence,
     readingDate,
+    aiAnswer,
+    aiAnswerMode,
+    aiAnswerUpdatedAt,
     ...rest
   } = formData;
 
@@ -159,6 +162,8 @@ export const buildReadingSubmitPayload = ({
   const finalSingleCard = singleCardMode ? submittedInterpretations[0] : singleCard;
   const finalCombination = singleCardMode ? '' : combination;
   const isAnonymousShare = Boolean(rest.isAnonymous);
+  const submittedAiAnswer = aiAnswer?.trim() || '';
+  const submittedAiAnswerMode = aiAnswerMode === 'consultant' ? 'consultant' : 'mentor';
 
   return {
     ok: true,
@@ -175,6 +180,9 @@ export const buildReadingSubmitPayload = ({
         houseInfluence,
         elementInfluence,
       },
+      aiAnswer: submittedAiAnswer || undefined,
+      aiAnswerMode: submittedAiAnswer ? submittedAiAnswerMode : undefined,
+      aiAnswerUpdatedAt: submittedAiAnswer ? (aiAnswerUpdatedAt || new Date().toISOString()) : undefined,
       manualTags: parseReadingManualTags(formData.category),
       cards: submittedCards,
       slotLabels: submittedCards.map(slot => slot.label || ''),

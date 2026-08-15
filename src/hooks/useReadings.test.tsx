@@ -1,6 +1,7 @@
 import { act, renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useReadings } from './useReadings';
+import type { TarotReading } from '../types';
 import {
   getUserCardKeywordMemory,
   getUserCardMetadata,
@@ -131,5 +132,36 @@ describe('useReadings cloud sync', () => {
     expect(result.current.syncNotice).toBeNull();
     expect(result.current.cloudSyncInfo.status).toBe('error');
     expect(result.current.cloudSyncInfo.lastError).toBe('当前网络暂时连不上云端；本机数据已保留，联网后点「重新同步」。');
+  });
+
+  it('enters signed-in local fallback without waiting for cloud reads', async () => {
+    const localReading: TarotReading = {
+      id: 'local-reading',
+      userId: 'user-1',
+      date: '2026-07-18T08:00:00.000Z',
+      question: '无 VPN 时也能先看本机手记吗？',
+      spread: '单牌阵',
+      cards: [{ name: '女祭司', isReversed: false }],
+      interpretation: { singleCard: '先保留本机记录。', combination: '', summary: '' },
+      keywords: [],
+      isPublic: false,
+      authorName: 'Roxy',
+      isAnonymous: false,
+    };
+    localStorage.setItem('tarot_readings_user-1', JSON.stringify([localReading]));
+
+    const { result } = renderHook(() => useReadings({ uid: 'user-1', email: 'user@example.com' }, false, true));
+
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(getUserReadings).not.toHaveBeenCalled();
+    expect(getUserSpreads).not.toHaveBeenCalled();
+    expect(result.current.readings.some(reading => reading.id === 'local-reading')).toBe(true);
+    expect(result.current.isCloudSyncPaused).toBe(true);
+    expect(result.current.cloudSyncInfo.status).toBe('error');
+    expect(result.current.cloudSyncInfo.lastError).toContain('可能没开 VPN');
   });
 });

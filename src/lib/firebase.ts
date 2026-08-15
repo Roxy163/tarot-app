@@ -22,6 +22,7 @@ let firebaseAppApiPromise: Promise<FirebaseAppApi> | null = null;
 let auth: Auth | null = null;
 let authApiPromise: Promise<FirebaseAuthApi> | null = null;
 let authPersistencePromise: Promise<void> | null = null;
+const AUTH_OPERATION_TIMEOUT_MS = 6500;
 
 const loadFirebaseAppApi = async (): Promise<FirebaseAppApi> => {
   firebaseAppApiPromise ||= import('firebase/app').then(module => {
@@ -79,6 +80,26 @@ const ensureFirebaseAuth = async (): Promise<{ auth: Auth; api: FirebaseAuthApi 
   }
 
   return { auth: firebaseAuth, api };
+};
+
+const createAuthNetworkTimeoutError = () => Object.assign(
+  new Error('认证服务连接超时，请检查网络或 VPN 后再试。'),
+  { code: 'auth/network-request-failed' },
+);
+
+const withAuthOperationTimeout = async <T,>(operation: Promise<T>): Promise<T> => {
+  let timer: number | undefined;
+
+  try {
+    return await Promise.race([
+      operation,
+      new Promise<never>((_, reject) => {
+        timer = window.setTimeout(() => reject(createAuthNetworkTimeoutError()), AUTH_OPERATION_TIMEOUT_MS);
+      }),
+    ]);
+  } finally {
+    if (timer) window.clearTimeout(timer);
+  }
 };
 
 export const firebaseAuth = {
@@ -244,13 +265,13 @@ export const verifySmsCode = async (confirmationResult: ConfirmationResult, code
 export const signInWithPassword = async (email: string, password: string) => {
   const { auth: firebaseAuth, api } = await ensureFirebaseAuth();
   await ensureAuthPersistence();
-  return api.signInWithEmailAndPassword(firebaseAuth, email, password);
+  return withAuthOperationTimeout(api.signInWithEmailAndPassword(firebaseAuth, email, password));
 };
 
 export const signUpWithEmail = async (email: string, password: string) => {
   const { auth: firebaseAuth, api } = await ensureFirebaseAuth();
   await ensureAuthPersistence();
-  return api.createUserWithEmailAndPassword(firebaseAuth, email, password);
+  return withAuthOperationTimeout(api.createUserWithEmailAndPassword(firebaseAuth, email, password));
 };
 
 export const updateUserPassword = async (currentPassword: string, newPassword: string): Promise<void> => {
@@ -331,7 +352,10 @@ export const getCurrentUser = (): User | null => {
   return auth.currentUser;
 };
 
-export const onAuthStateChangedListener = (callback: (user: User | null) => void): (() => void) => {
+export const onAuthStateChangedListener = (
+  callback: (user: User | null) => void,
+  onError?: (error: unknown) => void,
+): (() => void) => {
   let unsubscribe: (() => void) | null = null;
   let cancelled = false;
 
@@ -354,7 +378,7 @@ export const onAuthStateChangedListener = (callback: (user: User | null) => void
       unsubscribe = api.onAuthStateChanged(firebaseAuth, callback);
     } catch (error) {
       console.warn('Firebase auth listener unavailable, continuing in guest mode:', error);
-      if (!cancelled) callback(null);
+      if (!cancelled) onError?.(error);
     }
   })();
 

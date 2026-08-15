@@ -71,23 +71,34 @@ describe('reading review export', () => {
   });
 
   it('exports csv and markdown with line breaks preserved', () => {
-    const reading = createReading({ id: 'export-1' });
+    const reading = createReading({
+      id: 'export-1',
+      aiAnswer: 'AI建议先观察。\n再行动。',
+      aiAnswerMode: 'mentor',
+    });
     const csv = exportReadingsToCsv([reading]);
     const markdown = exportReadingsToMarkdown([reading], '典籍复盘记录', '阿若');
 
     expect(csv).toContain('"我的复盘"');
+    expect(csv).toContain('"AI参照"');
+    expect(csv).toContain('"AI建议先观察。\n再行动。"');
     expect(csv).toContain('"晚上回看，确实对应到一次新尝试。\n但需要慢一点。"');
     expect(csv).toContain('"起点：愚者（正位）\n阻碍：战车（逆位）"');
     expect(markdown).toContain('# 阿若的典籍复盘记录');
     expect(markdown).toContain('## 2026/07/03｜我该如何看待这件事？');
+    expect(markdown).toContain('### AI参照');
+    expect(markdown).toContain('AI建议先观察。');
     expect(markdown).toContain('晚上回看，确实对应到一次新尝试。');
   });
 
   it('builds pdf lines with owner name and review summary', () => {
-    const lines = buildReadingReviewPdfLines([createReading({ id: 'pdf-1' })], '塔罗研习阁｜典籍复盘', '阿若');
+    const lines = buildReadingReviewPdfLines([
+      createReading({ id: 'pdf-1', aiAnswer: 'AI建议先观察。' }),
+    ], '塔罗研习阁｜典籍复盘', '阿若');
 
     expect(lines[0].text).toBe('阿若的典籍复盘');
     expect(lines.some(line => line.text.includes('记录 1 条 · 已复盘 1 条'))).toBe(true);
+    expect(lines.some(line => line.text.includes('AI参照：AI建议先观察。'))).toBe(true);
     expect(lines.some(line => line.text.includes('我的复盘：晚上回看'))).toBe(true);
   });
 });
