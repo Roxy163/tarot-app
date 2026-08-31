@@ -150,7 +150,8 @@ export const BasicInfoSection: React.FC<BasicInfoSectionProps> = ({
             <div className="absolute left-3 top-1/2 -translate-y-1/2 text-forest-accent/40 pointer-events-none">
               <Calendar size={16} />
             </div>
-            <input 
+            <input
+              aria-label="占卜日期"
               type="date" 
               className="min-h-11 w-full rounded-xl border border-forest-accent/8 bg-white/42 py-2 pl-9 pr-2 text-sm text-forest-ink transition-all focus:ring-2 focus:ring-forest-accent/15 sm:py-2.5 sm:pl-10 sm:pr-4 sm:text-base"
               value={date} 
@@ -307,7 +308,7 @@ export const BasicInfoSection: React.FC<BasicInfoSectionProps> = ({
                       key={i}
                       type="button"
                       onClick={() => onSetActiveSlotIndex(i)}
-                      aria-label={`跳到第 ${i + 1} 个位置：${slot.label || `位置 ${i + 1}`}`}
+                      aria-label={`打开第 ${i + 1} 个位置：${slot.label || `位置 ${i + 1}`}`}
                       className={`min-h-11 shrink-0 rounded-lg px-2.5 py-1 text-[11px] font-semibold whitespace-nowrap transition-all ${
                         activeSlotIndex === i
                           ? 'bg-forest-accent/92 text-white'

@@ -274,6 +274,33 @@ describe('AddReadingForm spread designer flow', () => {
     ]));
   });
 
+  it('uses an existing custom spread as a template without replacing it when creating a new spread', async () => {
+    const user = userEvent.setup();
+    const customSpread: SpreadDefinition = {
+      name: '镜像牌阵',
+      layout: 'free',
+      slots: ['左侧', '右侧'],
+      freePositions: [
+        { x: 120, y: 140, rotation: 0, scale: 1 },
+        { x: 260, y: 140, rotation: 0, scale: 1 },
+      ],
+    };
+    const props = renderForm({ spreads: [...OFFICIAL_SPREADS, customSpread] });
+
+    await user.click(screen.getByRole('button', { name: '新建自定义牌阵' }));
+    await user.selectOptions(screen.getByLabelText('基于已有改造'), '镜像牌阵');
+    await user.click(screen.getByRole('button', { name: '保存并使用' }));
+
+    const updatedSpreads = props.onUpdateSpreads.mock.calls[0][0] as SpreadDefinition[];
+
+    expect(updatedSpreads).toEqual(expect.arrayContaining([
+      expect.objectContaining({ name: '镜像牌阵' }),
+      expect.objectContaining({ name: '镜像牌阵 改造' }),
+    ]));
+    expect(updatedSpreads.filter(spread => spread.name === '镜像牌阵')).toHaveLength(1);
+    expect(updatedSpreads.filter(spread => spread.name.includes('副本'))).toHaveLength(0);
+  });
+
   it('groups official and custom spreads in the selector with separate edit and create actions', () => {
     const customSpread: SpreadDefinition = {
       name: '镜像牌阵',
@@ -365,10 +392,10 @@ describe('AddReadingForm spread designer flow', () => {
 
     const mobileNav = screen.getByTestId('mobile-slot-quick-nav');
     expect(mobileNav).toBeInTheDocument();
-    expect(within(mobileNav).getByRole('button', { name: '跳到第 10 个位置：结果' })).toBeInTheDocument();
+    expect(within(mobileNav).getByRole('button', { name: '打开第 10 个位置：结果' })).toBeInTheDocument();
   });
 
-  it('brings the selected-card detail into view after choosing a card on mobile', async () => {
+  it('keeps users in card-entry flow until every spread position has a card', async () => {
     const user = userEvent.setup();
     const scrollTo = vi.fn();
     Object.defineProperty(window, 'innerWidth', {
@@ -380,12 +407,40 @@ describe('AddReadingForm spread designer flow', () => {
 
     renderForm();
 
-    await user.click(screen.getByRole('button', { name: '1 主牌' }));
+    await user.selectOptions(screen.getByRole('combobox'), '无牌阵三张');
+    await user.click(screen.getByRole('button', { name: '1 第一张' }));
+    expect(screen.getByRole('heading', { name: '选择第 1 张：第一张' })).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: '愚者 愚者' }));
 
-    expect(screen.getByPlaceholderText('记录关于“主牌”的直觉与洞察...')).toBeInTheDocument();
+    expect(screen.getByPlaceholderText('记录关于“第一张”的直觉与洞察...')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /组合解读/ })).toBeInTheDocument();
+    expect(screen.getByTestId('spread-overview-status')).toHaveTextContent('已填 1/3');
+    expect(screen.getByTestId('spread-overview-status')).toHaveTextContent('可继续补齐牌面，也可下滑给已选牌写解读。');
+    expect(scrollTo).not.toHaveBeenCalled();
+
+    await user.click(screen.getByRole('button', { name: '打开第 2 个位置：第二张' }));
+    expect(screen.getByRole('heading', { name: '选择第 2 张：第二张' })).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: '魔术师 魔术师' }));
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText('记录关于“第二张”的直觉与洞察...')).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByRole('button', { name: '3 第三张' }));
+    expect(screen.getByRole('heading', { name: '选择第 3 张：第三张' })).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: '女祭司 女祭司' }));
+
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText('记录关于“第三张”的直觉与洞察...')).toBeInTheDocument();
+    });
+    expect(screen.getByRole('button', { name: /组合解读/ })).toBeInTheDocument();
     await waitFor(() => {
       expect(scrollTo).toHaveBeenCalledWith(expect.objectContaining({ behavior: 'smooth' }));
+    });
+
+    await user.click(screen.getByRole('button', { name: '打开第 1 个位置：第一张' }));
+    expect(screen.queryByRole('heading', { name: /选择第/ })).not.toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText('记录关于“第一张”的直觉与洞察...')).toBeInTheDocument();
     });
   });
 

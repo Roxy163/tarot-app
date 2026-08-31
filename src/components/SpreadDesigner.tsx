@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { motion } from 'motion/react';
 import { Layers, X, Plus, RotateCcw, FolderOpen, Trash2, RefreshCw, Sparkles } from 'lucide-react';
@@ -21,7 +21,7 @@ interface SpreadDesignerProps {
   designActiveSlot: number;
   newSpreadName: string;
   isEditingSession?: boolean;
-  onSelectSpread: (spread: SpreadDefinition) => void;
+  onSelectSpread: (spread: SpreadDefinition, options?: { useAsTemplate?: boolean }) => void;
   onDeleteSpread: (name: string) => void;
   onDeleteSpreads?: (names: string[]) => void;
   onSaveSpread: () => void;
@@ -78,8 +78,6 @@ export const SpreadDesigner: React.FC<SpreadDesignerProps> = ({
   const [selectedCustomSpreadNames, setSelectedCustomSpreadNames] = useState<string[]>([]);
   const [isMobileWorkbench, setIsMobileWorkbench] = useState(isMobileViewport);
   const [showCustomManager, setShowCustomManager] = useState(() => !isMobileViewport());
-  const longPressDeleteTimerRef = useRef<number | null>(null);
-  const longPressTriggeredRef = useRef(false);
 
   useEffect(() => {
     const updateResponsiveState = () => {
@@ -96,12 +94,6 @@ export const SpreadDesigner: React.FC<SpreadDesignerProps> = ({
     return () => window.removeEventListener('resize', updateResponsiveState);
   }, []);
 
-  useEffect(() => () => {
-    if (longPressDeleteTimerRef.current) {
-      window.clearTimeout(longPressDeleteTimerRef.current);
-    }
-  }, []);
-
   const isOfficialSpread = OFFICIAL_SPREADS.some(s => s.name === currentSpread);
   const officialSpreadNames = useMemo(() => new Set(OFFICIAL_SPREADS.map(spread => spread.name)), []);
   const customSpreads = useMemo(
@@ -110,8 +102,12 @@ export const SpreadDesigner: React.FC<SpreadDesignerProps> = ({
   );
   const saveButtonLabel = currentSpread && isEditingSession ? '保存修改' : '保存并使用';
   const editorStateLabel = currentSpread ? (isEditingSession ? '正在编辑' : '套用模板') : '空白创作';
+  const areAllCustomSpreadsSelected = customSpreads.length > 0 && selectedCustomSpreadNames.length === customSpreads.length;
+  const canDeleteSelectedCustomSpreads = Boolean(onDeleteSpreads && selectedCustomSpreadNames.length > 0);
+  const canRestoreOfficialSpreads = OFFICIAL_SPREADS.length > 0;
   const canDeleteCurrentSpread = Boolean(
     currentSpread
+    && isEditingSession
     && !isOfficialSpread
     && spreads.some(spread => spread.name === currentSpread),
   );
@@ -122,37 +118,16 @@ export const SpreadDesigner: React.FC<SpreadDesignerProps> = ({
     ));
   }, [spreads, officialSpreadNames]);
 
-  const clearLongPressDelete = () => {
-    if (!longPressDeleteTimerRef.current) return;
-
-    window.clearTimeout(longPressDeleteTimerRef.current);
-    longPressDeleteTimerRef.current = null;
-  };
-
-  const startLongPressDelete = (spreadName: string) => {
-    clearLongPressDelete();
-    longPressTriggeredRef.current = false;
-    longPressDeleteTimerRef.current = window.setTimeout(() => {
-      longPressTriggeredRef.current = true;
-      onDeleteSpread(spreadName);
-      longPressDeleteTimerRef.current = null;
-      if (window.navigator.vibrate) {
-        window.navigator.vibrate(35);
-      }
-    }, 650);
-  };
-
   const toggleCustomSpreadSelection = (spreadName: string) => {
-    if (longPressTriggeredRef.current) {
-      longPressTriggeredRef.current = false;
-      return;
-    }
-
     setSelectedCustomSpreadNames(current => (
       current.includes(spreadName)
         ? current.filter(name => name !== spreadName)
         : [...current, spreadName]
     ));
+  };
+
+  const toggleAllCustomSpreadSelection = () => {
+    setSelectedCustomSpreadNames(areAllCustomSpreadsSelected ? [] : customSpreads.map(spread => spread.name));
   };
 
   const handleTemplateChange = (spreadName: string) => {
@@ -165,7 +140,7 @@ export const SpreadDesigner: React.FC<SpreadDesignerProps> = ({
 
     const selectedSpread = spreads.find(s => s.name === spreadName);
     if (selectedSpread) {
-      onSelectSpread(selectedSpread);
+      onSelectSpread(selectedSpread, { useAsTemplate: !currentSpread });
       if (!newSpreadName.trim()) {
         onUpdateNewSpreadName(`${selectedSpread.name} 改造`);
       }
@@ -298,7 +273,7 @@ export const SpreadDesigner: React.FC<SpreadDesignerProps> = ({
               <div className="mb-1.5 flex items-center justify-between gap-2">
                 <div>
                   <p className="text-[10px] font-semibold uppercase tracking-wider text-forest-accent">自建牌阵管理</p>
-                  <p className="text-[10px] text-forest-muted">点选可批量删除，长按单项也可删除。</p>
+                  <p className="text-[10px] text-forest-muted">勾选可批量删除，右侧按钮可删除单项。</p>
                 </div>
                 <div className="flex shrink-0 items-center gap-1.5">
                   {isMobileWorkbench && (
@@ -312,10 +287,17 @@ export const SpreadDesigner: React.FC<SpreadDesignerProps> = ({
                   )}
                   <button
                     type="button"
+                    onClick={toggleAllCustomSpreadSelection}
+                    className="min-h-11 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-forest-muted transition-colors hover:bg-white/58 hover:text-forest-accent sm:min-h-10"
+                  >
+                    {areAllCustomSpreadsSelected ? '取消全选' : '全选'}
+                  </button>
+                  <button
+                    type="button"
                     onClick={() => onDeleteSpreads?.(selectedCustomSpreadNames)}
-                    disabled={selectedCustomSpreadNames.length === 0}
+                    disabled={!canDeleteSelectedCustomSpreads}
                     className={`min-h-11 rounded-lg px-2.5 py-1.5 text-xs font-semibold transition-all sm:min-h-10 ${
-                      selectedCustomSpreadNames.length === 0
+                      !canDeleteSelectedCustomSpreads
                         ? 'cursor-not-allowed bg-gray-100 text-gray-300'
                         : 'bg-red-100 text-red-600 hover:bg-red-200'
                     }`}
@@ -329,25 +311,34 @@ export const SpreadDesigner: React.FC<SpreadDesignerProps> = ({
                   const isSelected = selectedCustomSpreadNames.includes(spread.name);
 
                   return (
-                    <button
+                    <div
                       key={spread.name}
-                      type="button"
-                      onClick={() => toggleCustomSpreadSelection(spread.name)}
-                      onPointerDown={() => startLongPressDelete(spread.name)}
-                      onPointerUp={clearLongPressDelete}
-                      onPointerLeave={clearLongPressDelete}
-                      onPointerCancel={clearLongPressDelete}
                       className={`flex min-h-11 shrink-0 items-center gap-2 rounded-lg border px-2.5 py-1.5 text-xs font-semibold transition-all ${
                         isSelected
                           ? 'border-red-200 bg-red-50 text-red-600'
                           : 'border-forest-accent/10 bg-forest-bg/60 text-forest-ink hover:border-forest-accent/30'
                       }`}
-                      aria-pressed={isSelected}
-                      title="点选用于批量删除，长按可删除"
                     >
-                      <span className={`h-3 w-3 rounded-full border ${isSelected ? 'border-red-500 bg-red-500' : 'border-forest-accent/30 bg-white'}`} />
-                      <span>{spread.name}</span>
-                    </button>
+                      <button
+                        type="button"
+                        onClick={() => toggleCustomSpreadSelection(spread.name)}
+                        className="flex min-h-11 min-w-0 items-center gap-2 rounded-md text-left sm:min-h-10"
+                        aria-pressed={isSelected}
+                        title="勾选用于批量删除"
+                      >
+                        <span className={`h-3 w-3 shrink-0 rounded-full border ${isSelected ? 'border-red-500 bg-red-500' : 'border-forest-accent/30 bg-white'}`} />
+                        <span className="max-w-[9rem] truncate">{spread.name}</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => onDeleteSpread(spread.name)}
+                        aria-label={`删除自定义牌阵 ${spread.name}`}
+                        title="删除自定义牌阵"
+                        className="flex min-h-11 min-w-11 items-center justify-center rounded-md text-red-500 transition-colors hover:bg-red-100 sm:min-h-10 sm:min-w-10"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
                   );
                 })}
               </div>
@@ -355,7 +346,7 @@ export const SpreadDesigner: React.FC<SpreadDesignerProps> = ({
             )
           )}
 
-          {(canUndo || isOfficialSpread || canDeleteCurrentSpread) && (
+          {(canUndo || isOfficialSpread || canDeleteCurrentSpread || canRestoreOfficialSpreads) && (
           <div className="rounded-xl border border-forest-accent/8 bg-white/22 p-1 sm:p-1.5">
             <div className="flex flex-wrap items-center justify-between gap-1.5">
               <div className="flex min-h-9 items-center gap-1.5 px-1 text-[10px] font-semibold text-forest-muted">
@@ -379,8 +370,20 @@ export const SpreadDesigner: React.FC<SpreadDesignerProps> = ({
                     onClick={() => onRestoreDefaults(currentSpread)}
                     className="flex min-h-11 items-center gap-1.5 rounded-lg px-2 py-1.5 text-xs font-semibold text-forest-muted transition-colors hover:bg-amber-50/70 hover:text-amber-600 sm:min-h-10"
                   >
-                    <RefreshCw size={14} /> 恢复默认
+                    <RefreshCw size={14} /> 恢复当前
                   </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => onRestoreDefaults()}
+                  className="flex min-h-11 items-center gap-1.5 rounded-lg px-2 py-1.5 text-xs font-semibold text-forest-muted transition-colors hover:bg-amber-50/70 hover:text-amber-600 sm:min-h-10"
+                >
+                  <RefreshCw size={14} /> 恢复全部官方默认
+                </button>
+                {isOfficialSpread && (
+                  <span className="flex min-h-11 items-center px-1.5 text-[10px] font-semibold text-forest-muted sm:min-h-10">
+                    官方牌阵不可删除
+                  </span>
                 )}
                 {canDeleteCurrentSpread && (
                   <button

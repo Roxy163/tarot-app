@@ -77,6 +77,7 @@ const useElementWidth = <T extends HTMLElement>() => {
 interface ReadingSpreadDisplayProps {
   formData: any;
   cardSlots: ReadingSlotData[];
+  isCardEntryComplete?: boolean;
   activeSlotIndex: number;
   showSlotNumbers: boolean;
   gridCols: number;
@@ -98,6 +99,7 @@ interface ReadingSpreadDisplayProps {
 export const ReadingSpreadDisplay: React.FC<ReadingSpreadDisplayProps> = ({
   formData,
   cardSlots,
+  isCardEntryComplete = false,
   activeSlotIndex,
   showSlotNumbers,
   gridCols,
@@ -168,7 +170,7 @@ export const ReadingSpreadDisplay: React.FC<ReadingSpreadDisplayProps> = ({
     () => cardSlots.filter(slot => Boolean(slot.name)).length,
     [cardSlots],
   );
-  const shouldShowSpreadOverview = isFreeLayout || isYearlyRadialLayout || isCelticCross || cardSlots.length >= 5;
+  const shouldShowSpreadOverview = isFreeLayout || isYearlyRadialLayout || isCelticCross || cardSlots.length > 1;
   const scaledGridStyle = shouldScaleGrid ? {
     width: rawGridWidth * mobileDisplayScale,
     minHeight: rawGridHeight * mobileDisplayScale,
@@ -206,7 +208,11 @@ export const ReadingSpreadDisplay: React.FC<ReadingSpreadDisplayProps> = ({
           <span className="font-bold text-forest-accent">牌布总览</span>
           <span className="font-bold text-forest-ink">已填 {filledSlotCount}/{cardSlots.length}</span>
           <span className="basis-full text-[10px] leading-snug sm:basis-auto sm:text-xs">
-            点选位置后，在下方填写牌面与解读。
+            {isCardEntryComplete
+              ? '牌面已齐，可以点选牌位写逐牌解读。'
+              : filledSlotCount > 0
+                ? '可继续补齐牌面，也可下滑给已选牌写解读。'
+                : '先点选空位录入牌面，解读可以稍后补写。'}
           </span>
         </div>
       )}

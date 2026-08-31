@@ -62,6 +62,23 @@ interface AddReadingFormProps {
 
 type InfluenceFieldKey = 'numerologyInfluence' | 'astrologyInfluence' | 'houseInfluence' | 'elementInfluence';
 
+const isCardSlotFilled = (slot?: ReadingSlotData) => Boolean(slot?.name?.trim());
+
+const areAllCardSlotsFilled = (slots: ReadingSlotData[]) => (
+  slots.length > 0 && slots.every(isCardSlotFilled)
+);
+
+const getNextEmptySlotIndex = (slots: ReadingSlotData[], fromIndex: number) => {
+  if (slots.length === 0) return -1;
+
+  for (let offset = 1; offset <= slots.length; offset += 1) {
+    const nextIndex = (Math.max(0, fromIndex) + offset) % slots.length;
+    if (!isCardSlotFilled(slots[nextIndex])) return nextIndex;
+  }
+
+  return -1;
+};
+
 type SpreadSaveConflict = {
   name: string;
   spread: SpreadDefinition;
@@ -160,6 +177,10 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
     localStorage.getItem('tarot_influence_sections_open') === 'true' ? 'numerologyInfluence' : null
   ));
   const [activeSlotIndex, setActiveSlotIndex] = useState<number>(0);
+  const [readingDetailSlotIndex, setReadingDetailSlotIndex] = useState<number>(() => {
+    const firstFilledIndex = initialData?.cards?.findIndex(card => isCardSlotFilled(card)) ?? -1;
+    return firstFilledIndex >= 0 ? firstFilledIndex : 0;
+  });
   const [isEditingSession, setIsEditingSession] = useState(false);
   const [gridCols, setGridCols] = useState(5);
   const [gridRows, setGridRows] = useState(5);
@@ -297,6 +318,7 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
   const scrollRequiredIssueIntoView = (issue: ReadingRequiredFieldIssue) => {
     if (issue.slotIndex !== undefined && issue.slotIndex >= 0 && issue.slotIndex < cardSlots.length) {
       setActiveSlotIndex(issue.slotIndex);
+      setReadingDetailSlotIndex(issue.slotIndex);
     }
 
     if (typeof window === 'undefined' || window.innerWidth >= 768) return;
@@ -341,8 +363,10 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
         layoutType: 'horizontal'
       }));
       setCardSlots([{ name: '', isReversed: false, label: '今日日运' }]);
+      setReadingDetailSlotIndex(0);
     } else if (!isDailyMode && formData.spread === '单牌阵' && !initialData) {
       setCardSlots([{ name: '', isReversed: false, label: '单牌解读' }]);
+      setReadingDetailSlotIndex(0);
     }
   }, [isDailyMode, formData.spread]);
 
@@ -376,6 +400,8 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
     if (JSON.stringify(newSlots) !== JSON.stringify(cardSlots)) {
       setCardSlots(newSlots);
       setActiveSlotIndex(0);
+      const firstFilledIndex = newSlots.findIndex(isCardSlotFilled);
+      setReadingDetailSlotIndex(firstFilledIndex >= 0 ? firstFilledIndex : 0);
       // Initialize interpretations if needed
       if (cardInterpretations.length !== newSlots.length) {
         setCardInterpretations(normalizeInterpretationsForSlots(cardInterpretations, newSlots.length));
@@ -399,8 +425,20 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
       clearLongPressActive();
       return;
     }
+
     setActiveSlotIndex(index);
-    setShowPicker(true);
+
+    const slot = cardSlots[index];
+    if (isCardSlotFilled(slot)) {
+      setReadingDetailSlotIndex(index);
+    }
+    const allSlotsFilled = areAllCardSlotsFilled(cardSlots);
+    if (!isCardSlotFilled(slot) || (isMultiCard && !allSlotsFilled)) {
+      setShowPicker(true);
+      return;
+    }
+
+    setShowPicker(false);
   };
 
   const updateCardSlotsWithHistory = (newSlots: typeof cardSlots) => {
@@ -417,11 +455,22 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
   };
 
   const handleCardSelect = (card: typeof TAROT_CARDS[0], isReversed: boolean) => {
+    const selectedSlotIndex = activeSlotIndex;
     const newSlots = selectCardForSlot(cardSlots, activeSlotIndex, card.name, isReversed);
     if (newSlots !== cardSlots) {
       updateCardSlotsWithHistory(newSlots);
     }
+
+    const nextEmptySlotIndex = getNextEmptySlotIndex(newSlots, selectedSlotIndex);
+    setReadingDetailSlotIndex(selectedSlotIndex);
     setShowPicker(false);
+
+    if (isMultiCard && nextEmptySlotIndex !== -1) {
+      setActiveSlotIndex(nextEmptySlotIndex);
+      return;
+    }
+
+    setActiveSlotIndex(selectedSlotIndex);
     window.setTimeout(scrollReadingDetailIntoView, 260);
   };
 
@@ -817,6 +866,16 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
 
   const currentTemplate = LAYOUT_TEMPLATES[formData.layoutType] || LAYOUT_TEMPLATES.horizontal;
   const itemClasses = currentTemplate.itemClasses;
+  const filledCardSlotCount = cardSlots.filter(isCardSlotFilled).length;
+  const isCardEntryComplete = areAllCardSlotsFilled(cardSlots);
+  const activeSlotLabel = cardSlots[activeSlotIndex]?.label || `位置 ${activeSlotIndex + 1}`;
+  const fallbackDetailSlotIndex = cardSlots.findIndex(isCardSlotFilled);
+  const detailSlotIndex = isCardSlotFilled(cardSlots[readingDetailSlotIndex])
+    ? readingDetailSlotIndex
+    : fallbackDetailSlotIndex >= 0
+      ? fallbackDetailSlotIndex
+      : Math.max(0, Math.min(readingDetailSlotIndex, Math.max(0, cardSlots.length - 1)));
+  const shouldShowReadingDetail = Boolean(cardSlots[detailSlotIndex]?.name);
   const tagSuggestions = useMemo(
     () => buildReadingTagSuggestions(existingReadings, formData.category, 8).map(item => item.tag),
     [existingReadings, formData.category],
@@ -919,6 +978,12 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
         <CardPicker 
           onSelect={handleCardSelect} 
           onClose={() => setShowPicker(false)} 
+          title={`选择第 ${activeSlotIndex + 1} 张：${activeSlotLabel}`}
+          description={
+            isMultiCard
+              ? `已填 ${filledCardSlotCount}/${cardSlots.length}，可继续补齐牌面，也可下滑给已选牌写解读。`
+              : undefined
+          }
           excludeCards={cardSlots
             .filter((_, i) => i !== activeSlotIndex) // Don't exclude the card in the current slot
             .map(s => s.name)
@@ -1040,7 +1105,7 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
         onDeleteSpread={requestDeleteSpread}
         isMultiCard={isMultiCard}
         activeSlotIndex={activeSlotIndex}
-        onSetActiveSlotIndex={setActiveSlotIndex}
+        onSetActiveSlotIndex={handleSlotClick}
         cardSlots={cardSlots}
         onAddSlot={addSlot}
         canAddSlot={canAddSlot}
@@ -1126,10 +1191,11 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
                 setIsEditingSession(true);
               }}
               gridCols={gridCols}
-              onSelectSpread={(s) => {
+              onSelectSpread={(s, options) => {
                 const nextSlots = createBlankSlotsForSpread(s);
                 const editorSlots = toFreeEditorSlots(nextSlots, s.layout);
                 const isOfficial = OFFICIAL_SPREADS.some(os => os.name === s.name);
+                const useAsTemplate = Boolean(options?.useAsTemplate);
 
                 setFormData(prev => ({ ...prev, spread: s.name, layoutType: 'free' }));
                 setGridCols(20);
@@ -1137,7 +1203,7 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
                 setFreeLayoutSaveMode('original');
                 setCardSlots(editorSlots);
                 setDesignActiveSlot(editorSlots.length > 0 ? 0 : -1);
-                setIsEditingSession(!isOfficial);
+                setIsEditingSession(!isOfficial && !useAsTemplate);
               }}
               onStartNewSession={handleCreateNewSpread}
               onClose={handleCancelSpreadManager}
@@ -1251,6 +1317,7 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
         <ReadingSpreadDisplay
           formData={formData}
           cardSlots={cardSlots}
+          isCardEntryComplete={isCardEntryComplete}
           activeSlotIndex={activeSlotIndex}
           showSlotNumbers={showSlotNumbers}
           gridCols={gridCols}
@@ -1279,25 +1346,30 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
 
 
       {/* Card Metadata & Main Display */}
-      <div ref={readingDetailRef} className="scroll-mt-24">
-        <ReadingDetailView
-          activeSlotIndex={activeSlotIndex}
-          cardSlots={cardSlots}
-          cardMetadata={cardMetadata}
-          cardInterpretations={cardInterpretations}
-          cardQuestions={cardQuestions}
-          isLoggedIn={isLoggedIn}
-          userId={userId}
-          isMultiCard={isMultiCard}
-          isDailyMode={isDailyMode}
-          onToggleReverse={toggleReverse}
-          onSetCardInterpretations={setCardInterpretations}
-          onSetCardQuestions={setCardQuestions}
-          onSetActiveSlotIndex={setActiveSlotIndex}
-          onSetShowPicker={setShowPicker}
-          hasInterpretationError={submitIssue?.field === 'cardInterpretation' && submitIssue.slotIndex === activeSlotIndex}
-        />
-      </div>
+      {shouldShowReadingDetail && (
+        <div ref={readingDetailRef} className="scroll-mt-24">
+          <ReadingDetailView
+            activeSlotIndex={detailSlotIndex}
+            cardSlots={cardSlots}
+            cardMetadata={cardMetadata}
+            cardInterpretations={cardInterpretations}
+            cardQuestions={cardQuestions}
+            isLoggedIn={isLoggedIn}
+            userId={userId}
+            isMultiCard={isMultiCard}
+            isDailyMode={isDailyMode}
+            onToggleReverse={toggleReverse}
+            onSetCardInterpretations={setCardInterpretations}
+            onSetCardQuestions={setCardQuestions}
+            onSetActiveSlotIndex={setReadingDetailSlotIndex}
+            onSetShowPicker={(show) => {
+              setActiveSlotIndex(detailSlotIndex);
+              setShowPicker(show);
+            }}
+            hasInterpretationError={submitIssue?.field === 'cardInterpretation' && submitIssue.slotIndex === detailSlotIndex}
+          />
+        </div>
+      )}
 
       {isMultiCard && (
         <FoldableSection 

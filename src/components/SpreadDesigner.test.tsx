@@ -27,6 +27,7 @@ const renderDesigner = (overrides = {}) => {
     isEditingSession: true,
     onSelectSpread: vi.fn(),
     onDeleteSpread: vi.fn(),
+    onDeleteSpreads: vi.fn(),
     onSaveSpread: vi.fn(),
     onUpdateNewSpreadName: vi.fn(),
     onUpdateLayoutType: vi.fn(),
@@ -112,9 +113,45 @@ describe('SpreadDesigner', () => {
 
     await user.selectOptions(screen.getByLabelText('基于已有改造'), '自由牌阵');
 
-    expect(onSelectSpread).toHaveBeenCalledWith(spreads[0]);
+    expect(onSelectSpread).toHaveBeenCalledWith(spreads[0], { useAsTemplate: true });
     expect(onUpdateNewSpreadName).toHaveBeenCalledWith('自由牌阵 改造');
     expect(onSetDesignActiveSlot).toHaveBeenCalledWith(-1);
+  });
+
+  it('exposes familiar single and batch delete controls for custom spreads', async () => {
+    const user = userEvent.setup();
+    const onDeleteSpread = vi.fn();
+    const onDeleteSpreads = vi.fn();
+
+    renderDesigner({ onDeleteSpread, onDeleteSpreads });
+
+    expect(screen.getByText('勾选可批量删除，右侧按钮可删除单项。')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: '删除自定义牌阵 自由牌阵' }));
+
+    expect(onDeleteSpread).toHaveBeenCalledWith('自由牌阵');
+
+    await user.click(screen.getByRole('button', { name: '自由牌阵' }));
+    await user.click(screen.getByRole('button', { name: '删除选中 1' }));
+
+    expect(onDeleteSpreads).toHaveBeenCalledWith(['自由牌阵']);
+  });
+
+  it('can restore all official spreads without exposing official deletion', async () => {
+    const user = userEvent.setup();
+    const onRestoreDefaults = vi.fn();
+
+    renderDesigner({
+      currentSpread: '单牌阵',
+      newSpreadName: '单牌阵 (自定义)',
+      isEditingSession: false,
+      onRestoreDefaults,
+    });
+
+    await user.click(screen.getByRole('button', { name: '恢复全部官方默认' }));
+
+    expect(onRestoreDefaults).toHaveBeenCalledWith();
+    expect(screen.getByText('官方牌阵不可删除')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /删除牌阵 单牌阵/ })).not.toBeInTheDocument();
   });
 
   it('updates the spread name from the name field', async () => {
