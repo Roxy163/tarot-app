@@ -109,6 +109,10 @@ describe('ReadingSpreadDisplay', () => {
     expect(yearlyCanvas).toHaveClass('aspect-[4/3]', 'sm:max-w-[760px]', 'overflow-visible');
     expect(yearlyCanvas).not.toHaveClass('rounded-3xl', 'border', 'bg-forest-bg/20');
     expect(yearlyCanvas.children).toHaveLength(13);
+    expect(Array.from(yearlyCanvas.children).every(child => child.classList.contains('absolute'))).toBe(true);
+    expect(yearlyCanvas.querySelector('[data-testid*="line"]')).not.toBeInTheDocument();
+    expect(yearlyCanvas.querySelector('[data-testid*="guide"]')).not.toBeInTheDocument();
+    expect(yearlyCanvas.querySelector('[data-testid*="axis"]')).not.toBeInTheDocument();
     expect(screen.getByTestId('spread-overview-status')).toHaveTextContent('已填 0/13');
     expect(screen.getByRole('button', { name: /底牌/ })).toBeInTheDocument();
   });

@@ -62,7 +62,13 @@ describe('ReadingCard', () => {
   it('renders saved yearly readings in a centered radial preview', () => {
     render(<ReadingCard reading={yearlyReading} cardMetadata={[]} />);
 
-    expect(screen.getByTestId('reading-card-yearly-preview')).toBeInTheDocument();
+    const yearlyPreview = screen.getByTestId('reading-card-yearly-preview');
+
+    expect(yearlyPreview).toBeInTheDocument();
+    expect(Array.from(yearlyPreview.children).every(child => child.classList.contains('absolute'))).toBe(true);
+    expect(yearlyPreview.querySelector('[data-testid*="line"]')).not.toBeInTheDocument();
+    expect(yearlyPreview.querySelector('[data-testid*="guide"]')).not.toBeInTheDocument();
+    expect(yearlyPreview.querySelector('[data-testid*="axis"]')).not.toBeInTheDocument();
     expect(screen.getByText('底牌')).toBeInTheDocument();
   });
 });
