@@ -49,6 +49,9 @@ const celticPreviewPositions = [
   { x: 84, y: 18 },
 ];
 
+const YEARLY_PREVIEW_SLOT_SCALE = 0.95;
+const CELTIC_PREVIEW_SLOT_SCALE = 0.96;
+
 interface ReadingCardProps {
   reading: TarotReading;
   cardMetadata: TarotCardMetadata[];
@@ -586,7 +589,7 @@ export const ReadingCard: React.FC<ReadingCardProps> = ({
                     style={{
                       left: `${point.x}%`,
                       top: `${point.y}%`,
-                      transform: 'translate(-50%, -50%) scale(0.82)',
+                      transform: `translate(-50%, -50%) scale(${YEARLY_PREVIEW_SLOT_SCALE})`,
                       transformOrigin: 'center center',
                     }}
                     onClick={(e) => {
@@ -632,7 +635,7 @@ export const ReadingCard: React.FC<ReadingCardProps> = ({
                     style={{
                       left: `${point.x}%`,
                       top: `${point.y}%`,
-                      transform: 'translate(-50%, -50%) scale(0.88)',
+                      transform: `translate(-50%, -50%) scale(${CELTIC_PREVIEW_SLOT_SCALE})`,
                       transformOrigin: 'center center',
                       zIndex: idx === 1 ? 35 : idx === 0 ? 30 : idx === 2 ? 15 : 20,
                     }}
@@ -817,6 +820,7 @@ export const ReadingCard: React.FC<ReadingCardProps> = ({
       };
     });
     const compactCards = visibleCards.length > 4;
+    const shouldShowThumbnailGuides = !isCeltic && !isYearly;
 
     return (
       <div className={wrapperClassName}>
@@ -837,8 +841,12 @@ export const ReadingCard: React.FC<ReadingCardProps> = ({
               transition: mobilePreviewScale === 1 ? 'transform 0.18s ease-out' : 'none',
             }}
           >
-          <div className="absolute inset-x-3 top-1/2 border-t border-dashed border-forest-accent/8" aria-hidden />
-          <div className="absolute inset-y-2 left-1/2 border-l border-dashed border-forest-accent/7" aria-hidden />
+          {shouldShowThumbnailGuides && (
+            <>
+              <div className="absolute inset-x-3 top-1/2 border-t border-dashed border-forest-accent/8" aria-hidden />
+              <div className="absolute inset-y-2 left-1/2 border-l border-dashed border-forest-accent/7" aria-hidden />
+            </>
+          )}
           {visibleCards.map((card, idx) => {
             const cardData = TAROT_CARDS.find(c =>
               c.name === card.name || c.english === card.name || c.id === card.name

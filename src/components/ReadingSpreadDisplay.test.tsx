@@ -19,7 +19,18 @@ describe('ReadingSpreadDisplay', () => {
     vi.restoreAllMocks();
   });
 
-  it('keeps the Celtic cross center stack above the lower card on mobile-scaled layouts', () => {
+  it('keeps the Celtic cross center stack above the lower card on mobile-scaled layouts', async () => {
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({
+      x: 0,
+      y: 0,
+      width: 360,
+      height: 480,
+      top: 0,
+      right: 360,
+      bottom: 480,
+      left: 0,
+      toJSON: () => ({}),
+    });
     const slots = createSlots();
 
     render(
@@ -50,7 +61,7 @@ describe('ReadingSpreadDisplay', () => {
     const canvas = screen.getByTestId('celtic-spread-canvas');
 
     expect(screen.getByTestId('celtic-cross-spread')).toBeInTheDocument();
-    expect(canvas).toHaveClass('aspect-[6/5]', 'sm:max-w-[640px]', 'overflow-visible');
+    expect(canvas).toHaveClass('aspect-[6/5]', 'sm:max-w-[680px]', 'overflow-visible');
     expect(canvas).not.toHaveClass('rounded-3xl', 'border', 'bg-forest-bg/20');
     expect(canvas.children).toHaveLength(9);
     expect(screen.getByTestId('celtic-slot-4')).toHaveStyle({ left: '20%', top: '50%' });
@@ -62,9 +73,12 @@ describe('ReadingSpreadDisplay', () => {
     expect(lowerCell).toHaveStyle({ zIndex: '15' });
     expect(centerCell).toContainElement(centerButton);
     expect(centerCell).toContainElement(challengeButton);
+    await waitFor(() => {
+      expect(centerCell).toHaveStyle({ transform: 'translate(-50%, -50%) scale(0.66)' });
+    });
   });
 
-  it('uses a dedicated centered yearly layout across viewport widths', () => {
+  it('uses a dedicated centered yearly layout across viewport widths', async () => {
     vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({
       x: 0,
       y: 0,
@@ -106,7 +120,7 @@ describe('ReadingSpreadDisplay', () => {
 
     expect(screen.getByTestId('yearly-radial-spread')).toBeInTheDocument();
     const yearlyCanvas = screen.getByTestId('yearly-spread-canvas');
-    expect(yearlyCanvas).toHaveClass('aspect-[4/3]', 'sm:max-w-[760px]', 'overflow-visible');
+    expect(yearlyCanvas).toHaveClass('aspect-[4/3]', 'sm:max-w-[800px]', 'overflow-visible');
     expect(yearlyCanvas).not.toHaveClass('rounded-3xl', 'border', 'bg-forest-bg/20');
     expect(yearlyCanvas.children).toHaveLength(13);
     expect(Array.from(yearlyCanvas.children).every(child => child.classList.contains('absolute'))).toBe(true);
@@ -115,6 +129,9 @@ describe('ReadingSpreadDisplay', () => {
     expect(yearlyCanvas.querySelector('[data-testid*="axis"]')).not.toBeInTheDocument();
     expect(screen.getByTestId('spread-overview-status')).toHaveTextContent('已填 0/13');
     expect(screen.getByRole('button', { name: /底牌/ })).toBeInTheDocument();
+    await waitFor(() => {
+      expect(yearlyCanvas.children[0]).toHaveStyle({ transform: 'translate(-50%, -50%) scale(0.68)' });
+    });
   });
 
   it('uses the natural card-grid layout for the choice spread', () => {

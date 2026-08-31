@@ -46,6 +46,10 @@ const celticDisplayPositions = [
   { x: 78, y: 13 },
 ];
 
+const TABLETOP_BREAKPOINT = 640;
+const YEARLY_TABLETOP_SCALE = { mobile: 0.68, desktop: 1 };
+const CELTIC_TABLETOP_SCALE = { mobile: 0.66, desktop: 0.98 };
+
 const useElementWidth = <T extends HTMLElement>() => {
   const ref = useRef<T | null>(null);
   const [width, setWidth] = useState(0);
@@ -295,14 +299,16 @@ export const ReadingSpreadDisplay: React.FC<ReadingSpreadDisplayProps> = ({
           </div>
         </div>
       ) : isYearlyRadialLayout ? (
-        <div className="w-full overflow-visible px-1 pb-4" data-testid="yearly-radial-spread">
+        <div className="w-full overflow-visible px-0 pb-3 sm:pb-4" data-testid="yearly-radial-spread">
           <div
-            className="relative mx-auto aspect-[4/3] w-full max-w-[360px] overflow-visible sm:max-w-[760px]"
+            className="relative mx-auto aspect-[4/3] w-full max-w-[390px] overflow-visible sm:max-w-[800px]"
             data-testid="yearly-spread-canvas"
           >
             {cardSlots.map((slot, index) => {
               const point = yearlyMobilePositions[index] || yearlyMobilePositions[yearlyMobilePositions.length - 1];
-              const slotScale = spreadViewportWidth > 0 && spreadViewportWidth < 640 ? 0.52 : 0.92;
+              const slotScale = spreadViewportWidth > 0 && spreadViewportWidth < TABLETOP_BREAKPOINT
+                ? YEARLY_TABLETOP_SCALE.mobile
+                : YEARLY_TABLETOP_SCALE.desktop;
 
               return (
                 <div
@@ -336,16 +342,18 @@ export const ReadingSpreadDisplay: React.FC<ReadingSpreadDisplayProps> = ({
           </div>
         </div>
       ) : isCelticCross ? (
-        <div className="w-full overflow-visible px-1 pb-4" data-testid="celtic-cross-spread">
+        <div className="w-full overflow-visible px-0 pb-3 sm:pb-4" data-testid="celtic-cross-spread">
           <div
-            className="relative mx-auto aspect-[6/5] w-full max-w-[360px] overflow-visible sm:max-w-[640px]"
+            className="relative mx-auto aspect-[6/5] w-full max-w-[390px] overflow-visible sm:max-w-[680px]"
             data-testid="celtic-spread-canvas"
           >
             {cardSlots.map((slot, index) => {
               if (index === 1) return null;
 
               const point = celticDisplayPositions[index] || celticDisplayPositions[0];
-              const slotScale = spreadViewportWidth > 0 && spreadViewportWidth < 640 ? 0.58 : 0.9;
+              const slotScale = spreadViewportWidth > 0 && spreadViewportWidth < TABLETOP_BREAKPOINT
+                ? CELTIC_TABLETOP_SCALE.mobile
+                : CELTIC_TABLETOP_SCALE.desktop;
               const slotsAtPoint = index === 0 && cardSlots[1]
                 ? [
                     { ...slot, idx: 0 },

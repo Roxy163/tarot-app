@@ -50,25 +50,33 @@ const yearlyReading: TarotReading = {
 
 describe('ReadingCard', () => {
   it('renders saved Celtic cross readings with the challenge card as a horizontal center overlay', () => {
-    render(<ReadingCard reading={celticReading} cardMetadata={[]} />);
+    const { container } = render(<ReadingCard reading={celticReading} cardMetadata={[]} />);
 
     const challengeCard = screen.getByAltText('皇帝').closest('.rotate-90');
 
     expect(screen.getByTestId('reading-card-celtic-preview')).toBeInTheDocument();
+    expect(screen.getByTestId('reading-card-celtic-center')).toHaveStyle({
+      transform: 'translate(-50%, -50%) scale(0.96)',
+    });
+    expect(container.querySelectorAll('[aria-hidden="true"].border-dashed')).toHaveLength(0);
     expect(challengeCard).toBeInTheDocument();
     expect(screen.getByText('挑战')).toBeInTheDocument();
   });
 
   it('renders saved yearly readings in a centered radial preview', () => {
-    render(<ReadingCard reading={yearlyReading} cardMetadata={[]} />);
+    const { container } = render(<ReadingCard reading={yearlyReading} cardMetadata={[]} />);
 
     const yearlyPreview = screen.getByTestId('reading-card-yearly-preview');
 
     expect(yearlyPreview).toBeInTheDocument();
+    expect(yearlyPreview.children[0]).toHaveStyle({
+      transform: 'translate(-50%, -50%) scale(0.95)',
+    });
     expect(Array.from(yearlyPreview.children).every(child => child.classList.contains('absolute'))).toBe(true);
     expect(yearlyPreview.querySelector('[data-testid*="line"]')).not.toBeInTheDocument();
     expect(yearlyPreview.querySelector('[data-testid*="guide"]')).not.toBeInTheDocument();
     expect(yearlyPreview.querySelector('[data-testid*="axis"]')).not.toBeInTheDocument();
+    expect(container.querySelectorAll('[aria-hidden="true"].border-dashed')).toHaveLength(0);
     expect(screen.getByText('底牌')).toBeInTheDocument();
   });
 });
