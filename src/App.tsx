@@ -1529,6 +1529,7 @@ function AppContent() {
               onUpdateSpreads={setSpreads}
               cardMetadata={cardMetadata}
               cardKeywordMemory={cardKeywordMemory}
+              readings={readings}
               onUpdateCardMetadata={setCardMetadata}
               initialData={editingReading}
               onCancel={() => {

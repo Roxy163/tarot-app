@@ -47,8 +47,16 @@ describe('ReadingSpreadDisplay', () => {
     const challengeButton = screen.getByRole('button', { name: /挑战/ });
     const centerCell = screen.getByTestId('celtic-center-stack');
     const lowerCell = screen.getByTestId('celtic-foundation-slot');
+    const canvas = screen.getByTestId('celtic-spread-canvas');
 
     expect(screen.getByTestId('celtic-cross-spread')).toBeInTheDocument();
+    expect(canvas).toHaveClass('aspect-[6/5]', 'sm:max-w-[640px]', 'overflow-visible');
+    expect(canvas).not.toHaveClass('rounded-3xl', 'border', 'bg-forest-bg/20');
+    expect(canvas.children).toHaveLength(9);
+    expect(screen.getByTestId('celtic-slot-4')).toHaveStyle({ left: '20%', top: '50%' });
+    expect(screen.getByTestId('celtic-slot-6')).toHaveStyle({ left: '56%', top: '50%' });
+    expect(screen.getByTestId('celtic-slot-7')).toHaveStyle({ left: '78%', top: '88%' });
+    expect(screen.getByTestId('celtic-slot-10')).toHaveStyle({ left: '78%', top: '13%' });
     expect(screen.getByTestId('spread-overview-status')).toHaveTextContent('已填 0/10');
     expect(centerCell).toHaveStyle({ zIndex: '40' });
     expect(lowerCell).toHaveStyle({ zIndex: '15' });
@@ -97,6 +105,10 @@ describe('ReadingSpreadDisplay', () => {
     );
 
     expect(screen.getByTestId('yearly-radial-spread')).toBeInTheDocument();
+    const yearlyCanvas = screen.getByTestId('yearly-spread-canvas');
+    expect(yearlyCanvas).toHaveClass('aspect-[4/3]', 'sm:max-w-[760px]', 'overflow-visible');
+    expect(yearlyCanvas).not.toHaveClass('rounded-3xl', 'border', 'bg-forest-bg/20');
+    expect(yearlyCanvas.children).toHaveLength(13);
     expect(screen.getByTestId('spread-overview-status')).toHaveTextContent('已填 0/13');
     expect(screen.getByRole('button', { name: /底牌/ })).toBeInTheDocument();
   });

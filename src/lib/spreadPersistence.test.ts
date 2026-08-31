@@ -111,6 +111,23 @@ describe('spreadPersistence', () => {
     ]);
   });
 
+  it('replaces duplicate spreads with the same name instead of keeping hidden copies', () => {
+    const duplicateA = { name: '自定义镜像', layout: 'free', slots: ['旧版'] };
+    const duplicateB = { name: '自定义镜像', layout: 'free', slots: ['中间版本'] };
+    const replacement = { name: '自定义镜像', layout: 'free', slots: ['新版'] };
+
+    expect(upsertSpreadDefinition([
+      officialSpreads[0],
+      duplicateA,
+      officialSpreads[1],
+      duplicateB,
+    ], replacement)).toEqual([
+      officialSpreads[0],
+      replacement,
+      officialSpreads[1],
+    ]);
+  });
+
   it('restores one official spread without removing custom spreads', () => {
     const customOfficial = { ...officialSpreads[0], slots: ['被改坏的主牌'] };
     const customSpread = { name: '私人牌阵', layout: 'custom', slots: ['一'] };
@@ -163,6 +180,26 @@ describe('spreadPersistence', () => {
       customSpread,
     ]);
     expect(mergeOfficialSpreadsWithCustom(null, officialSpreads)).toEqual(officialSpreads);
+  });
+
+  it('deduplicates exact custom spread names during loading with the latest saved entry winning', () => {
+    const oldSpread = {
+      name: '自定义镜像',
+      layout: 'free',
+      slots: ['旧版'],
+      slotPositions: ['old'],
+    };
+    const latestSpread = {
+      name: '自定义镜像',
+      layout: 'free',
+      slots: ['新版'],
+      slotPositions: ['latest'],
+    };
+
+    expect(mergeOfficialSpreadsWithCustom([oldSpread, latestSpread], officialSpreads)).toEqual([
+      ...officialSpreads,
+      latestSpread,
+    ]);
   });
 
   it('renames old default custom spread names for a cleaner recording-ready list', () => {

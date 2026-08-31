@@ -18,32 +18,32 @@ const getGridNumber = (position: string, type: 'col' | 'row') => {
 };
 
 const yearlyMobilePositions = [
-  { x: 8, y: 49 },
-  { x: 18, y: 67 },
-  { x: 34, y: 79 },
-  { x: 50, y: 83 },
-  { x: 66, y: 79 },
-  { x: 82, y: 67 },
-  { x: 92, y: 49 },
-  { x: 82, y: 31 },
+  { x: 7, y: 50 },
+  { x: 19, y: 70 },
+  { x: 34, y: 82 },
+  { x: 50, y: 86 },
+  { x: 66, y: 81 },
+  { x: 81, y: 70 },
+  { x: 93, y: 50 },
+  { x: 81, y: 30 },
   { x: 66, y: 19 },
-  { x: 50, y: 15 },
+  { x: 50, y: 14 },
   { x: 34, y: 19 },
-  { x: 18, y: 31 },
+  { x: 19, y: 30 },
   { x: 50, y: 49 },
 ];
 
 const celticDisplayPositions = [
-  { x: 36, y: 47 },
-  { x: 36, y: 47 },
-  { x: 36, y: 73 },
-  { x: 14, y: 47 },
-  { x: 36, y: 21 },
-  { x: 58, y: 47 },
-  { x: 84, y: 78 },
-  { x: 84, y: 58 },
-  { x: 84, y: 38 },
-  { x: 84, y: 18 },
+  { x: 38, y: 50 },
+  { x: 38, y: 50 },
+  { x: 38, y: 78 },
+  { x: 20, y: 50 },
+  { x: 38, y: 22 },
+  { x: 56, y: 50 },
+  { x: 78, y: 88 },
+  { x: 78, y: 63 },
+  { x: 78, y: 38 },
+  { x: 78, y: 13 },
 ];
 
 const useElementWidth = <T extends HTMLElement>() => {
@@ -295,14 +295,14 @@ export const ReadingSpreadDisplay: React.FC<ReadingSpreadDisplayProps> = ({
           </div>
         </div>
       ) : isYearlyRadialLayout ? (
-        <div className="w-full overflow-hidden pb-2" data-testid="yearly-radial-spread">
-          <div className="relative mx-auto aspect-square w-full max-w-[276px] rounded-3xl border border-forest-accent/10 bg-forest-bg/20 sm:max-w-[520px]">
-            <div className="pointer-events-none absolute inset-[18%] rounded-full border border-dashed border-forest-accent/12" />
-            <div className="pointer-events-none absolute left-1/2 top-1/2 h-px w-[72%] -translate-x-1/2 bg-forest-accent/10" />
-            <div className="pointer-events-none absolute left-1/2 top-1/2 h-[72%] w-px -translate-y-1/2 bg-forest-accent/10" />
+        <div className="w-full overflow-visible px-1 pb-4" data-testid="yearly-radial-spread">
+          <div
+            className="relative mx-auto aspect-[4/3] w-full max-w-[360px] overflow-visible sm:max-w-[760px]"
+            data-testid="yearly-spread-canvas"
+          >
             {cardSlots.map((slot, index) => {
               const point = yearlyMobilePositions[index] || yearlyMobilePositions[yearlyMobilePositions.length - 1];
-              const slotScale = spreadViewportWidth > 0 && spreadViewportWidth < 640 ? 0.68 : 0.82;
+              const slotScale = spreadViewportWidth > 0 && spreadViewportWidth < 640 ? 0.52 : 0.92;
 
               return (
                 <div
@@ -336,16 +336,16 @@ export const ReadingSpreadDisplay: React.FC<ReadingSpreadDisplayProps> = ({
           </div>
         </div>
       ) : isCelticCross ? (
-        <div className="w-full overflow-hidden pb-2" data-testid="celtic-cross-spread">
-          <div className="relative mx-auto aspect-[5/6] w-full max-w-[330px] rounded-3xl border border-forest-accent/10 bg-forest-bg/20 sm:max-w-[520px]">
-            <div className="pointer-events-none absolute left-[36%] top-[47%] h-[74%] w-px -translate-y-1/2 bg-forest-accent/10" />
-            <div className="pointer-events-none absolute left-[14%] right-[30%] top-[47%] h-px bg-forest-accent/10" />
-            <div className="pointer-events-none absolute bottom-[12%] right-[16%] top-[8%] w-px bg-forest-accent/10" />
+        <div className="w-full overflow-visible px-1 pb-4" data-testid="celtic-cross-spread">
+          <div
+            className="relative mx-auto aspect-[6/5] w-full max-w-[360px] overflow-visible sm:max-w-[640px]"
+            data-testid="celtic-spread-canvas"
+          >
             {cardSlots.map((slot, index) => {
               if (index === 1) return null;
 
               const point = celticDisplayPositions[index] || celticDisplayPositions[0];
-              const slotScale = spreadViewportWidth > 0 && spreadViewportWidth < 640 ? 0.68 : 0.9;
+              const slotScale = spreadViewportWidth > 0 && spreadViewportWidth < 640 ? 0.58 : 0.9;
               const slotsAtPoint = index === 0 && cardSlots[1]
                 ? [
                     { ...slot, idx: 0 },
@@ -353,12 +353,17 @@ export const ReadingSpreadDisplay: React.FC<ReadingSpreadDisplayProps> = ({
                   ]
                 : [{ ...slot, idx: index }];
               const isCenterStack = index === 0 && slotsAtPoint.length > 1;
+              const celticSlotTestId = isCenterStack
+                ? 'celtic-center-stack'
+                : index === 2
+                  ? 'celtic-foundation-slot'
+                  : `celtic-slot-${index + 1}`;
 
               return (
                 <div
                   key={`${slot.label || index}-${index}`}
                   className="absolute z-10"
-                  data-testid={isCenterStack ? 'celtic-center-stack' : index === 2 ? 'celtic-foundation-slot' : undefined}
+                  data-testid={celticSlotTestId}
                   style={{
                     left: `${point.x}%`,
                     top: `${point.y}%`,

@@ -12,6 +12,7 @@ interface AddTabProps {
   onUpdateSpreads: (spreads: SpreadDefinition[]) => void;
   cardMetadata: TarotCardMetadata[];
   cardKeywordMemory: CardKeywordMemory[];
+  readings: TarotReading[];
   onUpdateCardMetadata: (metadata: TarotCardMetadata[]) => void;
   initialData?: TarotReading | null;
   onCancel: () => void;
@@ -26,6 +27,7 @@ export const AddTab: React.FC<AddTabProps> = ({
   onUpdateSpreads,
   cardMetadata,
   cardKeywordMemory,
+  readings,
   onUpdateCardMetadata,
   initialData,
   onCancel
@@ -47,6 +49,7 @@ export const AddTab: React.FC<AddTabProps> = ({
         onUpdateSpreads={onUpdateSpreads} 
         cardMetadata={cardMetadata}
         cardKeywordMemory={cardKeywordMemory}
+        existingReadings={readings}
         onUpdateCardMetadata={onUpdateCardMetadata}
         initialData={initialData}
         onCancel={onCancel}

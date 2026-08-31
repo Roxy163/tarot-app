@@ -5,7 +5,11 @@ import { OFFICIAL_SPREADS } from '../constants';
 import { AddReadingForm } from './AddReadingForm';
 import { SpreadDefinition, TarotReading } from '../types';
 
-const renderForm = (overrides: { spreads?: SpreadDefinition[]; initialData?: Partial<TarotReading> } = {}) => {
+const renderForm = (overrides: {
+  spreads?: SpreadDefinition[];
+  initialData?: Partial<TarotReading>;
+  existingReadings?: TarotReading[];
+} = {}) => {
   const props = {
     onSubmit: vi.fn(),
     isLoading: false,
@@ -15,11 +19,34 @@ const renderForm = (overrides: { spreads?: SpreadDefinition[]; initialData?: Par
     cardMetadata: [],
     onUpdateCardMetadata: vi.fn(),
     initialData: overrides.initialData,
+    existingReadings: overrides.existingReadings || [],
   };
 
   render(<AddReadingForm {...props} />);
   return props;
 };
+
+const makeReading = (
+  id: string,
+  manualTags: string[],
+  readingDate: string,
+  overrides: Partial<TarotReading> = {},
+): TarotReading => ({
+  id,
+  userId: 'user-1',
+  date: readingDate,
+  question: `测试问题 ${id}`,
+  spread: '单牌阵',
+  cards: [{ name: '愚者', isReversed: false }],
+  interpretation: { singleCard: '', combination: '', summary: '' },
+  keywords: [],
+  manualTags,
+  isPublic: false,
+  authorName: '见习阁主',
+  isAnonymous: false,
+  readingDate,
+  ...overrides,
+});
 
 describe('AddReadingForm spread designer flow', () => {
   beforeEach(() => {
@@ -183,6 +210,10 @@ describe('AddReadingForm spread designer flow', () => {
     expect(props.onUpdateSpreads).toHaveBeenCalledWith(expect.not.arrayContaining([
       expect.objectContaining({ name: '镜像牌阵' }),
     ]));
+    await waitFor(() => {
+      expect(screen.queryByRole('heading', { name: '牌阵工作台' })).not.toBeInTheDocument();
+    });
+    expect(screen.getByText('已删除自定义牌阵')).toBeInTheDocument();
   });
 
   it('lets users delete the selected custom spread from the spread control bar', async () => {
@@ -417,6 +448,27 @@ describe('AddReadingForm spread designer flow', () => {
     expect(prompt.value).toContain('1. 主牌：愚者（正位）');
     expect(prompt.value).toContain('我的逐牌解读：新的开始，也有不确定。');
     expect(prompt.value).toContain('我对这张牌的疑问：这张牌是在鼓励我开始，还是提醒我太冲动？');
+  });
+
+  it('suggests recent and matching historical tags in the tag field', async () => {
+    const user = userEvent.setup();
+    renderForm({
+      existingReadings: [
+        makeReading('career', ['事业'], '2026-07-01T08:00:00.000Z'),
+        makeReading('emotion', ['情绪'], '2026-07-03T08:00:00.000Z'),
+      ],
+    });
+
+    const tagInput = screen.getByRole('textbox', { name: '标签' });
+    await user.click(tagInput);
+
+    expect(screen.getAllByRole('option')[0]).toHaveAccessibleName('使用标签：情绪');
+
+    await user.type(tagInput, '事');
+    expect(screen.getAllByRole('option')[0]).toHaveAccessibleName('使用标签：事业');
+
+    await user.click(screen.getByRole('option', { name: '使用标签：事业' }));
+    expect(tagInput).toHaveValue('事业');
   });
 
   it('can generate a consultant AI prompt without exposing the user interpretation notes', async () => {

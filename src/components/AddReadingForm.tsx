@@ -1,4 +1,4 @@
-import React, { useState, useEffect, FormEvent, useRef } from 'react';
+import React, { useState, useEffect, FormEvent, useRef, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Sparkles, Layers, User, MessageSquare, RotateCcw, BookOpen, Settings, Save, Hash, Orbit, Home, Wind, Info, Copy } from 'lucide-react';
 import { CardKeywordMemory, SpreadDefinition, TarotCardMetadata, ReadingSlotData, TarotReading, ReadingFormData } from '../types';
@@ -43,6 +43,7 @@ import {
 import { convertGridSlotsToFreeLayout, ensureFreeLayoutSlots } from '../lib/freeLayout';
 import { useBodyScrollLock } from '../hooks/useBodyScrollLock';
 import { ReadingAiPromptMode, buildReadingAiPrompt, getGentleAiPromptNotice } from '../lib/readingAiPrompt';
+import { applyTagSuggestionToInput, buildReadingTagSuggestions } from '../lib/readingTagSuggestions';
 
 interface AddReadingFormProps {
   onSubmit: (data: Partial<ReadingFormData>) => void;
@@ -55,6 +56,7 @@ interface AddReadingFormProps {
   cardKeywordMemory?: CardKeywordMemory[];
   onUpdateCardMetadata: (metadata: TarotCardMetadata[]) => void;
   initialData?: Partial<TarotReading>;
+  existingReadings?: TarotReading[];
   onCancel?: () => void;
 }
 
@@ -89,6 +91,7 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
   cardMetadata,
   onUpdateCardMetadata,
   initialData, 
+  existingReadings = [],
   onCancel 
 }) => {
   const [formData, setFormData] = useState({
@@ -141,7 +144,7 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
   const [showPicker, setShowPicker] = useState(false);
   const [newSpreadName, setNewSpreadName] = useState('');
   const [designActiveSlot, setDesignActiveSlot] = useState(0);
-  const [saveSuccess, setSaveSuccess] = useState(false);
+  const [spreadActionMessage, setSpreadActionMessage] = useState('');
   const showSlotNumbers = true;
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [showFeedback, setShowFeedback] = useState(false);
@@ -383,13 +386,13 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
     }
   }, [formData.spread, spreads]);
 
-  // Save success notification timer
+  // Spread action notification timer
   useEffect(() => {
-    if (saveSuccess) {
-      const timer = setTimeout(() => setSaveSuccess(false), 3000);
+    if (spreadActionMessage) {
+      const timer = setTimeout(() => setSpreadActionMessage(''), 3000);
       return () => clearTimeout(timer);
     }
-  }, [saveSuccess]);
+  }, [spreadActionMessage]);
 
   const handleSlotClick = (index: number) => {
     if (isLongPressActive) {
@@ -474,8 +477,19 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
       setNewSpreadName('');
       setDesignActiveSlot(0);
       setIsEditingSession(false);
+      if (showSpreadManager) {
+        clearSpreadManagerDraftBackup();
+        setSpreadSaveConflict(null);
+        setShowRestoreConfirm(null);
+        setShowSpreadManager(false);
+      }
     }
     setPendingDeleteSpreadNames([]);
+    setSpreadActionMessage(
+      pendingDeleteSpreadNames.length > 1
+        ? `已删除 ${pendingDeleteSpreadNames.length} 个自定义牌阵`
+        : '已删除自定义牌阵',
+    );
   };
 
   const completeSpreadSave = (
@@ -503,7 +517,7 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
     setNewSpreadName('');
     setSpreadNameNotice('');
     setSpreadSaveConflict(null);
-    setSaveSuccess(true);
+    setSpreadActionMessage('已保存，当前手记正在使用这个牌阵');
     setIsEditingSession(false);
     clearSpreadManagerDraftBackup();
     setShowSpreadManager(false);
@@ -596,7 +610,7 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
     }
     
     onUpdateSpreads(updatedSpreads);
-    setSaveSuccess(true);
+    setSpreadActionMessage('已恢复官方牌阵默认设置');
     setShowRestoreConfirm(null);
   };
 
@@ -803,6 +817,16 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
 
   const currentTemplate = LAYOUT_TEMPLATES[formData.layoutType] || LAYOUT_TEMPLATES.horizontal;
   const itemClasses = currentTemplate.itemClasses;
+  const tagSuggestions = useMemo(
+    () => buildReadingTagSuggestions(existingReadings, formData.category, 8).map(item => item.tag),
+    [existingReadings, formData.category],
+  );
+  const handleSelectTagSuggestion = (tag: string) => {
+    setFormData(prev => ({
+      ...prev,
+      category: applyTagSuggestionToInput(prev.category, tag),
+    }));
+  };
   const shouldShowChoicePathFields = formData.layoutType === 'choice'
     || formData.spread.includes('选择')
     || cardSlots.some(slot => /^[ABＡＢ]/i.test((slot.label || '').trim()));
@@ -904,7 +928,7 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
       )}
       
       <AnimatePresence>
-        {saveSuccess && (
+        {spreadActionMessage && (
           <motion.div 
             initial={{ opacity: 0, y: -20 }} 
             animate={{ opacity: 1, y: 0 }} 
@@ -912,7 +936,7 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
 	            className="fixed left-1/2 top-24 z-[100] flex -translate-x-1/2 items-center gap-2 rounded-full bg-forest-accent/90 px-5 py-3 text-sm font-medium text-white shadow-[0_14px_38px_-30px_rgba(62,58,54,0.55)]"
           >
             <Sparkles size={18} />
-            <span>已保存，当前手记正在使用这个牌阵</span>
+            <span>{spreadActionMessage}</span>
           </motion.div>
         )}
       </AnimatePresence>
@@ -1025,6 +1049,8 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
         onToggleClientMode={() => setFormData({...formData, isForClient: !formData.isForClient})}
         initialData={initialData}
         onCancel={onCancel}
+        tagSuggestions={tagSuggestions}
+        onSelectTagSuggestion={handleSelectTagSuggestion}
         highlightedRequiredField={
           submitIssue?.field === 'question' || submitIssue?.field === 'spread'
             ? submitIssue.field
@@ -1269,7 +1295,6 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
           onSetCardQuestions={setCardQuestions}
           onSetActiveSlotIndex={setActiveSlotIndex}
           onSetShowPicker={setShowPicker}
-          onUpdateCardSlotsWithHistory={updateCardSlotsWithHistory}
           hasInterpretationError={submitIssue?.field === 'cardInterpretation' && submitIssue.slotIndex === activeSlotIndex}
         />
       </div>

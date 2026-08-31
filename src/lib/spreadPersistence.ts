@@ -39,13 +39,23 @@ const getNormalizedCustomSpreadEntries = (
   officialSpreads: SpreadDefinition[],
 ) => {
   const officialNames = new Set(officialSpreads.map(spread => spread.name));
-  const customSpreads = (Array.isArray(savedSpreads) ? savedSpreads : [])
-    .filter((spread): spread is SpreadDefinition => Boolean(
-      spread?.name
-      && spread.layout
-      && Array.isArray(spread.slots)
-      && !officialNames.has(spread.name),
-    ));
+  const customSpreads = Array.from(
+    (Array.isArray(savedSpreads) ? savedSpreads : [])
+      .filter((spread): spread is SpreadDefinition => Boolean(
+        spread?.name
+        && spread.layout
+        && Array.isArray(spread.slots)
+        && !officialNames.has(spread.name),
+      ))
+      .reduce((byName, spread) => {
+        if (byName.has(spread.name)) {
+          byName.delete(spread.name);
+        }
+        byName.set(spread.name, spread);
+        return byName;
+      }, new Map<string, SpreadDefinition>())
+      .values(),
+  );
   const stableCustomNames = new Set(
     customSpreads
       .filter(spread => normalizeLegacyCustomSpreadName(spread.name) === spread.name)
@@ -159,9 +169,11 @@ export const upsertSpreadDefinition = (
     return [...spreads, spread];
   }
 
-  const nextSpreads = [...spreads];
-  nextSpreads[existingIndex] = spread;
-  return nextSpreads;
+  return [
+    ...spreads.slice(0, existingIndex),
+    spread,
+    ...spreads.slice(existingIndex + 1).filter(item => item.name !== spread.name),
+  ];
 };
 
 export const restoreOfficialSpread = (

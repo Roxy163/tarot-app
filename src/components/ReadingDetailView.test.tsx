@@ -18,7 +18,6 @@ const baseProps = {
   onSetCardQuestions: vi.fn(),
   onSetActiveSlotIndex: vi.fn(),
   onSetShowPicker: vi.fn(),
-  onUpdateCardSlotsWithHistory: vi.fn(),
 };
 
 describe('ReadingDetailView', () => {
@@ -30,8 +29,8 @@ describe('ReadingDetailView', () => {
 
     expect(detailPanel).toHaveClass('grid-cols-[5rem_minmax(0,1fr)]');
     expect(screen.getByAltText('愚者')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: '随机换牌' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: '正逆位' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '随机换牌' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '切换为逆位' })).toHaveTextContent('切为逆位');
     expect(screen.getByRole('button', { name: '重新选牌' })).toBeInTheDocument();
     expect(noteBox).toBeInTheDocument();
     expect(screen.getByLabelText('牌面疑问：主牌')).toBeInTheDocument();

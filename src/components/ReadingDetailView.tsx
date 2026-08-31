@@ -23,7 +23,6 @@ interface ReadingDetailViewProps {
   onSetCardQuestions: (questions: string[]) => void;
   onSetActiveSlotIndex: (idx: number) => void;
   onSetShowPicker: (show: boolean) => void;
-  onUpdateCardSlotsWithHistory: (slots: ReadingSlotData[]) => void;
   hasInterpretationError?: boolean;
 }
 
@@ -42,7 +41,6 @@ export const ReadingDetailView: React.FC<ReadingDetailViewProps> = ({
   onSetCardQuestions,
   onSetActiveSlotIndex,
   onSetShowPicker,
-  onUpdateCardSlotsWithHistory,
   hasInterpretationError = false
 }) => {
   const currentSlot = cardSlots[activeSlotIndex];
@@ -127,7 +125,7 @@ export const ReadingDetailView: React.FC<ReadingDetailViewProps> = ({
           </div>
 
           <div className="min-w-0 space-y-2 sm:space-y-3">
-            <div className="flex min-w-0 items-start justify-between gap-2">
+            <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:gap-x-4 sm:gap-y-2">
               <div className="min-w-0 space-y-1">
                 <p className="text-[10px] font-bold uppercase tracking-wider text-forest-muted sm:hidden">
                   {currentSlotLabel}
@@ -140,21 +138,26 @@ export const ReadingDetailView: React.FC<ReadingDetailViewProps> = ({
                 </h3>
               </div>
 
-              <button
-                type="button"
-                onClick={() => {
-                  const unused = TAROT_CARDS.filter(c => !cardSlots.some(s => s.name === c.name));
-                  const random = unused[Math.floor(Math.random() * unused.length)];
-                  const newSlots = [...cardSlots];
-                  newSlots[activeSlotIndex] = { ...newSlots[activeSlotIndex], name: random.name };
-                  onUpdateCardSlotsWithHistory(newSlots);
-                }}
-                className="flex min-h-11 shrink-0 items-center justify-center rounded-xl border border-forest-accent/10 bg-white px-3 text-forest-muted shadow-sm transition-all hover:text-forest-accent active:scale-95"
-                title="随机换牌"
-                aria-label="随机换牌"
-              >
-                <RotateCcw size={15} />
-              </button>
+              <div className="grid grid-cols-2 gap-2 sm:flex sm:shrink-0 sm:items-center sm:justify-end">
+                <button
+                  type="button"
+                  onClick={(e) => onToggleReverse(activeSlotIndex, e)}
+                  className="flex min-h-10 items-center justify-center gap-1.5 rounded-xl bg-forest-accent px-2.5 py-2 text-[11px] font-bold text-white shadow-sm transition-all hover:bg-forest-accent/90 active:scale-95 sm:min-h-11 sm:px-3 sm:text-xs"
+                  aria-label={`切换为${currentSlot.isReversed ? '正位' : '逆位'}`}
+                >
+                  <RotateCcw size={14} />
+                  <span>{currentSlot.isReversed ? '切为正位' : '切为逆位'}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onSetShowPicker(true)}
+                  className="flex min-h-10 items-center justify-center gap-1.5 rounded-xl border border-forest-accent/20 bg-white px-2.5 py-2 text-[11px] font-bold text-forest-accent shadow-sm transition-all hover:bg-forest-accent/5 active:scale-95 sm:min-h-11 sm:px-3 sm:text-xs"
+                  aria-label="重新选牌"
+                >
+                  <Plus size={14} />
+                  <span>重新选牌</span>
+                </button>
+              </div>
             </div>
 
             <div className="flex flex-wrap gap-1.5 sm:gap-2">
@@ -167,23 +170,6 @@ export const ReadingDetailView: React.FC<ReadingDetailViewProps> = ({
                   {cardCorrespondence.element && <span className={correspondenceBadgeClass}>元素: {cardCorrespondence.element}</span>}
                 </>
               )}
-            </div>
-
-            <div className="grid grid-cols-2 gap-2 sm:flex sm:items-center">
-              <button
-                type="button"
-                onClick={(e) => onToggleReverse(activeSlotIndex, e)}
-                className="flex min-h-11 items-center justify-center gap-2 rounded-xl bg-forest-accent px-3 py-2 text-xs font-bold text-white shadow-sm transition-all hover:bg-forest-accent/90 active:scale-95 sm:px-4"
-              >
-                <RotateCcw size={14} /> 正逆位
-              </button>
-              <button
-                type="button"
-                onClick={() => onSetShowPicker(true)}
-                className="flex min-h-11 items-center justify-center gap-2 rounded-xl border border-forest-accent/20 bg-white px-3 py-2 text-xs font-bold text-forest-accent shadow-sm transition-all hover:bg-forest-accent/5 active:scale-95 sm:px-4"
-              >
-                <Plus size={14} /> 重新选牌
-              </button>
             </div>
           </div>
 

@@ -14,6 +14,7 @@ export type AnalyticsEventName =
   | 'daily_deck_shuffled'
   | 'daily_fortune_saved'
   | 'daily_fortune_updated'
+  | 'daily_fortune_deleted'
   | 'daily_reflection_saved'
   | 'daily_fortune_archived'
   | 'daily_annotation_saved'

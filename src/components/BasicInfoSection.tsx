@@ -29,6 +29,8 @@ interface BasicInfoSectionProps {
   onCancel?: () => void;
   highlightedRequiredField?: 'question' | 'spread' | null;
   quickThemeSlot?: React.ReactNode;
+  tagSuggestions?: string[];
+  onSelectTagSuggestion?: (tag: string) => void;
 }
 
 export const BasicInfoSection: React.FC<BasicInfoSectionProps> = ({
@@ -57,7 +59,10 @@ export const BasicInfoSection: React.FC<BasicInfoSectionProps> = ({
   onCancel,
   highlightedRequiredField = null,
   quickThemeSlot,
+  tagSuggestions = [],
+  onSelectTagSuggestion,
 }) => {
+  const [isTagSuggestionOpen, setIsTagSuggestionOpen] = React.useState(false);
   const officialSpreadNames = new Set(OFFICIAL_SPREADS.map(item => item.name));
   const officialSpreads = spreads.filter(item => officialSpreadNames.has(item.name));
   const customSpreads = spreads.filter(item => !officialSpreadNames.has(item.name));
@@ -76,6 +81,7 @@ export const BasicInfoSection: React.FC<BasicInfoSectionProps> = ({
       target.scrollIntoView({ block: 'center', inline: 'nearest', behavior: 'smooth' });
     }, 120);
   };
+  const shouldShowTagSuggestions = isTagSuggestionOpen && tagSuggestions.length > 0;
 
   return (
     <div className="mb-2.5 space-y-2 sm:mb-4 sm:space-y-3">
@@ -160,10 +166,51 @@ export const BasicInfoSection: React.FC<BasicInfoSectionProps> = ({
             <input 
               className="min-h-11 w-full rounded-xl border border-forest-accent/8 bg-white/42 py-2 pl-9 pr-2 text-sm text-forest-ink transition-all placeholder:text-forest-muted/50 focus:ring-2 focus:ring-forest-accent/15 sm:py-2.5 sm:pl-10 sm:pr-4 sm:text-base"
               placeholder="添加标签..." 
+              aria-label="标签"
+              aria-autocomplete="list"
+              aria-expanded={shouldShowTagSuggestions}
               value={category} 
-              onFocus={scrollFocusedFieldIntoView}
-              onChange={e => onUpdateCategory(e.target.value)} 
+              onFocus={(event) => {
+                setIsTagSuggestionOpen(true);
+                scrollFocusedFieldIntoView(event);
+              }}
+              onBlur={() => {
+                window.setTimeout(() => setIsTagSuggestionOpen(false), 120);
+              }}
+              onChange={e => {
+                setIsTagSuggestionOpen(true);
+                onUpdateCategory(e.target.value);
+              }}
             />
+            {shouldShowTagSuggestions && (
+              <div
+                role="listbox"
+                aria-label="历史标签建议"
+                className="absolute left-0 right-0 top-[calc(100%+0.35rem)] z-40 overflow-hidden rounded-xl border border-forest-accent/8 bg-white/96 p-1.5 shadow-[0_16px_38px_-30px_rgba(62,58,54,0.42)] backdrop-blur-md"
+              >
+                {tagSuggestions.map((tag, index) => (
+                  <button
+                    key={tag}
+                    type="button"
+                    role="option"
+                    aria-label={`使用标签：${tag}`}
+                    onMouseDown={event => event.preventDefault()}
+                    onClick={() => {
+                      onSelectTagSuggestion?.(tag);
+                      setIsTagSuggestionOpen(false);
+                    }}
+                    className="flex min-h-9 w-full items-center justify-between gap-2 rounded-lg px-2.5 text-left text-xs font-medium text-forest-ink transition-colors hover:bg-forest-accent/7"
+                  >
+                    <span className="truncate">#{tag}</span>
+                    {index < 3 && (
+                      <span className="shrink-0 rounded-full bg-forest-accent/8 px-2 py-0.5 text-[10px] text-forest-accent">
+                        最近
+                      </span>
+                    )}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
         </div>
 
