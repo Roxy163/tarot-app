@@ -407,6 +407,21 @@ export const useDailyFortune = (
     trackEvent('daily_annotation_saved');
   }, []);
 
+  const deleteDailyFortunes = useCallback((fortuneIds: string[]) => {
+    const idsToDelete = new Set(fortuneIds.filter(Boolean));
+    if (idsToDelete.size === 0) return;
+
+    setFortunes(prev => prev.filter(fortune => !idsToDelete.has(fortune.id)));
+    trackEvent('daily_fortune_deleted', {
+      record_count: idsToDelete.size,
+      auth_state: session?.uid ? 'signed_in' : 'guest',
+    });
+  }, [session?.uid]);
+
+  const deleteDailyFortune = useCallback((fortuneId: string) => {
+    deleteDailyFortunes([fortuneId]);
+  }, [deleteDailyFortunes]);
+
   const getArchivedFortunes = useCallback(() => (
     fortunes
       .filter(f => Boolean(f.archivedAt))
@@ -594,6 +609,8 @@ export const useDailyFortune = (
     archiveDailyFortune,
     updateDailyFortuneReflection,
     saveDailyFortuneToCardAnnotation,
+    deleteDailyFortune,
+    deleteDailyFortunes,
     getArchivedFortunes,
     getMonthlySummary,
     getSeasonalSummary,

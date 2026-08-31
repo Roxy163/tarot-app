@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { DailyFortune } from '../types';
@@ -26,6 +26,7 @@ const defaultProps = {
   onArchive: vi.fn(),
   onUpdateReflection: vi.fn(),
   onSaveToCardAnnotation: vi.fn(),
+  onDeleteFortunes: vi.fn(),
 };
 
 const renderCard = (props: Partial<React.ComponentProps<typeof DailyFortuneCard>> = {}) => {
@@ -165,6 +166,98 @@ describe('DailyFortuneCard', () => {
     const button = screen.getByRole('button', { name: '已归入牌义注疏' });
     expect(button).toBeDisabled();
     expect(props.onSaveToCardAnnotation).not.toHaveBeenCalled();
+  });
+
+  it('lets users delete one archived daily fortune from the swipe action', async () => {
+    const user = userEvent.setup();
+    const archivedFortune: DailyFortune = {
+      ...baseFortune,
+      archivedAt: '2026-07-02T09:00:00.000Z',
+      reflection: '晚上对应到一次真实的直觉判断。',
+    };
+    const props = renderCard({ fortune: archivedFortune, fortunes: [archivedFortune] });
+
+    await user.click(screen.getByRole('button', { name: '打开日运复盘' }));
+    expect(screen.queryByRole('button', { name: '删除这天' })).not.toBeInTheDocument();
+
+    const summaryButton = screen.getByRole('button', { name: /2026-07-02/ });
+    fireEvent.pointerDown(summaryButton, { pointerId: 1, button: 0, clientX: 320, clientY: 120 });
+    fireEvent.pointerMove(summaryButton, { pointerId: 1, button: 0, clientX: 220, clientY: 124 });
+    fireEvent.pointerUp(summaryButton, { pointerId: 1, button: 0, clientX: 220, clientY: 124 });
+
+    await user.click(screen.getByRole('button', { name: '删除 2026-07-02 日运记录' }));
+    const dialog = screen.getByRole('dialog', { name: '删除日运记录' });
+    await user.click(within(dialog).getByRole('button', { name: '删除' }));
+
+    expect(props.onDeleteFortunes).toHaveBeenCalledWith([archivedFortune.id]);
+  });
+
+  it('lets users organize and delete selected archived daily fortunes', async () => {
+    const user = userEvent.setup();
+    const archivedFortune: DailyFortune = {
+      ...baseFortune,
+      archivedAt: '2026-07-02T09:00:00.000Z',
+      reflection: '晚上对应到一次真实的直觉判断。',
+    };
+    const olderFortune: DailyFortune = {
+      ...baseFortune,
+      id: 'fortune-older',
+      date: '2026-07-01',
+      cardName: '魔术师',
+      archivedAt: '2026-07-01T09:00:00.000Z',
+      reflection: '先动手，再修正。',
+    };
+    const props = renderCard({ fortune: archivedFortune, fortunes: [archivedFortune, olderFortune] });
+
+    await user.click(screen.getByRole('button', { name: '打开日运复盘' }));
+    expect(screen.getByRole('button', { name: '补写日运手札' })).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: '整理' }));
+    await waitFor(() => {
+      expect(screen.queryByRole('button', { name: '补写日运手札' })).not.toBeInTheDocument();
+    });
+    await user.click(screen.getByRole('button', { name: '选择 2026-07-02 日运记录' }));
+    await user.click(screen.getByRole('button', { name: '删除选中 1 条日运记录' }));
+    const dialog = screen.getByRole('dialog', { name: '删除日运记录' });
+    await user.click(within(dialog).getByRole('button', { name: '删除' }));
+
+    expect(props.onDeleteFortunes).toHaveBeenCalledWith([archivedFortune.id]);
+  });
+
+  it('keeps daily archive tools compact with filters and an export menu', async () => {
+    const user = userEvent.setup();
+    const reviewedFortune: DailyFortune = {
+      ...baseFortune,
+      archivedAt: '2026-07-02T09:00:00.000Z',
+      initialImpression: '先观察。',
+      dailyReview: '晚上对应到直觉判断。',
+      reflection: '第一直觉：先观察。\n\n今日回看：晚上对应到直觉判断。',
+    };
+    const pendingFortune: DailyFortune = {
+      ...baseFortune,
+      id: 'fortune-pending',
+      date: '2026-07-01',
+      cardName: '魔术师',
+      archivedAt: '2026-07-01T09:00:00.000Z',
+      initialImpression: '先动手。',
+      reflection: '第一直觉：先动手。',
+    };
+
+    renderCard({ fortune: reviewedFortune, fortunes: [reviewedFortune, pendingFortune] });
+
+    await user.click(screen.getByRole('button', { name: '打开日运复盘' }));
+    const archiveDialog = screen.getByRole('dialog', { name: '日运复盘' });
+
+    expect(within(archiveDialog).getByRole('button', { name: /导出/ })).toBeEnabled();
+    expect(within(archiveDialog).queryByRole('button', { name: '导出PDF' })).not.toBeInTheDocument();
+
+    await user.click(within(archiveDialog).getByRole('button', { name: /导出/ }));
+    expect(within(archiveDialog).getByRole('menuitem', { name: /PDF 手札/ })).toBeInTheDocument();
+    expect(within(archiveDialog).getByRole('menuitem', { name: /表格/ })).toBeInTheDocument();
+    expect(within(archiveDialog).getByRole('menuitem', { name: /Markdown/ })).toBeInTheDocument();
+
+    await user.click(within(archiveDialog).getByRole('button', { name: '筛选待回看日运记录' }));
+    expect(within(archiveDialog).getByText(/先动手/)).toBeInTheDocument();
+    expect(within(archiveDialog).queryByText(/晚上对应到直觉判断/)).not.toBeInTheDocument();
   });
 
   it('preserves line breaks when showing daily reflection on the home card', () => {

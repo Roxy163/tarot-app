@@ -7,6 +7,7 @@ import { DailyFortuneCard } from '../DailyFortuneCard';
 import { MysticWatermark } from '../MysticWatermark';
 import { useDailyFortune } from '../../hooks/useDailyFortune';
 import { cardAnnotationService } from '../../services/cardAnnotationService';
+import { getDailyReflectionParts } from '../../lib/dailyFortuneReflection';
 
 interface HomeTabProps {
   session: { uid?: string; email?: string } | null;
@@ -44,6 +45,7 @@ export const HomeTab: React.FC<HomeTabProps> = ({
     archiveDailyFortune,
     updateDailyFortuneReflection,
     saveDailyFortuneToCardAnnotation,
+    deleteDailyFortunes,
   } = dailyFortune;
   
   const todayFortune = getToday();
@@ -52,12 +54,12 @@ export const HomeTab: React.FC<HomeTabProps> = ({
     () => realReadings.filter(reading => Boolean(reading.userFeedback?.trim())),
     [realReadings],
   );
-  const loggedCardCount = useMemo(
-    () => realReadings.reduce((total, reading) => total + reading.cards.length, 0),
-    [realReadings],
-  );
   const archivedDailyFortuneCount = useMemo(
     () => fortunes.filter(fortune => Boolean(fortune.archivedAt)).length,
+    [fortunes],
+  );
+  const reviewedDailyFortuneCount = useMemo(
+    () => fortunes.filter(fortune => Boolean(getDailyReflectionParts(fortune).dailyReview.trim())).length,
     [fortunes],
   );
   const dailyFortuneOwnerName = (
@@ -101,15 +103,16 @@ export const HomeTab: React.FC<HomeTabProps> = ({
             onArchive={archiveDailyFortune}
             onUpdateReflection={updateDailyFortuneReflection}
             onSaveToCardAnnotation={saveDailyFortuneToCardAnnotation}
+            onDeleteFortunes={deleteDailyFortunes}
           />
         </div>
 
         <div className="relative mt-1.5 grid grid-cols-4 gap-1 sm:mt-2.5 sm:gap-2">
           {[
             { label: '日运', value: archivedDailyFortuneCount, icon: Sun },
+            { label: '日运回看', value: reviewedDailyFortuneCount, icon: CheckCircle2 },
             { label: '手记', value: realReadings.length, icon: BookOpen },
-            { label: '已复盘', value: reviewedReadings.length, icon: CheckCircle2 },
-            { label: '牌面', value: loggedCardCount, icon: Sparkles },
+            { label: '手记复盘', value: reviewedReadings.length, icon: Sparkles },
           ].map(item => {
             const Icon = item.icon;
             const hasValue = item.value > 0;

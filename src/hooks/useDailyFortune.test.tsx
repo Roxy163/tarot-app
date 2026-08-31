@@ -407,4 +407,27 @@ describe('useDailyFortune', () => {
     expect(result.current.fortunes[0].source).toBe('app-draw');
     expect(result.current.fortunes[0].cardName).not.toBe('女祭司');
   });
+
+  it('deletes selected daily fortune records from local state', () => {
+    const { result } = renderHook(() => useDailyFortune());
+
+    act(() => {
+      result.current.createDailyFortuneFromCard('ar02', false, 'physical-draw');
+    });
+    act(() => {
+      result.current.archiveDailyFortune(result.current.fortunes[0].id, {
+        initialImpression: '第一眼很安静',
+        dailyReview: '晚上对应到沉默观察',
+      });
+    });
+
+    const fortuneId = result.current.fortunes[0].id;
+
+    act(() => {
+      result.current.deleteDailyFortunes([fortuneId]);
+    });
+
+    expect(result.current.fortunes).toHaveLength(0);
+    expect(result.current.getToday()).toBeUndefined();
+  });
 });

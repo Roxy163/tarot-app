@@ -49,6 +49,7 @@ interface DailyFortuneCardProps {
   onArchive: (id: string, reflection?: string | DailyFortuneReflectionParts) => void;
   onUpdateReflection: (id: string, reflection: string | DailyFortuneReflectionParts) => void;
   onSaveToCardAnnotation: (id: string, note?: string) => void;
+  onDeleteFortunes: (ids: string[]) => void;
 }
 
 const FortuneCardBack = ({
@@ -165,6 +166,7 @@ export const DailyFortuneCard: React.FC<DailyFortuneCardProps> = ({
   onArchive,
   onUpdateReflection,
   onSaveToCardAnnotation,
+  onDeleteFortunes,
 }) => {
   const [cardNumber, setCardNumber] = useState('');
   const [showNumberInput, setShowNumberInput] = useState(false);
@@ -1018,6 +1020,7 @@ export const DailyFortuneCard: React.FC<DailyFortuneCardProps> = ({
         onClose={() => setShowArchiveZone(false)}
         onUpdateReflection={onUpdateReflection}
         onSaveToCardAnnotation={onSaveToCardAnnotation}
+        onDeleteFortunes={onDeleteFortunes}
         ownerName={ownerName}
       />
     </>

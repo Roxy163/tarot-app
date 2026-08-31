@@ -26,6 +26,8 @@ describe('HomeTab', () => {
       archiveDailyFortune: vi.fn(),
       updateDailyFortuneReflection: vi.fn(),
       saveDailyFortuneToCardAnnotation: vi.fn(),
+      deleteDailyFortune: vi.fn(),
+      deleteDailyFortunes: vi.fn(),
       getArchivedFortunes: vi.fn(() => []),
       getMonthlySummary: vi.fn(),
       getSeasonalSummary: vi.fn(),
@@ -52,6 +54,8 @@ describe('HomeTab', () => {
     expect(screen.queryByText('把抽到的牌')).not.toBeInTheDocument();
     expect(screen.queryByText('写成看见自己的证据')).not.toBeInTheDocument();
     expect(screen.getByText('今日研习')).toBeInTheDocument();
+    expect(screen.getByText('日运回看')).toBeInTheDocument();
+    expect(screen.getByText('手记复盘')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /日运复盘/ })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /典籍复盘/ })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /牌义注疏/ })).toBeInTheDocument();

@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { AnimatePresence, motion } from 'motion/react';
 import {
@@ -6,10 +6,15 @@ import {
   BarChart3,
   BookOpen,
   CheckCircle2,
+  ChevronDown,
+  Clock3,
   Download,
+  FileText,
   Library,
   PenLine,
   Save,
+  Table2,
+  Trash2,
   X,
 } from 'lucide-react';
 import { DailyFortune, DailyFortuneReflectionParts } from '../types';
@@ -36,6 +41,7 @@ import { MysticWatermark } from './MysticWatermark';
 import { QuietEmptyState } from './ui/SoftUI';
 import { AutoResizeTextarea } from './ui/AutoResizeTextarea';
 import { trackEvent } from '../lib/analytics';
+import { ConfirmDialog } from './ConfirmDialog';
 
 interface DailyFortuneArchiveModalProps {
   fortunes: DailyFortune[];
@@ -43,10 +49,24 @@ interface DailyFortuneArchiveModalProps {
   onClose: () => void;
   onUpdateReflection: (id: string, reflection: string | DailyFortuneReflectionParts) => void;
   onSaveToCardAnnotation: (id: string, note?: string) => void;
+  onDeleteFortunes: (ids: string[]) => void;
   ownerName?: string;
 }
 
 type ReviewView = 'timeline' | 'cards' | 'month';
+type ReviewFilter = 'all' | 'pending' | 'reviewed' | 'saved';
+type SwipeDragState = {
+  pointerId: number | null;
+  startX: number;
+  startY: number;
+  startOffset: number;
+  isTracking: boolean;
+  isDragging: boolean;
+};
+
+const SWIPE_ACTION_WIDTH = 84;
+const SWIPE_MAX_OFFSET = 92;
+const SWIPE_OPEN_THRESHOLD = 42;
 
 const getCardData = (cardName: string) => TAROT_CARDS.find(card => card.name === cardName);
 
@@ -55,6 +75,29 @@ const getSourceLabel = (source?: DailyFortune['source']) => (
 );
 
 const getDirectionLabel = (fortune: DailyFortune) => (fortune.isReversed ? '逆位' : '正位');
+
+const hasDailyReview = (fortune: DailyFortune) => Boolean(getDailyReflectionParts(fortune).dailyReview.trim());
+
+const isDailyReviewPending = (fortune: DailyFortune) => !hasDailyReview(fortune);
+
+const matchesReviewFilter = (fortune: DailyFortune, filter: ReviewFilter) => {
+  if (filter === 'pending') return isDailyReviewPending(fortune);
+  if (filter === 'reviewed') return hasDailyReview(fortune);
+  if (filter === 'saved') return Boolean(fortune.savedToCardAnnotationAt);
+  return true;
+};
+
+const getFortunePreviewText = (fortune: DailyFortune) => {
+  const parts = getDailyReflectionParts(fortune);
+  return (
+    parts.dailyReview
+    || parts.initialImpression
+    || fortune.reflection
+    || fortune.interpretation
+  );
+};
+
+const clampSwipeOffset = (value: number) => Math.min(0, Math.max(-SWIPE_MAX_OFFSET, value));
 
 const getSafeFileNamePart = (value: string) => (
   value.trim().replace(/[\\/:*?"<>|]/g, '-').slice(0, 24) || '见习阁主'
@@ -119,94 +162,246 @@ const DailyReflectionBlocks = ({ fortune }: { fortune: DailyFortune }) => {
 interface FortuneArchiveItemProps {
   fortune: DailyFortune;
   expanded: boolean;
+  isOrganizing: boolean;
+  isSelected: boolean;
+  resetSwipeToken: number;
   onToggle: () => void;
+  onToggleSelected: () => void;
   onEdit: (fortune: DailyFortune) => void;
   onSaveToCardAnnotation: (fortune: DailyFortune) => void;
+  onRequestDelete: (fortune: DailyFortune) => void;
 }
 
 const FortuneArchiveItem = ({
   fortune,
   expanded,
+  isOrganizing,
+  isSelected,
+  resetSwipeToken,
   onToggle,
+  onToggleSelected,
   onEdit,
   onSaveToCardAnnotation,
+  onRequestDelete,
 }: FortuneArchiveItemProps) => {
   const card = getCardData(fortune.cardName);
   const canSaveToAnnotation = hasDailyReflectionContent(fortune);
   const isSavedToAnnotation = Boolean(fortune.savedToCardAnnotationAt);
+  const [swipeOffset, setSwipeOffset] = useState(0);
+  const [isSwipeOpen, setIsSwipeOpen] = useState(false);
+  const showSwipeAction = !isOrganizing && (isSwipeOpen || swipeOffset < -8);
+  const swipeStateRef = useRef<SwipeDragState>({
+    pointerId: null,
+    startX: 0,
+    startY: 0,
+    startOffset: 0,
+    isTracking: false,
+    isDragging: false,
+  });
+  const didSwipeRef = useRef(false);
+
+  const closeSwipe = useCallback(() => {
+    setSwipeOffset(0);
+    setIsSwipeOpen(false);
+  }, []);
+
+  const openSwipe = useCallback(() => {
+    setSwipeOffset(-SWIPE_ACTION_WIDTH);
+    setIsSwipeOpen(true);
+  }, []);
+
+  useEffect(() => {
+    if (isOrganizing) closeSwipe();
+  }, [closeSwipe, isOrganizing]);
+
+  useEffect(() => {
+    closeSwipe();
+  }, [closeSwipe, resetSwipeToken]);
+
+  const handlePointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (isOrganizing || event.button !== 0) return;
+
+    swipeStateRef.current = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      startOffset: isSwipeOpen ? -SWIPE_ACTION_WIDTH : 0,
+      isTracking: true,
+      isDragging: false,
+    };
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+  };
+
+  const handlePointerMove = (event: React.PointerEvent<HTMLDivElement>) => {
+    const state = swipeStateRef.current;
+    if (!state.isTracking || state.pointerId !== event.pointerId) return;
+
+    const deltaX = event.clientX - state.startX;
+    const deltaY = event.clientY - state.startY;
+    if (!state.isDragging && (Math.abs(deltaX) < 8 || Math.abs(deltaX) < Math.abs(deltaY))) return;
+
+    state.isDragging = true;
+    didSwipeRef.current = true;
+    event.preventDefault();
+    setSwipeOffset(clampSwipeOffset(state.startOffset + deltaX));
+  };
+
+  const handlePointerEnd = (event: React.PointerEvent<HTMLDivElement>) => {
+    const state = swipeStateRef.current;
+    if (!state.isTracking || state.pointerId !== event.pointerId) return;
+
+    const finalOffset = clampSwipeOffset(state.startOffset + event.clientX - state.startX);
+    swipeStateRef.current = { ...state, isTracking: false, isDragging: false };
+    event.currentTarget.releasePointerCapture?.(event.pointerId);
+
+    if (!state.isDragging) return;
+    if (finalOffset <= -SWIPE_OPEN_THRESHOLD) openSwipe();
+    else closeSwipe();
+  };
+
+  const handleSummaryClick = (event: React.MouseEvent<HTMLButtonElement>) => {
+    if (didSwipeRef.current) {
+      didSwipeRef.current = false;
+      event.preventDefault();
+      event.stopPropagation();
+      return;
+    }
+
+    if (isSwipeOpen) {
+      closeSwipe();
+      event.preventDefault();
+      event.stopPropagation();
+      return;
+    }
+
+    if (isOrganizing) onToggleSelected();
+    else onToggle();
+  };
+
+  const handleDeleteFromSwipe = () => {
+    closeSwipe();
+    onRequestDelete(fortune);
+  };
 
   return (
-    <div className="overflow-hidden rounded-[1.45rem] border border-forest-accent/8 bg-white/44 shadow-none">
-      <button
-        type="button"
-        onClick={onToggle}
-        className="flex w-full items-center gap-3 p-3 text-left"
-      >
-        <div className={`h-20 w-14 shrink-0 overflow-hidden rounded-xl border border-forest-accent/10 bg-forest-bg shadow-sm ${fortune.isReversed ? 'rotate-180' : ''}`}>
-          <TarotCardImage
-            src={getCardImageUrl(card?.id || 'ar00')}
-            alt={fortune.cardName}
-            name={fortune.cardName}
-            className="h-full w-full object-cover"
-          />
-        </div>
-        <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center gap-2">
-            <p className="font-serif text-lg font-semibold text-forest-ink">{fortune.cardName}</p>
-            <span className="rounded-full bg-forest-accent/10 px-2 py-0.5 text-[10px] font-medium text-forest-accent">
-              {getDirectionLabel(fortune)}
-            </span>
-            {isSavedToAnnotation && (
-              <span className="rounded-full bg-forest-pink/10 px-2 py-0.5 text-[10px] font-medium text-forest-pink">
-                已归入注疏
-              </span>
-            )}
-          </div>
-          <p className="mt-1 text-xs text-forest-muted">{fortune.date} · {getSourceLabel(fortune.source)}</p>
-          <p className="mt-2 line-clamp-2 whitespace-pre-wrap text-xs leading-relaxed text-forest-text/70">
-            {fortune.reflection || '还没有写第一直觉或今日回看。'}
-          </p>
-        </div>
-      </button>
-
-      <AnimatePresence>
-        {expanded && (
-          <motion.div
-            initial={{ height: 0, opacity: 0 }}
-            animate={{ height: 'auto', opacity: 1 }}
-            exit={{ height: 0, opacity: 0 }}
-            className="border-t border-forest-accent/8 px-4 pb-4 pt-3"
+    <div className={`relative overflow-hidden rounded-[1.45rem] border shadow-none transition-colors ${
+      isSelected
+        ? 'border-red-200 bg-red-50/38'
+        : 'border-forest-accent/8 bg-white/44'
+    }`}>
+      {!isOrganizing && (
+        <div className={`absolute inset-y-0 right-0 flex w-[5.25rem] items-stretch justify-end bg-red-50 transition-opacity ${
+          showSwipeAction ? 'pointer-events-auto opacity-100' : 'pointer-events-none opacity-0'
+        }`} aria-hidden={!showSwipeAction}>
+          <button
+            type="button"
+            onClick={handleDeleteFromSwipe}
+            tabIndex={isSwipeOpen ? 0 : -1}
+            aria-label={`删除 ${fortune.date} 日运记录`}
+            className={`flex w-full flex-col items-center justify-center gap-1 text-xs font-medium text-red-500 transition-colors hover:bg-red-100 ${
+              showSwipeAction ? 'visible' : 'invisible'
+            }`}
           >
-            <p className="text-xs leading-relaxed text-forest-text/80">{fortune.interpretation}</p>
-            <DailyReflectionBlocks fortune={fortune} />
-            <div className="mt-3 grid gap-2 sm:grid-cols-2">
-              <button
-                type="button"
-                onClick={() => onEdit(fortune)}
-                className="flex min-h-11 w-full items-center justify-center gap-2 rounded-full bg-forest-accent/10 px-4 text-xs font-medium text-forest-accent hover:bg-forest-accent/15"
-              >
-                <PenLine size={14} />
-                补写日运手札
-              </button>
-              <button
-                type="button"
-                onClick={() => onSaveToCardAnnotation(fortune)}
-                disabled={!canSaveToAnnotation || isSavedToAnnotation}
-                className={`flex min-h-11 w-full items-center justify-center gap-2 rounded-full px-4 text-xs font-medium transition-colors ${
-                  isSavedToAnnotation
-                    ? 'bg-forest-accent/10 text-forest-accent'
-                    : canSaveToAnnotation
-                      ? 'bg-forest-pink/12 text-forest-pink hover:bg-forest-pink/18'
-                      : 'bg-forest-bg text-forest-muted'
-                }`}
-              >
-                {isSavedToAnnotation ? <CheckCircle2 size={14} /> : <BookOpen size={14} />}
-                {isSavedToAnnotation ? '已归入牌义注疏' : canSaveToAnnotation ? '归入牌义注疏' : '先补写再归入'}
-              </button>
+            <Trash2 size={17} />
+            删除
+          </button>
+        </div>
+      )}
+
+      <motion.div
+        animate={{ x: isOrganizing ? 0 : swipeOffset }}
+        transition={{ type: 'spring', stiffness: 420, damping: 36 }}
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={handlePointerEnd}
+        onPointerCancel={handlePointerEnd}
+        className={`relative touch-pan-y rounded-[1.35rem] ${
+          isSelected ? 'bg-red-50/80' : 'bg-white/44'
+        }`}
+      >
+        <button
+          type="button"
+          onClick={handleSummaryClick}
+          aria-label={isOrganizing
+            ? `${isSelected ? '取消选择' : '选择'} ${fortune.date} 日运记录`
+            : undefined}
+          className="flex w-full items-center gap-3 p-3 text-left"
+        >
+          {isOrganizing && (
+            <span className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full border ${
+              isSelected
+                ? 'border-red-400 bg-red-500 text-white'
+                : 'border-forest-accent/18 bg-white/70 text-transparent'
+            }`}>
+              <CheckCircle2 size={14} />
+            </span>
+          )}
+          <div className={`h-20 w-14 shrink-0 overflow-hidden rounded-xl border border-forest-accent/10 bg-forest-bg shadow-sm ${fortune.isReversed ? 'rotate-180' : ''}`}>
+            <TarotCardImage
+              src={getCardImageUrl(card?.id || 'ar00')}
+              alt={fortune.cardName}
+              name={fortune.cardName}
+              className="h-full w-full object-cover"
+            />
+          </div>
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <p className="font-serif text-lg font-semibold text-forest-ink">{fortune.cardName}</p>
+              <span className="rounded-full bg-forest-accent/10 px-2 py-0.5 text-[10px] font-medium text-forest-accent">
+                {getDirectionLabel(fortune)}
+              </span>
+              {isSavedToAnnotation && (
+                <span className="rounded-full bg-forest-pink/10 px-2 py-0.5 text-[10px] font-medium text-forest-pink">
+                  已归入注疏
+                </span>
+              )}
             </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+            <p className="mt-1 text-xs text-forest-muted">{fortune.date} · {getSourceLabel(fortune.source)}</p>
+            <p className="mt-2 line-clamp-2 whitespace-pre-wrap text-xs leading-relaxed text-forest-text/70">
+              {fortune.reflection || '还没有写第一直觉或今日回看。'}
+            </p>
+          </div>
+        </button>
+
+        <AnimatePresence>
+          {expanded && !isOrganizing && (
+            <motion.div
+              initial={{ height: 0, opacity: 0 }}
+              animate={{ height: 'auto', opacity: 1 }}
+              exit={{ height: 0, opacity: 0 }}
+              className="border-t border-forest-accent/8 px-4 pb-4 pt-3"
+            >
+              <p className="text-xs leading-relaxed text-forest-text/80">{fortune.interpretation}</p>
+              <DailyReflectionBlocks fortune={fortune} />
+              <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                <button
+                  type="button"
+                  onClick={() => onEdit(fortune)}
+                  className="flex min-h-11 w-full items-center justify-center gap-2 rounded-full bg-forest-accent/10 px-4 text-xs font-medium text-forest-accent hover:bg-forest-accent/15"
+                >
+                  <PenLine size={14} />
+                  补写日运手札
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onSaveToCardAnnotation(fortune)}
+                  disabled={!canSaveToAnnotation || isSavedToAnnotation}
+                  className={`flex min-h-11 w-full items-center justify-center gap-2 rounded-full px-4 text-xs font-medium transition-colors ${
+                    isSavedToAnnotation
+                      ? 'bg-forest-accent/10 text-forest-accent'
+                      : canSaveToAnnotation
+                        ? 'bg-forest-pink/12 text-forest-pink hover:bg-forest-pink/18'
+                        : 'bg-forest-bg text-forest-muted'
+                  }`}
+                >
+                  {isSavedToAnnotation ? <CheckCircle2 size={14} /> : <BookOpen size={14} />}
+                  {isSavedToAnnotation ? '已归入牌义注疏' : canSaveToAnnotation ? '归入牌义注疏' : '先补写再归入'}
+                </button>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </motion.div>
     </div>
   );
 };
@@ -217,6 +412,7 @@ export const DailyFortuneArchiveModal: React.FC<DailyFortuneArchiveModalProps> =
   onClose,
   onUpdateReflection,
   onSaveToCardAnnotation,
+  onDeleteFortunes,
   ownerName = '见习阁主',
 }) => {
   useBodyScrollLock(isOpen);
@@ -227,44 +423,93 @@ export const DailyFortuneArchiveModal: React.FC<DailyFortuneArchiveModalProps> =
   const [editingFortune, setEditingFortune] = useState<DailyFortune | null>(null);
   const [editInitialImpression, setEditInitialImpression] = useState('');
   const [editDailyReview, setEditDailyReview] = useState('');
-  const [showMoreExportFormats, setShowMoreExportFormats] = useState(false);
-  const moreExportFormatsRef = useRef<HTMLDivElement | null>(null);
-  const closeMoreExportFormats = useCallback(() => setShowMoreExportFormats(false), []);
-  useClickOutside(moreExportFormatsRef, closeMoreExportFormats, showMoreExportFormats);
+  const [reviewFilter, setReviewFilter] = useState<ReviewFilter>('all');
+  const [isExportMenuOpen, setIsExportMenuOpen] = useState(false);
+  const [isOrganizing, setIsOrganizing] = useState(false);
+  const [selectedDeleteIds, setSelectedDeleteIds] = useState<string[]>([]);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [swipeResetToken, setSwipeResetToken] = useState(0);
+  const exportMenuRef = useRef<HTMLDivElement | null>(null);
+  const closeExportMenu = useCallback(() => setIsExportMenuOpen(false), []);
+  useClickOutside(exportMenuRef, closeExportMenu, isExportMenuOpen);
 
   const currentMonthKey = getCurrentMonthKey();
-  const monthFortunes = useMemo(
+  const visibleFortunes = useMemo(
+    () => fortunes.filter(fortune => matchesReviewFilter(fortune, reviewFilter)),
+    [fortunes, reviewFilter],
+  );
+  const allMonthFortunes = useMemo(
     () => getFortunesForMonth(fortunes, currentMonthKey),
     [currentMonthKey, fortunes],
   );
+  const monthFortunes = useMemo(
+    () => getFortunesForMonth(visibleFortunes, currentMonthKey),
+    [currentMonthKey, visibleFortunes],
+  );
   const cardGroups = useMemo(
-    () => getDailyFortunesByCard(fortunes, currentMonthKey),
-    [currentMonthKey, fortunes],
+    () => getDailyFortunesByCard(visibleFortunes, currentMonthKey),
+    [currentMonthKey, visibleFortunes],
   );
   const monthlyStats = useMemo(
+    () => getDailyFortuneMonthlyCardStats(visibleFortunes, currentMonthKey),
+    [currentMonthKey, visibleFortunes],
+  );
+  const allMonthlyStats = useMemo(
     () => getDailyFortuneMonthlyCardStats(fortunes, currentMonthKey),
     [currentMonthKey, fortunes],
   );
 
   const selectedCardGroup = cardGroups.find(group => group.cardName === selectedCardName) || null;
-  const cardViewFortunes = selectedCardGroup?.fortunes || fortunes;
+  const cardViewFortunes = selectedCardName ? selectedCardGroup?.fortunes || [] : visibleFortunes;
   const exportFortunes = activeView === 'month'
     ? monthFortunes
     : activeView === 'cards'
       ? cardViewFortunes
-      : fortunes;
+      : visibleFortunes;
+  const currentListFortunes = activeView === 'timeline'
+    ? visibleFortunes
+    : activeView === 'cards'
+      ? selectedCardName ? cardViewFortunes : []
+      : monthFortunes;
 
-  const topCard = monthlyStats[0]?.cardName || cardGroups[0]?.cardName || '待积累';
   const savedCount = fortunes.filter(fortune => Boolean(fortune.savedToCardAnnotationAt)).length;
+  const reviewedCount = fortunes.filter(hasDailyReview).length;
+  const pendingReviewCount = fortunes.filter(isDailyReviewPending).length;
+  const monthReversedCount = allMonthFortunes.filter(fortune => fortune.isReversed).length;
+  const monthReversedRatio = allMonthFortunes.length > 0
+    ? Math.round((monthReversedCount / allMonthFortunes.length) * 100)
+    : 0;
+  const monthPendingReviewCount = allMonthFortunes.filter(isDailyReviewPending).length;
+  const monthTopCards = allMonthlyStats.slice(0, 3);
 
   const stats = useMemo(() => ([
     ['已归档', fortunes.length, '天'],
-    ['本月', monthFortunes.length, '天'],
-    ['常见牌', topCard, ''],
+    ['本月', allMonthFortunes.length, '天'],
+    ['待回看', pendingReviewCount, '天'],
     ['入注疏', savedCount, '条'],
-  ]), [fortunes.length, monthFortunes.length, savedCount, topCard]);
+  ]), [allMonthFortunes.length, fortunes.length, pendingReviewCount, savedCount]);
+
+  const reviewFilterOptions = useMemo(() => ([
+    { id: 'all' as const, label: '全部', count: fortunes.length },
+    { id: 'pending' as const, label: '待回看', count: pendingReviewCount },
+    { id: 'reviewed' as const, label: '已回看', count: reviewedCount },
+    { id: 'saved' as const, label: '入注疏', count: savedCount },
+  ]), [fortunes.length, pendingReviewCount, reviewedCount, savedCount]);
+
+  useEffect(() => {
+    const availableIds = new Set(fortunes.map(fortune => fortune.id));
+    setSelectedDeleteIds(current => current.filter(id => availableIds.has(id)));
+  }, [fortunes]);
+
+  useEffect(() => {
+    if (selectedCardName && !cardGroups.some(group => group.cardName === selectedCardName)) {
+      setSelectedCardName(null);
+    }
+  }, [cardGroups, selectedCardName]);
 
   const openEdit = (fortune: DailyFortune) => {
+    resetSwipeActions();
+    setIsExportMenuOpen(false);
     const reflectionParts = getDailyReflectionParts(fortune);
     setEditingFortune(fortune);
     setEditInitialImpression(reflectionParts.initialImpression);
@@ -277,6 +522,10 @@ export const DailyFortuneArchiveModal: React.FC<DailyFortuneArchiveModalProps> =
     setEditDailyReview('');
   };
 
+  const resetSwipeActions = useCallback(() => {
+    setSwipeResetToken(current => current + 1);
+  }, []);
+
   const saveEdit = () => {
     if (!editingFortune) return;
     onUpdateReflection(editingFortune.id, {
@@ -288,7 +537,81 @@ export const DailyFortuneArchiveModal: React.FC<DailyFortuneArchiveModalProps> =
 
   const handleSaveToCardAnnotation = (fortune: DailyFortune) => {
     if (!hasDailyReflectionContent(fortune) || fortune.savedToCardAnnotationAt) return;
+    resetSwipeActions();
+    setIsExportMenuOpen(false);
     onSaveToCardAnnotation(fortune.id);
+  };
+
+  const closeOrganizing = () => {
+    resetSwipeActions();
+    setIsOrganizing(false);
+    setSelectedDeleteIds([]);
+    setShowDeleteConfirm(false);
+  };
+
+  const handleViewChange = (view: ReviewView) => {
+    resetSwipeActions();
+    setActiveView(view);
+    setExpandedId(null);
+    setIsExportMenuOpen(false);
+  };
+
+  const handleReviewFilterChange = (filter: ReviewFilter) => {
+    resetSwipeActions();
+    setReviewFilter(filter);
+    setSelectedDeleteIds([]);
+    setShowDeleteConfirm(false);
+    setExpandedId(null);
+  };
+
+  const toggleExportMenu = () => {
+    resetSwipeActions();
+    setIsExportMenuOpen(prev => !prev);
+  };
+
+  const toggleOrganizing = () => {
+    resetSwipeActions();
+    setExpandedId(null);
+    setIsExportMenuOpen(false);
+    setIsOrganizing(prev => {
+      if (prev) {
+        setSelectedDeleteIds([]);
+        setShowDeleteConfirm(false);
+      }
+
+      return !prev;
+    });
+  };
+
+  const toggleDeleteSelection = (fortuneId: string) => {
+    setSelectedDeleteIds(current => (
+      current.includes(fortuneId)
+        ? current.filter(id => id !== fortuneId)
+        : [...current, fortuneId]
+    ));
+  };
+
+  const selectCurrentList = () => {
+    const currentIds = currentListFortunes.map(fortune => fortune.id);
+    if (currentIds.length === 0) return;
+
+    setSelectedDeleteIds(current => Array.from(new Set([...current, ...currentIds])));
+  };
+
+  const requestDeleteFortune = (fortune: DailyFortune) => {
+    setIsExportMenuOpen(false);
+    setSelectedDeleteIds([fortune.id]);
+    setShowDeleteConfirm(true);
+  };
+
+  const confirmDeleteFortunes = () => {
+    if (selectedDeleteIds.length === 0) return;
+
+    onDeleteFortunes(selectedDeleteIds);
+    if (editingFortune && selectedDeleteIds.includes(editingFortune.id)) {
+      closeEdit();
+    }
+    closeOrganizing();
   };
 
   const handleExportMarkdown = () => {
@@ -304,7 +627,7 @@ export const DailyFortuneArchiveModal: React.FC<DailyFortuneArchiveModalProps> =
       record_count: exportFortunes.length,
       view: activeView,
     });
-    setShowMoreExportFormats(false);
+    setIsExportMenuOpen(false);
   };
 
   const handleExportPdf = () => {
@@ -327,6 +650,7 @@ export const DailyFortuneArchiveModal: React.FC<DailyFortuneArchiveModalProps> =
       record_count: exportFortunes.length,
       view: activeView,
     });
+    setIsExportMenuOpen(false);
   };
 
   const handleExportCsv = () => {
@@ -342,24 +666,32 @@ export const DailyFortuneArchiveModal: React.FC<DailyFortuneArchiveModalProps> =
       record_count: exportFortunes.length,
       view: activeView,
     });
+    setIsExportMenuOpen(false);
   };
 
   const renderFortuneList = (items: DailyFortune[]) => (
     items.length === 0 ? (
       <QuietEmptyState
-        icon={<Archive size={23} />}
-        title="这里还没有日运记录"
-        description="抽牌或录入现实牌后，就能在这里形成你的日运手札。"
+        icon={reviewFilter === 'pending' ? <Clock3 size={23} /> : <Archive size={23} />}
+        title={reviewFilter === 'all' ? '这里还没有日运记录' : '没有符合筛选的日运'}
+        description={reviewFilter === 'all'
+          ? '抽牌或录入现实牌后，就能在这里形成你的日运手札。'
+          : '换一个筛选条件，或回到全部记录继续查看。'}
         className="py-8"
       />
     ) : items.map(fortune => (
       <FortuneArchiveItem
         key={fortune.id}
         fortune={fortune}
-        expanded={expandedId === fortune.id}
+        expanded={!isOrganizing && expandedId === fortune.id}
+        isOrganizing={isOrganizing}
+        isSelected={selectedDeleteIds.includes(fortune.id)}
+        resetSwipeToken={swipeResetToken}
         onToggle={() => setExpandedId(expandedId === fortune.id ? null : fortune.id)}
+        onToggleSelected={() => toggleDeleteSelection(fortune.id)}
         onEdit={openEdit}
         onSaveToCardAnnotation={handleSaveToCardAnnotation}
+        onRequestDelete={requestDeleteFortune}
       />
     ))
   );
@@ -391,7 +723,10 @@ export const DailyFortuneArchiveModal: React.FC<DailyFortuneArchiveModalProps> =
                   </div>
                   <button
                     type="button"
-                    onClick={onClose}
+                    onClick={() => {
+                      closeOrganizing();
+                      onClose();
+                    }}
                     className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-forest-muted hover:bg-white/50 hover:text-forest-accent"
                     aria-label="关闭日运复盘"
                   >
@@ -420,8 +755,9 @@ export const DailyFortuneArchiveModal: React.FC<DailyFortuneArchiveModalProps> =
                     <button
                       key={view}
                       type="button"
-                      onClick={() => setActiveView(view)}
-                      className={`flex min-h-10 items-center justify-center gap-1.5 rounded-full px-3 text-xs font-medium transition-colors ${
+                      onClick={() => handleViewChange(view)}
+                      aria-label={`切换到${label}日运`}
+                      className={`flex min-h-11 items-center justify-center gap-1.5 rounded-full px-3 text-xs font-medium transition-colors ${
                         activeView === view
                           ? 'bg-forest-accent/92 text-white'
                           : 'bg-white/40 text-forest-accent hover:bg-white/66'
@@ -431,51 +767,137 @@ export const DailyFortuneArchiveModal: React.FC<DailyFortuneArchiveModalProps> =
                       {label}
                     </button>
                   ))}
-                  <div ref={moreExportFormatsRef} className="relative flex w-full flex-wrap gap-2 sm:ml-auto sm:w-auto">
-                    <button
-                      type="button"
-                      onClick={handleExportPdf}
-                      disabled={exportFortunes.length === 0}
-                      className="flex min-h-10 flex-1 items-center justify-center gap-1.5 rounded-full bg-forest-accent/88 px-3 text-xs font-medium text-white hover:bg-forest-accent disabled:opacity-45 sm:flex-none"
-                    >
-                      <Download size={13} />
-                      导出PDF
-                    </button>
-                    <button
-                      type="button"
-                      onClick={handleExportCsv}
-                      disabled={exportFortunes.length === 0}
-                      className="flex min-h-10 flex-1 items-center justify-center gap-1.5 rounded-full bg-forest-pink/10 px-3 text-xs font-medium text-forest-pink hover:bg-forest-pink/15 disabled:opacity-45 sm:flex-none"
-                    >
-                      <BarChart3 size={13} />
-                      导出表格
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setShowMoreExportFormats(prev => !prev)}
-                      disabled={exportFortunes.length === 0}
-                      className="flex min-h-10 flex-1 items-center justify-center gap-1.5 rounded-full bg-white/36 px-3 text-xs font-medium text-forest-accent hover:bg-white/60 disabled:opacity-45 sm:flex-none"
-                    >
-                      更多格式
-                    </button>
-                    {showMoreExportFormats && (
-                      <div className="w-full rounded-2xl border border-forest-accent/7 bg-white/88 p-2 shadow-[0_16px_42px_-36px_rgba(62,58,54,0.5)] backdrop-blur-md sm:absolute sm:right-0 sm:top-12 sm:z-10 sm:w-56">
-                        <button
-                          type="button"
-                          onClick={handleExportMarkdown}
-                          className="flex min-h-11 w-full items-center justify-between rounded-xl px-3 text-left text-xs font-medium text-forest-ink hover:bg-forest-bg"
-                        >
-                          <span>
-                            Markdown 手札
-                            <span className="mt-0.5 block text-[10px] font-normal text-forest-muted">
-                              适合 Notion / Obsidian 留存
-                            </span>
-                          </span>
-                          <Download size={13} className="text-forest-accent" />
-                        </button>
-                      </div>
-                    )}
+                  <button
+                    type="button"
+                    onClick={toggleOrganizing}
+                    aria-pressed={isOrganizing}
+                    className={`flex min-h-11 items-center justify-center gap-1.5 rounded-full px-3 text-xs font-medium transition-colors ${
+                      isOrganizing
+                        ? 'bg-red-50 text-red-500 ring-1 ring-red-100'
+                        : 'bg-white/40 text-forest-accent hover:bg-white/66'
+                    }`}
+                  >
+                    <CheckCircle2 size={13} />
+                    {isOrganizing ? '完成整理' : '整理'}
+                  </button>
+                  {isOrganizing && (
+                    <>
+                      <button
+                        type="button"
+                        onClick={selectCurrentList}
+                        disabled={currentListFortunes.length === 0}
+                        className="flex min-h-11 items-center justify-center rounded-full bg-white/40 px-3 text-xs font-medium text-forest-accent transition-colors hover:bg-white/66 disabled:opacity-45"
+                      >
+                        全选当前
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setShowDeleteConfirm(true)}
+                        disabled={selectedDeleteIds.length === 0}
+                        aria-label={`删除选中 ${selectedDeleteIds.length} 条日运记录`}
+                        className="flex min-h-11 items-center justify-center gap-1.5 rounded-full bg-red-50 px-3 text-xs font-medium text-red-500 transition-colors hover:bg-red-100 disabled:opacity-45"
+                      >
+                        <Trash2 size={13} />
+                        删除选中 {selectedDeleteIds.length > 0 ? selectedDeleteIds.length : ''}
+                      </button>
+                    </>
+                  )}
+                </div>
+
+                <div className={`mt-2 grid items-start gap-2 ${
+                  isOrganizing ? 'grid-cols-1' : 'grid-cols-[minmax(0,1fr)_auto]'
+                }`}>
+                  <div className="flex flex-wrap gap-1.5">
+                    {reviewFilterOptions.map(option => (
+                      <button
+                        key={option.id}
+                        type="button"
+                        onClick={() => handleReviewFilterChange(option.id)}
+                        aria-pressed={reviewFilter === option.id}
+                        aria-label={`筛选${option.label}日运记录`}
+                        className={`flex min-h-11 shrink-0 items-center justify-center gap-1.5 rounded-full px-3 text-xs font-medium transition-colors ${
+                          reviewFilter === option.id
+                            ? 'bg-forest-accent/90 text-white'
+                            : 'bg-white/36 text-forest-accent hover:bg-white/60'
+                        }`}
+                      >
+                        <span>{option.label}</span>
+                        <span className={`rounded-full px-1.5 py-0.5 text-[10px] ${
+                          reviewFilter === option.id
+                            ? 'bg-white/18 text-white'
+                            : 'bg-forest-accent/8 text-forest-muted'
+                        }`}>
+                          {option.count}
+                        </span>
+                      </button>
+                    ))}
                   </div>
+
+                  {!isOrganizing && (
+                    <div ref={exportMenuRef} className="relative flex justify-end">
+                      <button
+                        type="button"
+                        onClick={toggleExportMenu}
+                        disabled={exportFortunes.length === 0}
+                        aria-haspopup="menu"
+                        aria-expanded={isExportMenuOpen}
+                        className="flex min-h-11 items-center justify-center gap-1.5 rounded-full bg-forest-accent/88 px-3 text-xs font-medium text-white hover:bg-forest-accent disabled:opacity-45"
+                      >
+                        <Download size={13} />
+                        导出
+                        <ChevronDown size={13} className={`transition-transform ${isExportMenuOpen ? 'rotate-180' : ''}`} />
+                      </button>
+                      {isExportMenuOpen && (
+                        <div
+                          role="menu"
+                          className="absolute right-0 top-12 z-10 w-56 rounded-2xl border border-forest-accent/7 bg-white/92 p-2 shadow-[0_16px_42px_-36px_rgba(62,58,54,0.5)] backdrop-blur-md"
+                        >
+                          <button
+                            type="button"
+                            role="menuitem"
+                            onClick={handleExportPdf}
+                            className="flex min-h-11 w-full items-center justify-between rounded-xl px-3 text-left text-xs font-medium text-forest-ink hover:bg-forest-bg"
+                          >
+                            <span>
+                              PDF 手札
+                              <span className="mt-0.5 block text-[10px] font-normal text-forest-muted">
+                                适合打印或留存整册
+                              </span>
+                            </span>
+                            <Download size={13} className="text-forest-accent" />
+                          </button>
+                          <button
+                            type="button"
+                            role="menuitem"
+                            onClick={handleExportCsv}
+                            className="flex min-h-11 w-full items-center justify-between rounded-xl px-3 text-left text-xs font-medium text-forest-ink hover:bg-forest-bg"
+                          >
+                            <span>
+                              表格
+                              <span className="mt-0.5 block text-[10px] font-normal text-forest-muted">
+                                适合继续筛选整理
+                              </span>
+                            </span>
+                            <Table2 size={13} className="text-forest-accent" />
+                          </button>
+                          <button
+                            type="button"
+                            role="menuitem"
+                            onClick={handleExportMarkdown}
+                            className="flex min-h-11 w-full items-center justify-between rounded-xl px-3 text-left text-xs font-medium text-forest-ink hover:bg-forest-bg"
+                          >
+                            <span>
+                              Markdown
+                              <span className="mt-0.5 block text-[10px] font-normal text-forest-muted">
+                                适合 Notion / Obsidian
+                              </span>
+                            </span>
+                            <FileText size={13} className="text-forest-accent" />
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -487,14 +909,14 @@ export const DailyFortuneArchiveModal: React.FC<DailyFortuneArchiveModalProps> =
                     description="抽牌或录入现实牌后，就能在这里形成你的日运手札。"
                   />
                 ) : activeView === 'timeline' ? (
-                  renderFortuneList(fortunes)
+                  renderFortuneList(visibleFortunes)
                 ) : activeView === 'cards' ? (
                   <>
                     <div className="flex gap-2 overflow-x-auto pb-1 no-scrollbar">
                       <button
                         type="button"
                         onClick={() => setSelectedCardName(null)}
-                        className={`min-h-10 shrink-0 rounded-full px-3 text-xs font-medium ${
+                        className={`min-h-11 shrink-0 rounded-full px-3 text-xs font-medium ${
                           !selectedCardName ? 'bg-forest-accent/92 text-white' : 'bg-white/42 text-forest-accent'
                         }`}
                       >
@@ -505,7 +927,7 @@ export const DailyFortuneArchiveModal: React.FC<DailyFortuneArchiveModalProps> =
                           key={group.cardName}
                           type="button"
                           onClick={() => setSelectedCardName(group.cardName)}
-                          className={`min-h-10 shrink-0 rounded-full px-3 text-xs font-medium ${
+                          className={`min-h-11 shrink-0 rounded-full px-3 text-xs font-medium ${
                             selectedCardName === group.cardName ? 'bg-forest-accent/92 text-white' : 'bg-white/42 text-forest-accent'
                           }`}
                         >
@@ -515,36 +937,50 @@ export const DailyFortuneArchiveModal: React.FC<DailyFortuneArchiveModalProps> =
                     </div>
 
                     {!selectedCardName ? (
-                      <div className="grid gap-2 sm:grid-cols-2">
-                        {cardGroups.map(group => (
-                          <button
-                            key={group.cardName}
-                            type="button"
-                            onClick={() => setSelectedCardName(group.cardName)}
-                            className="rounded-[1.25rem] border border-forest-accent/7 bg-white/36 p-3 text-left shadow-none transition-colors hover:border-forest-accent/20 hover:bg-white/52"
-                          >
-                            <div className="flex items-center justify-between gap-3">
-                              <div>
-                                <p className="font-serif text-base font-semibold text-forest-ink">{group.cardName}</p>
-                                <p className="mt-1 text-xs text-forest-muted">
-                                  历史 {group.totalCount} 次 · 本月 {group.currentMonthCount} 次
-                                </p>
-                              </div>
-                              <span className="rounded-full bg-forest-accent/10 px-2.5 py-1 text-[10px] font-medium text-forest-accent">
-                                注疏 {group.savedToAnnotationCount}
-                              </span>
-                            </div>
-                            <div className="mt-3 grid grid-cols-2 gap-2">
-                              <span className="rounded-2xl bg-white/34 px-3 py-2 text-[11px] text-forest-muted">
-                                正位 {group.uprightCount}
-                              </span>
-                              <span className="rounded-2xl bg-forest-pink/10 px-3 py-2 text-[11px] text-forest-muted">
-                                逆位 {group.reversedCount}
-                              </span>
-                            </div>
-                          </button>
-                        ))}
-                      </div>
+                      cardGroups.length === 0 ? (
+                        renderFortuneList([])
+                      ) : (
+                        <div className="grid gap-2 sm:grid-cols-2">
+                          {cardGroups.map(group => {
+                            const latestFortune = group.fortunes[0];
+                            const latestPreview = latestFortune ? getFortunePreviewText(latestFortune) : '';
+
+                            return (
+                              <button
+                                key={group.cardName}
+                                type="button"
+                                onClick={() => setSelectedCardName(group.cardName)}
+                                className="rounded-[1.25rem] border border-forest-accent/7 bg-white/36 p-3 text-left shadow-none transition-colors hover:border-forest-accent/20 hover:bg-white/52"
+                              >
+                                <div className="flex items-center justify-between gap-3">
+                                  <div>
+                                    <p className="font-serif text-base font-semibold text-forest-ink">{group.cardName}</p>
+                                    <p className="mt-1 text-xs text-forest-muted">
+                                      历史 {group.totalCount} 次 · 本月 {group.currentMonthCount} 次
+                                    </p>
+                                  </div>
+                                  <span className="rounded-full bg-forest-accent/10 px-2.5 py-1 text-[10px] font-medium text-forest-accent">
+                                    注疏 {group.savedToAnnotationCount}
+                                  </span>
+                                </div>
+                                {latestFortune && (
+                                  <p className="mt-2 line-clamp-2 text-xs leading-relaxed text-forest-text/70">
+                                    最近 {latestFortune.date} · {latestPreview}
+                                  </p>
+                                )}
+                                <div className="mt-3 grid grid-cols-2 gap-2">
+                                  <span className="rounded-2xl bg-white/34 px-3 py-2 text-[11px] text-forest-muted">
+                                    正位 {group.uprightCount}
+                                  </span>
+                                  <span className="rounded-2xl bg-forest-pink/10 px-3 py-2 text-[11px] text-forest-muted">
+                                    逆位 {group.reversedCount}
+                                  </span>
+                                </div>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )
                     ) : (
                       <>
                         {selectedCardGroup && (
@@ -553,6 +989,11 @@ export const DailyFortuneArchiveModal: React.FC<DailyFortuneArchiveModalProps> =
                             <p className="mt-1 text-xs text-forest-muted">
                               历史 {selectedCardGroup.totalCount} 次 · 本月 {selectedCardGroup.currentMonthCount} 次 · 已归入注疏 {selectedCardGroup.savedToAnnotationCount} 条
                             </p>
+                            {selectedCardGroup.fortunes[0] && (
+                              <p className="mt-2 line-clamp-2 text-xs leading-relaxed text-forest-text/70">
+                                最近 {selectedCardGroup.fortunes[0].date} · {getFortunePreviewText(selectedCardGroup.fortunes[0])}
+                              </p>
+                            )}
                           </div>
                         )}
                         {renderFortuneList(cardViewFortunes)}
@@ -562,8 +1003,22 @@ export const DailyFortuneArchiveModal: React.FC<DailyFortuneArchiveModalProps> =
                 ) : (
                   <>
                     <div className="rounded-[1.25rem] border border-forest-accent/7 bg-white/32 p-3">
-                      <p className="font-serif text-base font-semibold text-forest-ink">{currentMonthKey} 日运牌频</p>
-                      <p className="mt-1 text-xs text-forest-muted">本月出现过的牌会按次数排序，点牌名可查看它的历史日运。</p>
+                      <p className="font-serif text-base font-semibold text-forest-ink">{currentMonthKey} 月度回看</p>
+                      <p className="mt-1 text-xs text-forest-muted">本月主题：{monthTopCards.length > 0 ? monthTopCards.map(stat => `${stat.cardName}×${stat.count}`).join(' · ') : '待积累'}</p>
+                      <div className="mt-3 grid grid-cols-3 gap-2">
+                        <div className="rounded-2xl bg-white/34 px-3 py-2">
+                          <p className="text-[10px] text-forest-muted">逆位比例</p>
+                          <p className="mt-1 font-serif text-base font-semibold text-forest-accent">{monthReversedRatio}%</p>
+                        </div>
+                        <div className="rounded-2xl bg-white/34 px-3 py-2">
+                          <p className="text-[10px] text-forest-muted">待回看</p>
+                          <p className="mt-1 font-serif text-base font-semibold text-forest-accent">{monthPendingReviewCount}天</p>
+                        </div>
+                        <div className="rounded-2xl bg-white/34 px-3 py-2">
+                          <p className="text-[10px] text-forest-muted">记录</p>
+                          <p className="mt-1 font-serif text-base font-semibold text-forest-accent">{allMonthFortunes.length}天</p>
+                        </div>
+                      </div>
                       {monthlyStats.length > 0 ? (
                         <div className="mt-3 space-y-2">
                           {monthlyStats.map(stat => (
@@ -573,6 +1028,7 @@ export const DailyFortuneArchiveModal: React.FC<DailyFortuneArchiveModalProps> =
                               onClick={() => {
                                 setActiveView('cards');
                                 setSelectedCardName(stat.cardName);
+                                setExpandedId(null);
                               }}
                               className="flex min-h-11 w-full items-center justify-between gap-3 rounded-2xl bg-white/34 px-3 text-left text-xs text-forest-ink"
                             >
@@ -585,10 +1041,27 @@ export const DailyFortuneArchiveModal: React.FC<DailyFortuneArchiveModalProps> =
                         </div>
                       ) : (
                         <p className="mt-3 rounded-2xl border border-dashed border-forest-accent/14 bg-white/34 px-3 py-4 text-center text-xs text-forest-muted">
-                          本月暂时没有归档日运。
+                          本月暂时没有符合筛选的日运。
                         </p>
                       )}
                     </div>
+
+                    {allMonthFortunes.length > 0 && (
+                      <div className="rounded-[1.25rem] border border-forest-accent/7 bg-white/32 p-3">
+                        <p className="font-serif text-base font-semibold text-forest-ink">月末回看提纲</p>
+                        <div className="mt-3 space-y-2">
+                          {[
+                            '哪张牌最像本月反复出现的主题？',
+                            '哪些逆位提醒，后来在生活里有了答案？',
+                            '哪一条日运值得归入牌义注疏？',
+                          ].map(prompt => (
+                            <p key={prompt} className="rounded-2xl bg-white/34 px-3 py-2 text-xs leading-relaxed text-forest-text/75">
+                              {prompt}
+                            </p>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                     {renderFortuneList(monthFortunes)}
                   </>
                 )}
@@ -684,6 +1157,17 @@ export const DailyFortuneArchiveModal: React.FC<DailyFortuneArchiveModalProps> =
               </div>
             )}
           </AnimatePresence>
+
+          <ConfirmDialog
+            isOpen={showDeleteConfirm}
+            title="删除日运记录"
+            message={`确定要删除选中的 ${selectedDeleteIds.length} 条日运记录吗？已归入牌义注疏的内容不会被移除。`}
+            confirmText="删除"
+            cancelText="取消"
+            destructive
+            onConfirm={confirmDeleteFortunes}
+            onClose={() => setShowDeleteConfirm(false)}
+          />
         </>
       )}
     </AnimatePresence>
