@@ -51,6 +51,7 @@ export const buildReadingTagSuggestions = (
       parseReadingManualTags(tags).forEach(tag => {
         const normalizedTag = tag.toLocaleLowerCase();
         if (!normalizedTag || committedSet.has(normalizedTag) || normalizedTag === query) return;
+        if (query && !normalizedTag.includes(query)) return;
 
         const previous = suggestions.get(normalizedTag);
         suggestions.set(normalizedTag, {

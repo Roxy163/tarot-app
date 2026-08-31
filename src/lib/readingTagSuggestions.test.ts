@@ -38,14 +38,27 @@ describe('readingTagSuggestions', () => {
     expect(suggestions.map(item => item.tag)).toEqual(['情绪', '事业']);
   });
 
-  it('moves matching historical tags ahead of other recent tags while typing', () => {
+  it('filters historical tags by the active draft while typing', () => {
     const suggestions = buildReadingTagSuggestions([
       makeReading('old', ['事业'], '2026-07-01T08:00:00.000Z'),
       makeReading('new', ['情绪'], '2026-07-03T08:00:00.000Z'),
       makeReading('middle', ['工作'], '2026-07-02T08:00:00.000Z'),
     ], '事');
 
-    expect(suggestions.map(item => item.tag).slice(0, 2)).toEqual(['事业', '情绪']);
+    expect(suggestions.map(item => item.tag)).toEqual(['事业']);
+  });
+
+  it('tracks historical tag counts for reusable tag chips', () => {
+    const suggestions = buildReadingTagSuggestions([
+      makeReading('career-old', ['事业'], '2026-07-01T08:00:00.000Z'),
+      makeReading('career-new', ['事业'], '2026-07-03T08:00:00.000Z'),
+      makeReading('emotion', ['情绪'], '2026-07-02T08:00:00.000Z'),
+    ], '');
+
+    expect(suggestions[0]).toEqual(expect.objectContaining({
+      tag: '事业',
+      count: 2,
+    }));
   });
 
   it('replaces the active tag draft when applying a suggestion', () => {

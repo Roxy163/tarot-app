@@ -39,6 +39,27 @@ describe('ConfirmDialog', () => {
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
+  it('portals above transformed page containers so mobile nav cannot clip it', () => {
+    const { container } = render(
+      <div style={{ transform: 'scale(0.98)' }}>
+        <ConfirmDialog
+          isOpen
+          title="删除自定义牌阵"
+          message="确定要删除这个牌阵吗？"
+          onConfirm={vi.fn()}
+          onClose={vi.fn()}
+        />
+      </div>,
+    );
+
+    const dialog = screen.getByRole('dialog', { name: '删除自定义牌阵' });
+    const overlay = dialog.parentElement;
+
+    expect(container).not.toContainElement(dialog);
+    expect(document.body).toContainElement(dialog);
+    expect(overlay).toHaveClass('fixed', 'z-[1200]', 'min-h-[100dvh]', 'overflow-y-auto');
+  });
+
   it('closes without confirming when the close icon is clicked', async () => {
     const user = userEvent.setup();
     const onConfirm = vi.fn();

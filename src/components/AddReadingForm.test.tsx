@@ -511,18 +511,21 @@ describe('AddReadingForm spread designer flow', () => {
       existingReadings: [
         makeReading('career', ['事业'], '2026-07-01T08:00:00.000Z'),
         makeReading('emotion', ['情绪'], '2026-07-03T08:00:00.000Z'),
+        makeReading('career-repeat', ['事业'], '2026-07-04T08:00:00.000Z'),
       ],
     });
 
     const tagInput = screen.getByRole('textbox', { name: '标签' });
+
+    expect(screen.getByTestId('tag-suggestion-bar')).toBeInTheDocument();
+    expect(screen.getAllByRole('option')[0]).toHaveAccessibleName('使用历史标签：事业，用过 2 次');
+
     await user.click(tagInput);
-
-    expect(screen.getAllByRole('option')[0]).toHaveAccessibleName('使用标签：情绪');
-
     await user.type(tagInput, '事');
-    expect(screen.getAllByRole('option')[0]).toHaveAccessibleName('使用标签：事业');
+    expect(screen.getByRole('option', { name: '使用历史标签：事业，用过 2 次' })).toBeInTheDocument();
+    expect(screen.queryByRole('option', { name: '使用历史标签：情绪' })).not.toBeInTheDocument();
 
-    await user.click(screen.getByRole('option', { name: '使用标签：事业' }));
+    await user.click(screen.getByRole('option', { name: '使用历史标签：事业，用过 2 次' }));
     expect(tagInput).toHaveValue('事业');
   });
 

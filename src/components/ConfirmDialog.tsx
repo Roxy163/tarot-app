@@ -1,4 +1,5 @@
 import React from 'react';
+import { createPortal } from 'react-dom';
 import { AnimatePresence, motion } from 'motion/react';
 import { AlertTriangle, X } from 'lucide-react';
 import { useBodyScrollLock } from '../hooks/useBodyScrollLock';
@@ -32,10 +33,10 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
     onClose();
   };
 
-  return (
+  const dialog = (
     <AnimatePresence>
       {isOpen && (
-        <div className="fixed inset-0 z-[980] flex items-center justify-center p-4 overscroll-contain">
+        <div className="fixed inset-0 z-[1200] flex min-h-[100dvh] items-center justify-center overflow-y-auto p-4 overscroll-contain pb-[calc(1rem+env(safe-area-inset-bottom))]">
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -50,7 +51,7 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
             role="dialog"
             aria-modal="true"
             aria-labelledby={titleId}
-            className="relative w-full max-w-sm rounded-3xl bg-white border border-forest-border shadow-2xl p-5 space-y-4"
+            className="relative my-auto max-h-[calc(100dvh-2rem)] w-full max-w-sm space-y-4 overflow-y-auto rounded-3xl border border-forest-border bg-white p-5 shadow-2xl"
           >
             <div className="flex items-start justify-between gap-3">
               <div className="flex items-center gap-3 min-w-0">
@@ -92,4 +93,10 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
       )}
     </AnimatePresence>
   );
+
+  if (typeof document === 'undefined') {
+    return dialog;
+  }
+
+  return createPortal(dialog, document.body);
 };

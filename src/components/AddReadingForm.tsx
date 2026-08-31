@@ -877,7 +877,7 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
       : Math.max(0, Math.min(readingDetailSlotIndex, Math.max(0, cardSlots.length - 1)));
   const shouldShowReadingDetail = Boolean(cardSlots[detailSlotIndex]?.name);
   const tagSuggestions = useMemo(
-    () => buildReadingTagSuggestions(existingReadings, formData.category, 8).map(item => item.tag),
+    () => buildReadingTagSuggestions(existingReadings, formData.category, 8),
     [existingReadings, formData.category],
   );
   const handleSelectTagSuggestion = (tag: string) => {
