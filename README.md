@@ -106,7 +106,12 @@ VITE_FIREBASE_MESSAGING_SENDER_ID=your-sender-id
 VITE_FIREBASE_APP_ID=your-app-id
 VITE_FIREBASE_MEASUREMENT_ID=your-measurement-id
 VITE_CLOUDFLARE_WEB_ANALYTICS_TOKEN=optional-cloudflare-web-analytics-token
+RESEND_API_KEY=your-resend-api-key
+RESEND_FROM_EMAIL=Tarot Pavilion <feedback@your-domain.com>
+FEEDBACK_TO_EMAIL=roxy163@outlook.com
 ```
+
+反馈与建议功能使用 Resend 从 Cloudflare Pages Functions 发送到作者邮箱。`RESEND_API_KEY` 建议设置为 Cloudflare Secret；`RESEND_FROM_EMAIL` 必须是 Resend 已验证的发件地址。未配置时，前端会保留草稿并提供手动邮箱兜底。
 
 访问统计建议：
 

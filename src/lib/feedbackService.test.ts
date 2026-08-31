@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   clearFeedbackDraft,
+  FEEDBACK_ATTACHMENT_MAX_COUNT,
   loadFeedbackDraft,
   saveFeedbackDraft,
   submitFeedback,
@@ -29,8 +30,12 @@ describe('feedbackService', () => {
     expect(loadFeedbackDraft()).toBeNull();
   });
 
-  it('只把用户填写的反馈和必要环境信息送出', async () => {
-    const fetchMock = vi.fn().mockResolvedValue({ ok: true });
+  it('只把用户填写的反馈、截图和必要环境信息送出', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      headers: { get: () => 'application/json' },
+      json: async () => ({ deliveryState: 'sent', message: 'sent' }),
+    });
     vi.stubGlobal('fetch', fetchMock);
 
     const result = await submitFeedback({
@@ -39,6 +44,12 @@ describe('feedbackService', () => {
       contact: 'user@example.com',
       pagePath: '/library',
       deviceType: '手机端',
+      attachments: [{
+        filename: 'bug.png',
+        contentType: 'image/png',
+        content: 'aW1hZ2U=',
+        size: 5,
+      }],
     });
 
     expect(result.deliveryState).toBe('sent');
@@ -53,7 +64,13 @@ describe('feedbackService', () => {
       联系方式: 'user@example.com',
       使用端: '手机端',
       页面: '/library',
+      截图数量: '1',
     });
+    expect(payload.attachments[0]).toEqual(expect.objectContaining({
+      filename: 'bug.png',
+      contentType: 'image/png',
+      content: 'aW1hZ2U=',
+    }));
     expect(JSON.stringify(payload)).not.toContain('readings');
     expect(JSON.stringify(payload)).not.toContain('userId');
   });
@@ -71,44 +88,49 @@ describe('feedbackService', () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it('邮箱转发服务要求收件确认时不标记为已送达', async () => {
+  it('邮件服务未配置时不标记为已送达', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
       ok: true,
       headers: { get: () => 'application/json' },
-      json: async () => ({ message: 'Please activate your form by clicking the link sent to your email' }),
+      json: async () => ({
+        deliveryState: 'needs-configuration',
+        message: '邮件服务还没配置完成。',
+      }),
     }));
 
     await expect(submitFeedback({
       category: 'feature',
       message: '希望反馈可以稳定送达作者邮箱',
       contact: '',
-    })).resolves.toMatchObject({ deliveryState: 'needs-activation' });
+    })).resolves.toMatchObject({ deliveryState: 'needs-configuration' });
   });
 
-  it('线上同源 API 不可用时自动尝试邮箱直连兜底', async () => {
-    const fetchMock = vi.fn()
-      .mockResolvedValueOnce({
-        ok: false,
-        status: 404,
-        headers: { get: () => 'application/json' },
-        json: async () => ({ message: 'Not found' }),
-      })
-      .mockResolvedValueOnce({
-        ok: true,
-        headers: { get: () => 'application/json' },
-        json: async () => ({ message: 'sent' }),
-      });
-    vi.stubGlobal('fetch', fetchMock);
+  it('限制截图数量和类型', async () => {
+    const tooManyAttachments = Array.from({ length: FEEDBACK_ATTACHMENT_MAX_COUNT + 1 }, (_, index) => ({
+      filename: `bug-${index}.png`,
+      contentType: 'image/png',
+      content: 'aW1hZ2U=',
+      size: 5,
+    }));
 
     await expect(submitFeedback({
       category: 'bug',
-      message: '部署后的反馈接口需要自动兜底',
+      message: '截图太多时应该拦住',
       contact: '',
-    })).resolves.toMatchObject({ deliveryState: 'sent' });
+      attachments: tooManyAttachments,
+    })).rejects.toMatchObject({ code: 'invalid' });
 
-    expect(fetchMock).toHaveBeenCalledTimes(2);
-    expect(fetchMock.mock.calls[0][0]).toBe('/api/feedback');
-    expect(fetchMock.mock.calls[1][0]).toBe('https://formsubmit.co/ajax/roxy163@outlook.com');
+    await expect(submitFeedback({
+      category: 'bug',
+      message: '不允许上传非图片附件',
+      contact: '',
+      attachments: [{
+        filename: 'debug.txt',
+        contentType: 'text/plain',
+        content: 'dGV4dA==',
+        size: 4,
+      }],
+    })).rejects.toMatchObject({ code: 'invalid' });
   });
 
   it('网络失败时返回可识别的错误，便于界面保留草稿', async () => {
@@ -120,5 +142,4 @@ describe('feedbackService', () => {
       contact: '',
     })).rejects.toMatchObject({ code: 'network' });
   });
-
 });

@@ -980,7 +980,7 @@ function AppContent() {
               <MessageSquareText size={17} className="text-forest-accent" />
               <div className="text-left">
                 <span className="block text-sm font-medium">反馈与建议</span>
-                <span className="text-[10px] text-forest-muted">截图 + 邮箱优先</span>
+                <span className="text-[10px] text-forest-muted">截图 + 邮箱直达</span>
               </div>
             </div>
             <ChevronRight size={14} className="text-forest-muted transition-transform group-hover:translate-x-1" />

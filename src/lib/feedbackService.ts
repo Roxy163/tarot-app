@@ -4,12 +4,15 @@ export const FEEDBACK_EMAIL = 'roxy163@outlook.com';
 export const FEEDBACK_WECHAT_ID = 'juben6868';
 export const FEEDBACK_MESSAGE_MAX_LENGTH = 1200;
 export const FEEDBACK_CONTACT_MAX_LENGTH = 100;
+export const FEEDBACK_ATTACHMENT_MAX_COUNT = 3;
+export const FEEDBACK_ATTACHMENT_MAX_BYTES = 3 * 1024 * 1024;
+export const FEEDBACK_ATTACHMENT_TOTAL_MAX_BYTES = 8 * 1024 * 1024;
+export const FEEDBACK_ATTACHMENT_ALLOWED_TYPES = ['image/png', 'image/jpeg', 'image/webp', 'image/gif'];
 
 const FEEDBACK_DRAFT_KEY = 'tarot_feedback_draft_v1';
 const FEEDBACK_LAST_SENT_KEY = 'tarot_feedback_last_sent_at';
 const FEEDBACK_COOLDOWN_MS = 30_000;
 const FEEDBACK_ENDPOINT = '/api/feedback';
-const FEEDBACK_DIRECT_ENDPOINT = `https://formsubmit.co/ajax/${FEEDBACK_EMAIL}`;
 
 export const FEEDBACK_CATEGORIES = [
   { value: 'experience', label: '使用感受' },
@@ -26,13 +29,21 @@ export interface FeedbackDraft {
   contact: string;
 }
 
+export interface FeedbackAttachment {
+  filename: string;
+  contentType: string;
+  content: string;
+  size: number;
+}
+
 export interface FeedbackSubmission extends FeedbackDraft {
   pagePath?: string;
   deviceType?: '手机端' | '电脑端';
   honeypot?: string;
+  attachments?: FeedbackAttachment[];
 }
 
-export type FeedbackDeliveryState = 'sent' | 'needs-activation';
+export type FeedbackDeliveryState = 'sent' | 'needs-activation' | 'needs-configuration';
 
 export interface FeedbackSubmitResult {
   deliveryState: FeedbackDeliveryState;
@@ -105,6 +116,61 @@ export const clearFeedbackDraft = () => {
   }
 };
 
+const isAllowedAttachmentType = (contentType: string) => (
+  FEEDBACK_ATTACHMENT_ALLOWED_TYPES.includes(contentType)
+);
+
+const getAttachmentSize = (attachment: FeedbackAttachment) => {
+  const estimatedSize = Math.ceil((attachment.content || '').length * 3 / 4);
+  if (Number.isFinite(attachment.size) && attachment.size > 0) {
+    return Math.max(attachment.size, estimatedSize);
+  }
+  return estimatedSize;
+};
+
+const cleanAttachmentFilename = (filename: string, index: number) => {
+  const cleaned = filename.trim().replace(/[^\w.\-\u4e00-\u9fa5]/g, '-').slice(0, 90);
+  return cleaned || `screenshot-${index + 1}.png`;
+};
+
+const sanitizeAttachments = (attachments: FeedbackAttachment[] = []) => {
+  if (attachments.length > FEEDBACK_ATTACHMENT_MAX_COUNT) {
+    throw new FeedbackSubmissionError('invalid', `截图最多上传 ${FEEDBACK_ATTACHMENT_MAX_COUNT} 张。`);
+  }
+
+  let totalBytes = 0;
+
+  return attachments.map((attachment, index) => {
+    const contentType = String(attachment.contentType || '').toLowerCase();
+    const content = String(attachment.content || '').replace(/^data:[^;]+;base64,/, '');
+    const size = getAttachmentSize({ ...attachment, content });
+
+    if (!content || !/^[a-z0-9+/=]+$/i.test(content)) {
+      throw new FeedbackSubmissionError('invalid', '截图内容读取失败，请重新选择。');
+    }
+
+    if (!isAllowedAttachmentType(contentType)) {
+      throw new FeedbackSubmissionError('invalid', '截图只支持 PNG、JPG、WebP 或 GIF。');
+    }
+
+    if (size > FEEDBACK_ATTACHMENT_MAX_BYTES) {
+      throw new FeedbackSubmissionError('invalid', '单张截图不能超过 3MB。');
+    }
+
+    totalBytes += size;
+    if (totalBytes > FEEDBACK_ATTACHMENT_TOTAL_MAX_BYTES) {
+      throw new FeedbackSubmissionError('invalid', '截图总大小不能超过 8MB。');
+    }
+
+    return {
+      filename: cleanAttachmentFilename(attachment.filename, index),
+      contentType,
+      content,
+      size,
+    };
+  });
+};
+
 const readProviderResult = async (response: Response) => {
   try {
     const contentType = response.headers?.get?.('content-type') || '';
@@ -113,7 +179,11 @@ const readProviderResult = async (response: Response) => {
       const providerMessage = [payload.message, payload.error, payload.success, payload.providerMessage]
         .filter((value): value is string => typeof value === 'string')
         .join(' ');
-      const deliveryState = payload.deliveryState === 'sent' || payload.deliveryState === 'needs-activation'
+      const deliveryState = (
+        payload.deliveryState === 'sent'
+        || payload.deliveryState === 'needs-activation'
+        || payload.deliveryState === 'needs-configuration'
+      )
         ? payload.deliveryState
         : undefined;
 
@@ -124,14 +194,14 @@ const readProviderResult = async (response: Response) => {
       return { providerMessage: await response.text() };
     }
   } catch {
-    // 第三方服务的返回体只用于判断是否需要邮箱确认，解析失败不阻塞提交流程。
+    // 服务端返回体只用于展示错误原因，解析失败时走统一失败提示。
   }
 
   return { providerMessage: '' };
 };
 
 const needsRecipientActivation = (message: string) => (
-  /activat|confirm|verif|验证|确认|激活/i.test(message)
+  /activat|confirm|verif|验证|确认|激活|domain|sender|from/i.test(message)
 );
 
 const createFeedbackPayload = (
@@ -139,26 +209,27 @@ const createFeedbackPayload = (
   message: string,
   contact: string,
   submission: FeedbackSubmission,
+  attachments: FeedbackAttachment[],
   now: number,
 ) => ({
   _subject: `[塔罗研习阁] ${categoryLabel}`,
-  _template: 'table',
-  _captcha: 'false',
-  _honey: '',
+  _honey: submission.honeypot || '',
   反馈类型: categoryLabel,
   反馈内容: message,
   联系方式: contact || '未填写',
   使用端: submission.deviceType || '电脑端',
   页面: submission.pagePath || '/',
   提交时间: new Date(now).toLocaleString('zh-CN', { hour12: false }),
+  截图数量: String(attachments.length),
+  attachments,
 });
 
-const postFeedback = async (url: string, payload: Record<string, string>) => {
+const postFeedback = async (payload: Record<string, unknown>) => {
   const controller = new AbortController();
-  const timeout = window.setTimeout(() => controller.abort(), 10_000);
+  const timeout = window.setTimeout(() => controller.abort(), 12_000);
 
   try {
-    return await fetch(url, {
+    return await fetch(FEEDBACK_ENDPOINT, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -177,6 +248,7 @@ export async function submitFeedback(submission: FeedbackSubmission): Promise<Fe
   const category = isFeedbackCategory(submission.category) ? submission.category : 'other';
   const message = submission.message.trim();
   const contact = submission.contact.trim();
+  const attachments = sanitizeAttachments(submission.attachments || []);
 
   if (submission.honeypot) {
     throw new FeedbackSubmissionError('invalid', '提交内容未通过检查。');
@@ -196,41 +268,35 @@ export async function submitFeedback(submission: FeedbackSubmission): Promise<Fe
   }
 
   const categoryLabel = getCategoryLabel(category);
-  const payload = createFeedbackPayload(categoryLabel, message, contact, submission, now);
-  let providerMessage = '';
+  const payload = createFeedbackPayload(categoryLabel, message, contact, submission, attachments, now);
 
   try {
-    const primaryResponse = await postFeedback(FEEDBACK_ENDPOINT, payload);
-    const primaryResult = await readProviderResult(primaryResponse);
-    providerMessage = primaryResult.providerMessage;
+    const response = await postFeedback(payload);
+    const result = await readProviderResult(response);
+    const providerMessage = result.providerMessage;
 
-    if (primaryResult.deliveryState === 'needs-activation' || needsRecipientActivation(providerMessage)) {
-      return { deliveryState: 'needs-activation', providerMessage };
-    }
-
-    if (primaryResponse.ok) {
+    if (result.deliveryState === 'sent') {
       writeLastSentAt(now);
       return { deliveryState: 'sent', providerMessage };
     }
-  } catch (error) {
-    if (error instanceof FeedbackSubmissionError) throw error;
-  }
 
-  try {
-    const fallbackResponse = await postFeedback(FEEDBACK_DIRECT_ENDPOINT, payload);
-    const fallbackResult = await readProviderResult(fallbackResponse);
-    providerMessage = fallbackResult.providerMessage || providerMessage;
-
-    if (fallbackResult.deliveryState === 'needs-activation' || needsRecipientActivation(providerMessage)) {
-      return { deliveryState: 'needs-activation', providerMessage };
+    if (
+      result.deliveryState === 'needs-configuration'
+      || result.deliveryState === 'needs-activation'
+      || needsRecipientActivation(providerMessage)
+    ) {
+      return {
+        deliveryState: result.deliveryState === 'needs-configuration' ? 'needs-configuration' : 'needs-activation',
+        providerMessage,
+      };
     }
 
-    if (!fallbackResponse.ok) {
-      throw new FeedbackSubmissionError('network', '暂时没能送出，内容已保存在本机。');
+    if (response.ok) {
+      writeLastSentAt(now);
+      return { deliveryState: 'sent', providerMessage };
     }
 
-    writeLastSentAt(now);
-    return { deliveryState: 'sent', providerMessage };
+    throw new FeedbackSubmissionError('network', providerMessage || '暂时没能送出，内容已保存在本机。');
   } catch (error) {
     if (error instanceof FeedbackSubmissionError) throw error;
     throw new FeedbackSubmissionError('network', '暂时没能送出，内容已保存在本机。');
