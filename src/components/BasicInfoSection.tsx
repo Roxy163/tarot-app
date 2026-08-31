@@ -1,4 +1,5 @@
 import React from 'react';
+import { AnimatePresence, motion } from 'motion/react';
 import { ChevronDown, Layers, Plus, Trash2, Calendar, Tag } from 'lucide-react';
 import { SpreadDefinition } from '../types';
 import { OFFICIAL_SPREADS } from '../constants';
@@ -63,6 +64,7 @@ export const BasicInfoSection: React.FC<BasicInfoSectionProps> = ({
   tagSuggestions = [],
   onSelectTagSuggestion,
 }) => {
+  const [isTagSuggestionOpen, setIsTagSuggestionOpen] = React.useState(false);
   const tagSuggestionListId = React.useId();
   const tagSuggestionLabelId = React.useId();
   const officialSpreadNames = new Set(OFFICIAL_SPREADS.map(item => item.name));
@@ -83,7 +85,7 @@ export const BasicInfoSection: React.FC<BasicInfoSectionProps> = ({
       target.scrollIntoView({ block: 'center', inline: 'nearest', behavior: 'smooth' });
     }, 120);
   };
-  const shouldShowTagSuggestions = tagSuggestions.length > 0;
+  const shouldShowTagSuggestions = isTagSuggestionOpen && tagSuggestions.length > 0;
 
   return (
     <div className="mb-2.5 space-y-2 sm:mb-4 sm:space-y-3">
@@ -162,62 +164,86 @@ export const BasicInfoSection: React.FC<BasicInfoSectionProps> = ({
             />
           </div>
 
-          <div className="relative min-w-0 sm:flex-1">
-            <div className="absolute left-3 top-1/2 -translate-y-1/2 text-forest-accent/40 pointer-events-none">
-              <Tag size={16} />
+          <div
+            className={`min-w-0 overflow-hidden rounded-xl border bg-white/42 transition-all sm:flex-1 ${
+              shouldShowTagSuggestions
+                ? 'border-forest-accent/12 ring-2 ring-forest-accent/10'
+                : 'border-forest-accent/8 focus-within:ring-2 focus-within:ring-forest-accent/15'
+            }`}
+            onFocus={() => setIsTagSuggestionOpen(true)}
+            onBlur={(event) => {
+              const nextFocus = event.relatedTarget;
+              if (nextFocus instanceof Node && event.currentTarget.contains(nextFocus)) return;
+              setIsTagSuggestionOpen(false);
+            }}
+          >
+            <div className="relative">
+              <div className="absolute left-3 top-1/2 -translate-y-1/2 text-forest-accent/40 pointer-events-none">
+                <Tag size={16} />
+              </div>
+              <input
+                className="min-h-11 w-full bg-transparent py-2 pl-9 pr-2 text-sm text-forest-ink outline-none transition-all placeholder:text-forest-muted/50 sm:py-2.5 sm:pl-10 sm:pr-4 sm:text-base"
+                placeholder="添加标签..."
+                aria-label="标签"
+                aria-autocomplete="list"
+                aria-controls={shouldShowTagSuggestions ? tagSuggestionListId : undefined}
+                aria-expanded={shouldShowTagSuggestions}
+                value={category}
+                onFocus={scrollFocusedFieldIntoView}
+                onChange={e => {
+                  setIsTagSuggestionOpen(true);
+                  onUpdateCategory(e.target.value);
+                }}
+              />
             </div>
-            <input 
-              className="min-h-11 w-full rounded-xl border border-forest-accent/8 bg-white/42 py-2 pl-9 pr-2 text-sm text-forest-ink transition-all placeholder:text-forest-muted/50 focus:ring-2 focus:ring-forest-accent/15 sm:py-2.5 sm:pl-10 sm:pr-4 sm:text-base"
-              placeholder="添加标签..." 
-              aria-label="标签"
-              aria-autocomplete="list"
-              aria-controls={shouldShowTagSuggestions ? tagSuggestionListId : undefined}
-              aria-expanded={shouldShowTagSuggestions}
-              value={category} 
-              onFocus={scrollFocusedFieldIntoView}
-              onChange={e => onUpdateCategory(e.target.value)}
-            />
+
+            <AnimatePresence initial={false}>
+              {shouldShowTagSuggestions && (
+                <motion.div
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: 'auto' }}
+                  exit={{ opacity: 0, height: 0 }}
+                  transition={{ duration: 0.16, ease: 'easeOut' }}
+                  data-testid="tag-suggestion-bar"
+                  className="border-t border-forest-accent/7 px-1.5 pb-1.5 pt-1"
+                >
+                  <div className="mb-1 px-1 text-[10px] font-semibold text-forest-accent" id={tagSuggestionLabelId}>
+                    常用标签
+                  </div>
+                  <div
+                    id={tagSuggestionListId}
+                    role="listbox"
+                    aria-labelledby={tagSuggestionLabelId}
+                    className="flex items-center gap-1.5 overflow-x-auto custom-scrollbar-hide"
+                  >
+                    {tagSuggestions.map((suggestion, index) => {
+                      const badge = suggestion.count > 1 ? `${suggestion.count}次` : index < 3 ? '最近' : '历史';
+
+                      return (
+                        <button
+                          key={suggestion.tag}
+                          type="button"
+                          role="option"
+                          aria-label={`使用历史标签：${suggestion.tag}${suggestion.count > 1 ? `，用过 ${suggestion.count} 次` : ''}`}
+                          onClick={() => {
+                            onSelectTagSuggestion?.(suggestion.tag);
+                            setIsTagSuggestionOpen(false);
+                          }}
+                          className="flex min-h-11 shrink-0 items-center gap-1.5 rounded-lg bg-white/58 px-2.5 text-left text-xs font-semibold text-forest-ink ring-1 ring-forest-accent/7 transition-all hover:bg-white/78 hover:text-forest-accent sm:min-h-10"
+                        >
+                          <span>#{suggestion.tag}</span>
+                          <span className="rounded-full bg-forest-accent/8 px-1.5 py-0.5 text-[10px] text-forest-accent">
+                            {badge}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
           </div>
         </div>
-
-        {shouldShowTagSuggestions && (
-          <div
-            data-testid="tag-suggestion-bar"
-            className="rounded-xl border border-forest-accent/7 bg-white/26 p-1.5"
-          >
-            <div className="flex items-center gap-1.5">
-              <span id={tagSuggestionLabelId} className="shrink-0 px-1 text-[10px] font-semibold text-forest-accent">
-                常用标签
-              </span>
-              <div
-                id={tagSuggestionListId}
-                role="listbox"
-                aria-labelledby={tagSuggestionLabelId}
-                className="flex min-w-0 flex-1 items-center gap-1.5 overflow-x-auto custom-scrollbar-hide"
-              >
-              {tagSuggestions.map((suggestion, index) => {
-                const badge = suggestion.count > 1 ? `${suggestion.count}次` : index < 3 ? '最近' : '历史';
-
-                return (
-                  <button
-                    key={suggestion.tag}
-                    type="button"
-                    role="option"
-                    aria-label={`使用历史标签：${suggestion.tag}${suggestion.count > 1 ? `，用过 ${suggestion.count} 次` : ''}`}
-                    onClick={() => onSelectTagSuggestion?.(suggestion.tag)}
-                    className="flex min-h-11 shrink-0 items-center gap-1.5 rounded-lg bg-white/50 px-2.5 text-left text-xs font-semibold text-forest-ink ring-1 ring-forest-accent/7 transition-all hover:bg-white/72 hover:text-forest-accent sm:min-h-10"
-                  >
-                    <span>#{suggestion.tag}</span>
-                    <span className="rounded-full bg-forest-accent/8 px-1.5 py-0.5 text-[10px] text-forest-accent">
-                      {badge}
-                    </span>
-                  </button>
-                );
-              })}
-              </div>
-            </div>
-          </div>
-        )}
 
         {quickThemeSlot}
 

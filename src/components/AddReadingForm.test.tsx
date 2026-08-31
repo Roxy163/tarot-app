@@ -517,16 +517,21 @@ describe('AddReadingForm spread designer flow', () => {
 
     const tagInput = screen.getByRole('textbox', { name: '标签' });
 
+    expect(screen.queryByTestId('tag-suggestion-bar')).not.toBeInTheDocument();
+
+    await user.click(tagInput);
     expect(screen.getByTestId('tag-suggestion-bar')).toBeInTheDocument();
     expect(screen.getAllByRole('option')[0]).toHaveAccessibleName('使用历史标签：事业，用过 2 次');
 
-    await user.click(tagInput);
     await user.type(tagInput, '事');
     expect(screen.getByRole('option', { name: '使用历史标签：事业，用过 2 次' })).toBeInTheDocument();
     expect(screen.queryByRole('option', { name: '使用历史标签：情绪' })).not.toBeInTheDocument();
 
     await user.click(screen.getByRole('option', { name: '使用历史标签：事业，用过 2 次' }));
     expect(tagInput).toHaveValue('事业');
+    await waitFor(() => {
+      expect(screen.queryByTestId('tag-suggestion-bar')).not.toBeInTheDocument();
+    });
   });
 
   it('can generate a consultant AI prompt without exposing the user interpretation notes', async () => {

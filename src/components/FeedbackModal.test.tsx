@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { FeedbackModal } from './FeedbackModal';
@@ -9,89 +9,54 @@ describe('FeedbackModal', () => {
     vi.restoreAllMocks();
   });
 
-  it('展示微信、邮箱和隐私说明', () => {
+  it('优先展示邮箱反馈和截图说明，微信只保留在底部联系方式', () => {
     render(<FeedbackModal isOpen onClose={vi.fn()} onSent={vi.fn()} />);
 
     expect(screen.getByText('反馈与建议')).toBeInTheDocument();
-    expect(screen.getByText('juben6868')).toBeInTheDocument();
-    expect(screen.getByText(/roxy163@outlook\.com/)).toBeInTheDocument();
-    expect(screen.getByText(/不会附带账号、手记或牌阵数据/)).toBeInTheDocument();
+    expect(screen.getByText('优先邮箱反馈')).toBeInTheDocument();
+    expect(screen.getByText('roxy163@outlook.com')).toBeInTheDocument();
+    expect(screen.getByText(/请带上截图和文字说明/)).toBeInTheDocument();
+    expect(screen.getByText(/截图最好包含出问题的页面/)).toBeInTheDocument();
+    expect(screen.getByText(/微信：juben6868/)).toBeInTheDocument();
+    expect(screen.getByText(/站内不会自动发送账号、手记或牌阵数据/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /复制微信/ })).not.toBeInTheDocument();
   });
 
-  it('可以复制微信号', async () => {
+  it('把用户填写的说明带入邮箱草稿', async () => {
     const user = userEvent.setup();
-    const onSent = vi.fn();
-    const writeText = vi.fn().mockResolvedValue(undefined);
-    Object.defineProperty(navigator, 'clipboard', {
-      value: { writeText },
-      configurable: true,
-    });
-
-    render(<FeedbackModal isOpen onClose={vi.fn()} onSent={onSent} />);
-
-    await user.click(screen.getByRole('button', { name: '复制微信号 juben6868' }));
-
-    expect(writeText).toHaveBeenCalledWith('juben6868');
-    expect(onSent).toHaveBeenCalledWith('已复制微信号：juben6868');
-  });
-
-  it('送出成功后关闭并显示成功提示', async () => {
-    const user = userEvent.setup();
-    const onClose = vi.fn();
-    const onSent = vi.fn();
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true }));
-
-    render(<FeedbackModal isOpen onClose={onClose} onSent={onSent} />);
-
-    await user.type(
-      screen.getByPlaceholderText(/哪里不顺手/),
-      '希望日运入口在手机上再紧凑一点',
-    );
-    await user.click(screen.getByRole('button', { name: '送出建议' }));
-
-    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
-    expect(onSent).toHaveBeenCalledWith('建议已送出，谢谢你帮研习阁变得更好。');
-  });
-
-  it('邮箱转发服务需要确认时保留弹窗并提示微信兜底', async () => {
-    const user = userEvent.setup();
-    const onClose = vi.fn();
-    const onSent = vi.fn();
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
-      ok: true,
-      headers: { get: () => 'application/json' },
-      json: async () => ({ message: 'Please activate your form by clicking the link sent to your email' }),
-    }));
-
-    render(<FeedbackModal isOpen onClose={onClose} onSent={onSent} />);
-
-    const textarea = screen.getByPlaceholderText(/哪里不顺手/);
-    await user.type(textarea, '希望能直接把建议送到作者邮箱');
-    await user.click(screen.getByRole('button', { name: '送出建议' }));
-
-    expect(await screen.findByText(/邮箱转发服务还需要作者确认/)).toBeInTheDocument();
-    expect(screen.getByText(/如果比较着急，可以复制微信号 juben6868/)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: '复制微信' })).toBeInTheDocument();
-    expect(screen.queryByRole('link', { name: /邮箱发送/ })).not.toBeInTheDocument();
-    expect(onClose).not.toHaveBeenCalled();
-    expect(onSent).not.toHaveBeenCalled();
-    expect(textarea).toHaveValue('希望能直接把建议送到作者邮箱');
-  });
-
-  it('送出失败时保留内容并提示微信兜底', async () => {
-    const user = userEvent.setup();
-    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new TypeError('offline')));
-
     render(<FeedbackModal isOpen onClose={vi.fn()} onSent={vi.fn()} />);
 
-    const textarea = screen.getByPlaceholderText(/哪里不顺手/);
-    await user.type(textarea, '这条反馈在断网时也不应该丢失');
-    await user.click(screen.getByRole('button', { name: '送出建议' }));
+    await user.click(screen.getByRole('button', { name: '遇到问题' }));
+    await user.type(
+      screen.getByPlaceholderText(/哪个页面/),
+      '删除自定义牌阵时弹窗被底部导航挡住',
+    );
+    await user.type(
+      screen.getByPlaceholderText(/不方便邮箱往返/),
+      '微信 juben6868',
+    );
 
-    expect(await screen.findByText('暂时没能送出，内容已保存在本机。')).toBeInTheDocument();
-    expect(screen.getByText(/如果比较着急，可以复制微信号 juben6868/)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: '复制微信' })).toBeInTheDocument();
-    expect(screen.queryByRole('link', { name: /邮箱发送/ })).not.toBeInTheDocument();
-    expect(textarea).toHaveValue('这条反馈在断网时也不应该丢失');
+    const emailLink = screen.getByRole('link', { name: /写邮件到 roxy163@outlook\.com/ });
+    const href = decodeURIComponent(emailLink.getAttribute('href') || '');
+
+    expect(href).toContain('mailto:roxy163@outlook.com');
+    expect(href).toContain('subject=[塔罗研习阁反馈] 遇到问题');
+    expect(href).toContain('截图：请添加问题页面、报错提示或异常状态截图');
+    expect(href).toContain('文字说明：删除自定义牌阵时弹窗被底部导航挡住');
+    expect(href).toContain('联系方式：微信 juben6868');
+  });
+
+  it('点击邮箱反馈时提示用户附上截图和文字说明', async () => {
+    const user = userEvent.setup();
+    const onSent = vi.fn();
+    render(<FeedbackModal isOpen onClose={vi.fn()} onSent={onSent} />);
+
+    await user.type(screen.getByPlaceholderText(/哪个页面/), '希望反馈入口更清楚');
+
+    const emailLink = screen.getByRole('link', { name: /写邮件到 roxy163@outlook\.com/ });
+    emailLink.addEventListener('click', event => event.preventDefault());
+    emailLink.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+
+    expect(onSent).toHaveBeenCalledWith('已打开邮箱，请附上截图和文字说明后发送。');
   });
 });
