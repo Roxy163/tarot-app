@@ -2,6 +2,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   clearFeedbackDraft,
   FEEDBACK_ATTACHMENT_MAX_COUNT,
+  FEEDBACK_ATTACHMENT_MAX_BYTES,
+  FEEDBACK_ATTACHMENT_TOTAL_MAX_BYTES,
   loadFeedbackDraft,
   saveFeedbackDraft,
   submitFeedback,
@@ -105,7 +107,7 @@ describe('feedbackService', () => {
     })).resolves.toMatchObject({ deliveryState: 'needs-configuration' });
   });
 
-  it('限制截图数量和类型', async () => {
+  it('限制截图数量、类型和总大小', async () => {
     const tooManyAttachments = Array.from({ length: FEEDBACK_ATTACHMENT_MAX_COUNT + 1 }, (_, index) => ({
       filename: `bug-${index}.png`,
       contentType: 'image/png',
@@ -119,6 +121,25 @@ describe('feedbackService', () => {
       contact: '',
       attachments: tooManyAttachments,
     })).rejects.toMatchObject({ code: 'invalid' });
+
+    const oversizedBatch = Array.from({ length: FEEDBACK_ATTACHMENT_MAX_COUNT }, (_, index) => ({
+      filename: `bug-${index}.png`,
+      contentType: 'image/png',
+      content: 'aW1hZ2U=',
+      size: Math.ceil(FEEDBACK_ATTACHMENT_TOTAL_MAX_BYTES / FEEDBACK_ATTACHMENT_MAX_COUNT) + 1,
+    }));
+
+    expect(oversizedBatch[0].size).toBeLessThanOrEqual(FEEDBACK_ATTACHMENT_MAX_BYTES);
+
+    await expect(submitFeedback({
+      category: 'bug',
+      message: '截图总量太大时应该拦住',
+      contact: '',
+      attachments: oversizedBatch,
+    })).rejects.toMatchObject({
+      code: 'invalid',
+      message: '截图总大小不能超过 24MB。',
+    });
 
     await expect(submitFeedback({
       category: 'bug',

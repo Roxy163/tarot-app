@@ -9,15 +9,16 @@ describe('FeedbackModal', () => {
     vi.restoreAllMocks();
   });
 
-  it('展示站内邮箱直达、截图说明和底部联系方式', () => {
+  it('展示截图说明、发送失败兜底和底部联系方式', () => {
     render(<FeedbackModal isOpen onClose={vi.fn()} onSent={vi.fn()} />);
 
     expect(screen.getByText('反馈与建议')).toBeInTheDocument();
-    expect(screen.getByText('站内邮箱直达')).toBeInTheDocument();
-    expect(screen.getByText('roxy163@outlook.com')).toBeInTheDocument();
-    expect(screen.getByText(/可以直接发送文字和截图/)).toBeInTheDocument();
+    expect(screen.getByText('优先附截图说明')).toBeInTheDocument();
     expect(screen.getByText(/截图最好包含出问题的页面/)).toBeInTheDocument();
-    expect(screen.getByText(/最多 3 张，每张不超过 3MB/)).toBeInTheDocument();
+    expect(screen.getByText(/如果不开 VPN 时发送失败/)).toBeInTheDocument();
+    expect(screen.getByText(/最多 9 张，单张不超过 3MB，总计不超过 24\.0MB/)).toBeInTheDocument();
+    expect(screen.queryByText('roxy163@outlook.com')).not.toBeInTheDocument();
+    expect(screen.getByText(/邮箱：roxy163@outlook\.com/)).toBeInTheDocument();
     expect(screen.getByText(/微信：juben6868/)).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /复制微信/ })).not.toBeInTheDocument();
   });

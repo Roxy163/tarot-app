@@ -106,4 +106,25 @@ describe('feedback function', () => {
     expect(response.status).toBe(400);
     expect(body.message).toContain('截图只支持');
   });
+
+  it('拒绝超过总大小的截图附件', async () => {
+    const response = await onRequestPost({
+      request: createRequest(createPayload({
+        attachments: Array.from({ length: 9 }, (_, index) => ({
+          filename: `bug-${index}.png`,
+          contentType: 'image/png',
+          content: 'aW1hZ2U=',
+          size: 3 * 1024 * 1024,
+        })),
+      }), '203.0.113.14'),
+      env: {
+        RESEND_API_KEY: 're_test_key',
+        RESEND_FROM_EMAIL: 'Tarot Pavilion <feedback@example.com>',
+      },
+    });
+    const body = await response.json();
+
+    expect(response.status).toBe(400);
+    expect(body.message).toContain('截图总大小不能超过 24MB');
+  });
 });

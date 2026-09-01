@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
-import { Camera, ExternalLink, FileImage, Mail, MessageSquareText, Send, Trash2, UploadCloud, X } from 'lucide-react';
+import { Camera, ExternalLink, FileImage, MessageSquareText, Send, Trash2, UploadCloud, X } from 'lucide-react';
 import { Modal } from './Modal';
 import {
   clearFeedbackDraft,
   FEEDBACK_ATTACHMENT_ALLOWED_TYPES,
   FEEDBACK_ATTACHMENT_MAX_BYTES,
   FEEDBACK_ATTACHMENT_MAX_COUNT,
+  FEEDBACK_ATTACHMENT_TOTAL_MAX_BYTES,
   FEEDBACK_CATEGORIES,
   FEEDBACK_CONTACT_MAX_LENGTH,
   FEEDBACK_EMAIL,
@@ -50,6 +51,10 @@ const formatFileSize = (bytes: number) => (
   bytes >= 1024 * 1024
     ? `${(bytes / 1024 / 1024).toFixed(1)}MB`
     : `${Math.max(1, Math.round(bytes / 1024))}KB`
+);
+
+const getAttachmentTotalSize = (items: SelectedFeedbackAttachment[]) => (
+  items.reduce((total, item) => total + item.size, 0)
 );
 
 const createAttachmentId = (file: File) => (
@@ -158,13 +163,21 @@ export function FeedbackModal({ isOpen, onClose, onSent }: FeedbackModalProps) {
 
     const selectedFiles = files.slice(0, remainingSlots);
     const nextAttachments: SelectedFeedbackAttachment[] = [];
+    let nextTotalSize = getAttachmentTotalSize(attachments);
     const issues: string[] = files.length > remainingSlots
       ? [`截图最多上传 ${FEEDBACK_ATTACHMENT_MAX_COUNT} 张。`]
       : [];
 
     for (const file of selectedFiles) {
       try {
-        nextAttachments.push(await readAttachmentFile(file));
+        const attachment = await readAttachmentFile(file);
+        if (nextTotalSize + attachment.size > FEEDBACK_ATTACHMENT_TOTAL_MAX_BYTES) {
+          issues.push(`截图总大小不能超过 ${formatFileSize(FEEDBACK_ATTACHMENT_TOTAL_MAX_BYTES)}。`);
+          continue;
+        }
+
+        nextTotalSize += attachment.size;
+        nextAttachments.push(attachment);
       } catch (error) {
         issues.push(error instanceof Error ? error.message : '截图读取失败，请重新选择。');
       }
@@ -246,24 +259,20 @@ export function FeedbackModal({ isOpen, onClose, onSent }: FeedbackModalProps) {
           <X size={17} />
         </button>
 
-        <div className="rounded-[1.15rem] border border-forest-accent/10 bg-forest-accent/5 p-2.5">
+        <div className="rounded-[1.15rem] border border-forest-accent/10 bg-forest-accent/5 p-3">
           <div className="flex items-start gap-3">
             <div className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-white/58 text-forest-accent">
-              <Mail size={18} />
+              <Camera size={18} />
             </div>
             <div className="min-w-0 flex-1">
-              <p className="text-[10px] font-medium text-forest-accent">站内邮箱直达</p>
-              <p className="font-serif text-[1.05rem] font-bold leading-6 tracking-wide text-forest-ink">
-                {FEEDBACK_EMAIL}
+              <p className="text-xs font-medium text-forest-accent">优先附截图说明</p>
+              <p className="mt-1 text-xs leading-5 text-forest-muted">
+                可以直接发送文字和截图。截图最好包含出问题的页面、弹窗或报错，以及你刚点过的按钮。
               </p>
-              <p className="mt-1 text-[10px] leading-4 text-forest-muted">
-                可以直接发送文字和截图；如果邮件服务暂不可用，会保留草稿。
+              <p className="mt-1 text-[10px] leading-4 text-forest-muted/85">
+                如果不开 VPN 时发送失败，可复制底部邮箱，附上截图和文字手动反馈。
               </p>
             </div>
-          </div>
-          <div className="mt-2 flex gap-2 rounded-xl bg-white/46 px-2.5 py-2 text-[10px] leading-4 text-forest-muted">
-            <Camera size={14} className="mt-0.5 shrink-0 text-forest-accent" />
-            <span>截图最好包含出问题的页面、弹窗或报错，以及你刚点过的按钮。</span>
           </div>
         </div>
 
@@ -310,7 +319,7 @@ export function FeedbackModal({ isOpen, onClose, onSent }: FeedbackModalProps) {
               <div className="min-w-0">
                 <p className="text-xs font-medium text-forest-ink">截图（选填）</p>
                 <p className="text-[10px] text-forest-muted">
-                  最多 {FEEDBACK_ATTACHMENT_MAX_COUNT} 张，每张不超过 3MB
+                  最多 {FEEDBACK_ATTACHMENT_MAX_COUNT} 张，单张不超过 3MB，总计不超过 {formatFileSize(FEEDBACK_ATTACHMENT_TOTAL_MAX_BYTES)}
                 </p>
               </div>
             </div>

@@ -4,9 +4,9 @@ export const FEEDBACK_EMAIL = 'roxy163@outlook.com';
 export const FEEDBACK_WECHAT_ID = 'juben6868';
 export const FEEDBACK_MESSAGE_MAX_LENGTH = 1200;
 export const FEEDBACK_CONTACT_MAX_LENGTH = 100;
-export const FEEDBACK_ATTACHMENT_MAX_COUNT = 3;
+export const FEEDBACK_ATTACHMENT_MAX_COUNT = 9;
 export const FEEDBACK_ATTACHMENT_MAX_BYTES = 3 * 1024 * 1024;
-export const FEEDBACK_ATTACHMENT_TOTAL_MAX_BYTES = 8 * 1024 * 1024;
+export const FEEDBACK_ATTACHMENT_TOTAL_MAX_BYTES = 24 * 1024 * 1024;
 export const FEEDBACK_ATTACHMENT_ALLOWED_TYPES = ['image/png', 'image/jpeg', 'image/webp', 'image/gif'];
 
 const FEEDBACK_DRAFT_KEY = 'tarot_feedback_draft_v1';
@@ -159,7 +159,7 @@ const sanitizeAttachments = (attachments: FeedbackAttachment[] = []) => {
 
     totalBytes += size;
     if (totalBytes > FEEDBACK_ATTACHMENT_TOTAL_MAX_BYTES) {
-      throw new FeedbackSubmissionError('invalid', '截图总大小不能超过 8MB。');
+      throw new FeedbackSubmissionError('invalid', '截图总大小不能超过 24MB。');
     }
 
     return {

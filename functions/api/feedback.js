@@ -2,9 +2,9 @@ const FEEDBACK_EMAIL = 'roxy163@outlook.com';
 const RESEND_ENDPOINT = 'https://api.resend.com/emails';
 const MESSAGE_MAX_LENGTH = 1200;
 const CONTACT_MAX_LENGTH = 100;
-const ATTACHMENT_MAX_COUNT = 3;
+const ATTACHMENT_MAX_COUNT = 9;
 const ATTACHMENT_MAX_BYTES = 3 * 1024 * 1024;
-const ATTACHMENT_TOTAL_MAX_BYTES = 8 * 1024 * 1024;
+const ATTACHMENT_TOTAL_MAX_BYTES = 24 * 1024 * 1024;
 const ATTACHMENT_ALLOWED_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/gif']);
 const RATE_LIMIT_WINDOW_MS = 60 * 1000;
 const RATE_LIMIT_MAX = 5;
@@ -116,7 +116,7 @@ const normalizeAttachments = (payloadAttachments) => {
 
     totalBytes += size;
     if (totalBytes > ATTACHMENT_TOTAL_MAX_BYTES) {
-      return { error: '截图总大小不能超过 8MB。' };
+      return { error: '截图总大小不能超过 24MB。' };
     }
 
     attachments.push({
