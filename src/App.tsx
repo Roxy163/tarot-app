@@ -360,6 +360,20 @@ function AppContent() {
   }, [setEditingReading]);
 
   const realReadings = useMemo(() => readings.filter(r => !r.isExample), [readings]);
+  const feedbackUserContext = useMemo(() => ({
+    authState: session?.uid ? 'signed-in' as const : 'guest' as const,
+    uid: session?.uid || undefined,
+    publicId: profile?.user_public_id,
+    email: session?.email || undefined,
+    displayName: profile?.display_name || profile?.nickname || session?.displayName || undefined,
+  }), [
+    profile?.display_name,
+    profile?.nickname,
+    profile?.user_public_id,
+    session?.displayName,
+    session?.email,
+    session?.uid,
+  ]);
   const readingCount = realReadings.length;
   const reviewedReadingCount = useMemo(
     () => realReadings.filter(reading => Boolean(reading.userFeedback?.trim())).length,
@@ -1360,6 +1374,7 @@ function AppContent() {
         isOpen={isFeedbackModalOpen}
         onClose={() => setIsFeedbackModalOpen(false)}
         onSent={(message) => setSnackbar({ isOpen: true, message })}
+        userContext={feedbackUserContext}
       />
 
       {/* Snackbar */}

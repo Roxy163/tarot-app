@@ -17,6 +17,7 @@ describe('FeedbackModal', () => {
     expect(screen.getByText(/截图最好包含出问题的页面/)).toBeInTheDocument();
     expect(screen.getByText(/如果不开 VPN 时发送失败/)).toBeInTheDocument();
     expect(screen.getByText(/最多 9 张，单张不超过 3MB，总计不超过 24\.0MB/)).toBeInTheDocument();
+    expect(screen.getByText(/会附带登录状态和用户识别信息/)).toBeInTheDocument();
     expect(screen.queryByText('roxy163@outlook.com')).not.toBeInTheDocument();
     expect(screen.getByText(/邮箱：roxy163@outlook\.com/)).toBeInTheDocument();
     expect(screen.getByText(/微信：juben6868/)).toBeInTheDocument();
@@ -34,7 +35,20 @@ describe('FeedbackModal', () => {
     });
     vi.stubGlobal('fetch', fetchMock);
 
-    render(<FeedbackModal isOpen onClose={onClose} onSent={onSent} />);
+    render(
+      <FeedbackModal
+        isOpen
+        onClose={onClose}
+        onSent={onSent}
+        userContext={{
+          authState: 'signed-in',
+          uid: 'uid-123',
+          publicId: 'TAROT-260901-ABCD1234',
+          email: 'reader@example.com',
+          displayName: '阿月',
+        }}
+      />,
+    );
 
     await user.click(screen.getByRole('button', { name: '遇到问题' }));
     await user.type(
@@ -62,7 +76,15 @@ describe('FeedbackModal', () => {
       反馈类型: '遇到问题',
       反馈内容: '删除自定义牌阵时弹窗被底部导航挡住',
       截图数量: '1',
+      用户识别: {
+        登录状态: '已登录',
+        公开ID: 'TAROT-260901-ABCD1234',
+        用户ID: 'uid-123',
+        登录邮箱: 'reader@example.com',
+        昵称: '阿月',
+      },
     });
+    expect(payload).not.toHaveProperty('页面');
     expect(payload.attachments[0]).toEqual(expect.objectContaining({
       filename: 'bug.png',
       contentType: 'image/png',

@@ -17,9 +17,15 @@ const createPayload = (overrides = {}) => ({
   反馈内容: '删除自定义牌阵时弹窗被挡住',
   联系方式: 'user@example.com',
   使用端: '手机端',
-  页面: '/add',
   提交时间: '2026/09/01 01:40:00',
   截图数量: '1',
+  用户识别: {
+    登录状态: '已登录',
+    公开ID: 'TAROT-260901-ABCD1234',
+    用户ID: 'uid-123',
+    登录邮箱: 'reader@example.com',
+    昵称: '阿月',
+  },
   attachments: [{
     filename: 'bug.png',
     contentType: 'image/png',
@@ -83,7 +89,12 @@ describe('feedback function', () => {
       }],
     });
     expect(resendPayload.text).toContain('反馈内容：删除自定义牌阵时弹窗被挡住');
+    expect(resendPayload.text).toContain('用户状态：已登录');
+    expect(resendPayload.text).toContain('用户ID：uid-123');
+    expect(resendPayload.text).toContain('登录邮箱：reader@example.com');
+    expect(resendPayload.text).not.toContain('页面：');
     expect(resendPayload.html).toContain('截图数量');
+    expect(resendPayload.html).toContain('公开ID');
   });
 
   it('拒绝非图片附件', async () => {

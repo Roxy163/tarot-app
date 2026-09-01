@@ -133,6 +133,7 @@ const normalizePayload = (payload) => {
   const message = cleanText(payload?.反馈内容, MESSAGE_MAX_LENGTH);
   const contact = cleanText(payload?.联系方式, CONTACT_MAX_LENGTH) || '未填写';
   const attachments = normalizeAttachments(payload?.attachments);
+  const userContext = normalizeUserContext(payload?.用户识别);
 
   if (payload?._honey) {
     return { error: '提交内容未通过检查。' };
@@ -153,10 +154,22 @@ const normalizePayload = (payload) => {
       message,
       contact,
       deviceType: cleanText(payload?.使用端, 20) || '未知',
-      pagePath: cleanText(payload?.页面, 120) || '/',
       submittedAt: cleanText(payload?.提交时间, 40) || new Date().toISOString(),
+      userContext,
       attachments,
     },
+  };
+};
+
+const normalizeUserContext = (value) => {
+  const context = value && typeof value === 'object' ? value : {};
+  return {
+    authState: cleanText(context.登录状态, 20) || '未知',
+    publicId: cleanText(context.公开ID, 80),
+    uid: cleanText(context.用户ID, 120),
+    email: cleanText(context.登录邮箱, 160),
+    displayName: cleanText(context.昵称, 80),
+    guestId: cleanText(context.游客反馈ID, 40),
   };
 };
 
@@ -179,10 +192,19 @@ const createEmailText = (data) => [
   `反馈内容：${data.message}`,
   `联系方式：${data.contact}`,
   `使用端：${data.deviceType}`,
-  `页面：${data.pagePath}`,
   `提交时间：${data.submittedAt}`,
   `截图数量：${data.attachments.length}`,
+  ...createUserContextRows(data.userContext).map(([label, value]) => `${label}：${value}`),
 ].join('\n\n');
+
+const createUserContextRows = (userContext = {}) => ([
+  ['用户状态', userContext.authState || '未知'],
+  userContext.publicId ? ['公开ID', userContext.publicId] : null,
+  userContext.uid ? ['用户ID', userContext.uid] : null,
+  userContext.email ? ['登录邮箱', userContext.email] : null,
+  userContext.displayName ? ['昵称', userContext.displayName] : null,
+  userContext.guestId ? ['游客反馈ID', userContext.guestId] : null,
+].filter(Boolean));
 
 const createEmailHtml = (data) => {
   const rows = [
@@ -190,9 +212,9 @@ const createEmailHtml = (data) => {
     ['反馈内容', data.message],
     ['联系方式', data.contact],
     ['使用端', data.deviceType],
-    ['页面', data.pagePath],
     ['提交时间', data.submittedAt],
     ['截图数量', `${data.attachments.length}`],
+    ...createUserContextRows(data.userContext),
   ];
 
   return `

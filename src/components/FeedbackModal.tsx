@@ -16,6 +16,7 @@ import {
   FeedbackAttachment,
   FeedbackDraft,
   FeedbackSubmissionError,
+  FeedbackUserContext,
   loadFeedbackDraft,
   saveFeedbackDraft,
   submitFeedback,
@@ -25,6 +26,7 @@ interface FeedbackModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSent: (message: string) => void;
+  userContext?: FeedbackUserContext;
 }
 
 type SelectedFeedbackAttachment = FeedbackAttachment & {
@@ -98,7 +100,6 @@ const createFeedbackEmailHref = (draft: FeedbackDraft, attachmentCount: number) 
   const categoryLabel = getCategoryLabel(draft.category);
   const message = draft.message.trim();
   const contact = draft.contact.trim();
-  const pagePath = typeof window !== 'undefined' ? window.location.pathname || '/' : '/';
   const subject = `[塔罗研习阁反馈] ${categoryLabel}`;
   const screenshotLine = attachmentCount > 0
     ? `站内已选择 ${attachmentCount} 张截图；如果自动发送失败，请在这封邮件里重新添加截图。`
@@ -111,13 +112,12 @@ const createFeedbackEmailHref = (draft: FeedbackDraft, attachmentCount: number) 
     `文字说明：${message || '（请描述在哪里、做了什么、发生了什么）'}`,
     contact ? `联系方式：${contact}` : '联系方式：（可选）',
     `使用端：${getDeviceType()}`,
-    `页面：${pagePath}`,
   ].join('\n');
 
   return `mailto:${FEEDBACK_EMAIL}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
 };
 
-export function FeedbackModal({ isOpen, onClose, onSent }: FeedbackModalProps) {
+export function FeedbackModal({ isOpen, onClose, onSent, userContext }: FeedbackModalProps) {
   const [draft, setDraft] = useState<FeedbackDraft>(EMPTY_DRAFT);
   const [attachments, setAttachments] = useState<SelectedFeedbackAttachment[]>([]);
   const [honeypot, setHoneypot] = useState('');
@@ -212,8 +212,8 @@ export function FeedbackModal({ isOpen, onClose, onSent }: FeedbackModalProps) {
         ...draft,
         honeypot,
         attachments,
-        pagePath: window.location.pathname,
         deviceType: getDeviceType(),
+        userContext,
       });
 
       if (result.deliveryState === 'needs-configuration') {
@@ -415,7 +415,7 @@ export function FeedbackModal({ isOpen, onClose, onSent }: FeedbackModalProps) {
         </AnimatePresence>
 
         <p className="text-[10px] leading-4 text-forest-muted/80">
-          只发送这里填写的文字和你手动添加的截图；不会附带账号、手记或牌阵数据。未送出的内容会保存为本机草稿。
+          会附带登录状态和用户识别信息，方便作者定位问题；只发送这里填写的文字和你手动添加的截图，不会附带账号密码、手记或牌阵数据。
         </p>
 
         <div className="grid grid-cols-[0.85fr_1.5fr] gap-2 pt-0.5">

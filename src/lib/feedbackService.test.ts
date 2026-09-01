@@ -44,8 +44,14 @@ describe('feedbackService', () => {
       category: 'bug',
       message: '日运复盘页面偶尔无法滚动',
       contact: 'user@example.com',
-      pagePath: '/library',
       deviceType: '手机端',
+      userContext: {
+        authState: 'signed-in',
+        uid: 'uid-123',
+        publicId: 'TAROT-260901-ABCD1234',
+        email: 'reader@example.com',
+        displayName: '阿月',
+      },
       attachments: [{
         filename: 'bug.png',
         contentType: 'image/png',
@@ -65,16 +71,48 @@ describe('feedbackService', () => {
       反馈内容: '日运复盘页面偶尔无法滚动',
       联系方式: 'user@example.com',
       使用端: '手机端',
-      页面: '/library',
       截图数量: '1',
+      用户识别: {
+        登录状态: '已登录',
+        公开ID: 'TAROT-260901-ABCD1234',
+        用户ID: 'uid-123',
+        登录邮箱: 'reader@example.com',
+        昵称: '阿月',
+      },
     });
     expect(payload.attachments[0]).toEqual(expect.objectContaining({
       filename: 'bug.png',
       contentType: 'image/png',
       content: 'aW1hZ2U=',
     }));
+    expect(payload).not.toHaveProperty('页面');
     expect(JSON.stringify(payload)).not.toContain('readings');
-    expect(JSON.stringify(payload)).not.toContain('userId');
+    expect(JSON.stringify(payload)).not.toContain('账号密码');
+    expect(JSON.stringify(payload)).not.toContain('手记');
+    expect(JSON.stringify(payload)).not.toContain('牌阵数据');
+  });
+
+  it('游客反馈自动附带本机反馈 ID', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      headers: { get: () => 'application/json' },
+      json: async () => ({ deliveryState: 'sent', message: 'sent' }),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    await submitFeedback({
+      category: 'experience',
+      message: '游客反馈也应该能识别是否来自同一台设备',
+      contact: '',
+    });
+
+    const [, request] = fetchMock.mock.calls[0] as [string, RequestInit];
+    const payload = JSON.parse(String(request.body));
+
+    expect(payload.用户识别).toMatchObject({
+      登录状态: '游客',
+      游客反馈ID: expect.stringMatching(/^GUEST-\d{8}-[A-Z0-9]{8}$/),
+    });
   });
 
   it('内容过短时不发起网络请求', async () => {

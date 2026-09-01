@@ -11,6 +11,7 @@ export const FEEDBACK_ATTACHMENT_ALLOWED_TYPES = ['image/png', 'image/jpeg', 'im
 
 const FEEDBACK_DRAFT_KEY = 'tarot_feedback_draft_v1';
 const FEEDBACK_LAST_SENT_KEY = 'tarot_feedback_last_sent_at';
+const FEEDBACK_GUEST_ID_KEY = 'tarot_feedback_guest_id_v1';
 const FEEDBACK_COOLDOWN_MS = 30_000;
 const FEEDBACK_ENDPOINT = '/api/feedback';
 
@@ -36,11 +37,19 @@ export interface FeedbackAttachment {
   size: number;
 }
 
+export interface FeedbackUserContext {
+  authState?: 'signed-in' | 'guest';
+  uid?: string;
+  publicId?: string;
+  email?: string | null;
+  displayName?: string | null;
+}
+
 export interface FeedbackSubmission extends FeedbackDraft {
-  pagePath?: string;
   deviceType?: '手机端' | '电脑端';
   honeypot?: string;
   attachments?: FeedbackAttachment[];
+  userContext?: FeedbackUserContext;
 }
 
 export type FeedbackDeliveryState = 'sent' | 'needs-activation' | 'needs-configuration';
@@ -84,6 +93,26 @@ const writeLastSentAt = (timestamp: number) => {
     localStorage.setItem(FEEDBACK_LAST_SENT_KEY, String(timestamp));
   } catch {
     // 频率提示是辅助能力，浏览器拒绝写入时不阻塞正常提交。
+  }
+};
+
+const createGuestFeedbackId = () => {
+  const datePart = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+  const randomPart = globalThis.crypto?.randomUUID?.().replace(/-/g, '')
+    || Math.random().toString(36).slice(2, 12);
+  return `GUEST-${datePart}-${randomPart.slice(0, 8).toUpperCase()}`;
+};
+
+const getGuestFeedbackId = () => {
+  try {
+    const saved = localStorage.getItem(FEEDBACK_GUEST_ID_KEY);
+    if (saved) return saved.slice(0, 40);
+
+    const nextId = createGuestFeedbackId();
+    localStorage.setItem(FEEDBACK_GUEST_ID_KEY, nextId);
+    return nextId;
+  } catch {
+    return 'GUEST-LOCAL';
   }
 };
 
@@ -131,6 +160,29 @@ const getAttachmentSize = (attachment: FeedbackAttachment) => {
 const cleanAttachmentFilename = (filename: string, index: number) => {
   const cleaned = filename.trim().replace(/[^\w.\-\u4e00-\u9fa5]/g, '-').slice(0, 90);
   return cleaned || `screenshot-${index + 1}.png`;
+};
+
+const cleanContextText = (value: string | null | undefined, maxLength = 160) => (
+  typeof value === 'string' ? value.trim().slice(0, maxLength) : ''
+);
+
+const createFeedbackUserPayload = (userContext?: FeedbackUserContext) => {
+  const isSignedIn = userContext?.authState === 'signed-in' || Boolean(userContext?.uid || userContext?.email);
+  const payload: Record<string, string> = {
+    登录状态: isSignedIn ? '已登录' : '游客',
+  };
+  const publicId = cleanContextText(userContext?.publicId, 80);
+  const uid = cleanContextText(userContext?.uid, 120);
+  const email = cleanContextText(userContext?.email, 160);
+  const displayName = cleanContextText(userContext?.displayName, 80);
+
+  if (publicId) payload.公开ID = publicId;
+  if (uid) payload.用户ID = uid;
+  if (email) payload.登录邮箱 = email;
+  if (displayName) payload.昵称 = displayName;
+  if (!isSignedIn) payload.游客反馈ID = getGuestFeedbackId();
+
+  return payload;
 };
 
 const sanitizeAttachments = (attachments: FeedbackAttachment[] = []) => {
@@ -218,9 +270,9 @@ const createFeedbackPayload = (
   反馈内容: message,
   联系方式: contact || '未填写',
   使用端: submission.deviceType || '电脑端',
-  页面: submission.pagePath || '/',
   提交时间: new Date(now).toLocaleString('zh-CN', { hour12: false }),
   截图数量: String(attachments.length),
+  用户识别: createFeedbackUserPayload(submission.userContext),
   attachments,
 });
 
