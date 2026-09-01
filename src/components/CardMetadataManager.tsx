@@ -656,9 +656,16 @@ export function CardMetadataManager({ metadata, onUpdate, readings, dailyFortune
                 className="flex min-h-11 w-full items-center justify-center gap-1 rounded-xl bg-forest-pink/80 px-2 text-[11px] font-medium text-white transition-all hover:bg-forest-pink sm:w-auto sm:gap-2 sm:rounded-full sm:px-5 sm:text-sm"
                 aria-expanded={isExportMenuOpen}
                 aria-haspopup="menu"
-                aria-label="撰录成册"
+                aria-label="成册：导出 PDF / 表格 / Markdown"
+                title="导出 PDF / 表格 / Markdown"
               >
-                <Download size={14} /> 成册
+                <Download size={14} />
+                <span className="flex min-w-0 flex-col leading-none sm:items-start">
+                  <span>成册</span>
+                  <span className="mt-0.5 hidden whitespace-nowrap text-[9px] font-normal text-white/78 sm:block">
+                    PDF / 表格 / Markdown
+                  </span>
+                </span>
               </button>
               <AnimatePresence>
                 {isExportMenuOpen && (

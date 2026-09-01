@@ -30,14 +30,17 @@ import {
   createSpreadDefinitionFromSlots,
   getSafeCustomSpreadName,
   getUniqueSpreadName,
+  hideOfficialSpread,
   restoreAllOfficialSpreads,
   restoreOfficialSpread,
   upsertSpreadDefinition,
 } from '../lib/spreadPersistence';
 import { centerGridSlots, shiftGridSlots } from '../lib/spreadGridLayout';
 import {
-  ReadingRequiredFieldIssue,
+  type ReadingRequiredFieldIssue,
+  type ReadingSubmitMode,
   buildReadingSubmitPayload,
+  getReadingDraftRequiredFieldIssue,
   getReadingRequiredFieldIssue,
 } from '../lib/readingSubmitPayload';
 import { convertGridSlotsToFreeLayout, ensureFreeLayoutSlots } from '../lib/freeLayout';
@@ -111,10 +114,15 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
   existingReadings = [],
   onCancel 
 }) => {
+  const restoreDialogTitleId = React.useId();
+  const defaultSpreadDefinition = spreads.find(spread => !spread.isHidden) || OFFICIAL_SPREADS[0];
+  const initialSpreadDefinition = initialData?.spread
+    ? spreads.find(spread => spread.name === initialData.spread)
+    : defaultSpreadDefinition;
   const [formData, setFormData] = useState({
     question: initialData?.question || '',
-    spread: initialData?.spread || '单牌阵',
-    layoutType: initialData?.layoutType || 'horizontal',
+    spread: initialData?.spread || defaultSpreadDefinition.name,
+    layoutType: initialData?.layoutType || initialSpreadDefinition?.layout || 'horizontal',
     cardInput: '',
     singleCard: initialData?.interpretation?.singleCard || '',
     combination: initialData?.interpretation?.combination || '',
@@ -192,9 +200,10 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
   const [submitNotice, setSubmitNotice] = useState('');
   const [submitIssue, setSubmitIssue] = useState<ReadingRequiredFieldIssue | null>(null);
   const [pendingDeleteSpreadNames, setPendingDeleteSpreadNames] = useState<string[]>([]);
+  const [pendingHideOfficialSpreadName, setPendingHideOfficialSpreadName] = useState('');
   const readingDetailRef = useRef<HTMLDivElement | null>(null);
   const spreadManagerDraftBackupRef = useRef<SpreadManagerDraftBackup | null>(null);
-  useBodyScrollLock(Boolean(showRestoreConfirm || spreadSaveConflict));
+  useBodyScrollLock(Boolean(showRestoreConfirm || spreadSaveConflict || pendingHideOfficialSpreadName));
 
   const {
     isLongPressActive,
@@ -510,6 +519,46 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
     setPendingDeleteSpreadNames(Array.from(new Set(safeNames)));
   };
 
+  const requestHideOfficialSpread = (spreadName: string) => {
+    if (!spreadName || !OFFICIAL_SPREADS.some(spread => spread.name === spreadName)) return;
+    setPendingHideOfficialSpreadName(spreadName);
+  };
+
+  const selectSpreadAfterVisibilityChange = (updatedSpreads: SpreadDefinition[], hiddenName: string) => {
+    const fallbackSpread = updatedSpreads.find(spread => !spread.isHidden && spread.name !== hiddenName)
+      || updatedSpreads.find(spread => !spread.isHidden)
+      || OFFICIAL_SPREADS[0];
+
+    if (formData.spread !== hiddenName || !fallbackSpread) return;
+
+    setFormData(prev => ({ ...prev, spread: fallbackSpread.name, layoutType: fallbackSpread.layout }));
+    setCardSlots(createBlankSlotsForSpread(fallbackSpread));
+    setGridCols(fallbackSpread.gridCols || 5);
+    setGridRows(fallbackSpread.gridRows || 5);
+    setNewSpreadName('');
+    setDesignActiveSlot(0);
+    setIsEditingSession(false);
+  };
+
+  const confirmHideOfficialSpread = () => {
+    if (!pendingHideOfficialSpreadName) return;
+
+    const { spreads: updatedSpreads, official } = hideOfficialSpread(
+      spreads,
+      OFFICIAL_SPREADS,
+      pendingHideOfficialSpreadName,
+    );
+    if (!official) {
+      setPendingHideOfficialSpreadName('');
+      return;
+    }
+
+    onUpdateSpreads(updatedSpreads);
+    selectSpreadAfterVisibilityChange(updatedSpreads, pendingHideOfficialSpreadName);
+    setPendingHideOfficialSpreadName('');
+    setSpreadActionMessage('已隐藏官方牌阵，可随时一键恢复');
+  };
+
   const confirmDeleteSpread = () => {
     if (pendingDeleteSpreadNames.length === 0) return;
 
@@ -622,7 +671,7 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
       const { spreads: restoredSpreads, official } = restoreOfficialSpread(spreads, OFFICIAL_SPREADS, name);
       if (!official) return;
       updatedSpreads = restoredSpreads;
-      
+
       if (formData.spread === name) {
         const restoredSlots = createBlankSlotsForSpread(official);
 
@@ -640,7 +689,7 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
     } else {
       updatedSpreads = restoreAllOfficialSpreads(spreads, OFFICIAL_SPREADS);
       const officialNames = OFFICIAL_SPREADS.map(os => os.name);
-      
+
       if (officialNames.includes(formData.spread)) {
         const restored = OFFICIAL_SPREADS.find(os => os.name === formData.spread) || OFFICIAL_SPREADS[0];
         const restoredSlots = createBlankSlotsForSpread(restored);
@@ -657,7 +706,7 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
         }
       }
     }
-    
+
     onUpdateSpreads(updatedSpreads);
     setSpreadActionMessage('已恢复官方牌阵默认设置');
     setShowRestoreConfirm(null);
@@ -794,15 +843,14 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
     }
   };
 
-  const handleSubmit = (e: FormEvent) => {
-    e.preventDefault();
+  const getSubmitIssueForMode = (mode: ReadingSubmitMode) => (
+    mode === 'complete'
+      ? getReadingRequiredFieldIssue({ formData, cardSlots, cardInterpretations })
+      : getReadingDraftRequiredFieldIssue({ formData, cardSlots })
+  );
 
-    const requiredIssue = getReadingRequiredFieldIssue({
-      formData,
-      cardSlots,
-      cardInterpretations,
-    });
-
+  const submitReading = (mode: ReadingSubmitMode) => {
+    const requiredIssue = getSubmitIssueForMode(mode);
     if (requiredIssue) {
       setSubmitIssue(requiredIssue);
       setSubmitNotice(requiredIssue.notice);
@@ -815,6 +863,7 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
       cardSlots,
       cardInterpretations,
       cardQuestions,
+      mode,
     });
 
     if (result.ok === false) {
@@ -826,6 +875,11 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
     setSubmitNotice('');
     setSubmitIssue(null);
     onSubmit(result.payload);
+  };
+
+  const handleSubmit = (e: FormEvent) => {
+    e.preventDefault();
+    submitReading('auto');
   };
 
   const handlePublicShareToggle = (checked: boolean) => {
@@ -1013,16 +1067,19 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
               initial={{ opacity: 0, scale: 0.9 }} 
               animate={{ opacity: 1, scale: 1 }} 
               exit={{ opacity: 0, scale: 0.9 }}
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby={restoreDialogTitleId}
               className="w-full max-w-sm space-y-3.5 rounded-[1.4rem] border border-forest-accent/8 bg-white/82 p-4 shadow-[0_18px_56px_-42px_rgba(62,58,54,0.58)] backdrop-blur-md"
             >
               <div className="flex items-center gap-3 text-forest-accent">
                 <RotateCcw size={24} />
-                <h3 className="font-serif text-lg font-semibold">恢复默认设置</h3>
+                <h3 id={restoreDialogTitleId} className="font-serif text-lg font-semibold">恢复默认设置</h3>
               </div>
               <p className="text-sm text-forest-muted leading-relaxed">
-                {showRestoreConfirm.name 
+                {showRestoreConfirm.name
                   ? `确定要将“${showRestoreConfirm.name}”恢复到官方默认设置吗？这将覆盖您对此牌阵的所有修改。`
-                  : "确定要恢复所有官方牌阵到默认设置吗？这将覆盖您对官方牌阵的所有修改。"}
+                  : "确定要恢复所有官方牌阵到默认设置吗？隐藏的官方牌阵会重新显示，也会覆盖您对官方牌阵的修改。"}
               </p>
               <div className="flex gap-3 pt-2">
                 <button 
@@ -1103,6 +1160,8 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
         onOpenSpreadManager={handleOpenSpreadManager}
         onCreateSpread={handleCreateNewSpread}
         onDeleteSpread={requestDeleteSpread}
+        onHideOfficialSpread={requestHideOfficialSpread}
+        onRestoreOfficialSpreads={() => setShowRestoreConfirm({})}
         isMultiCard={isMultiCard}
         activeSlotIndex={activeSlotIndex}
         onSetActiveSlotIndex={handleSlotClick}
@@ -1209,6 +1268,7 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
               onClose={handleCancelSpreadManager}
               onDeleteSpread={requestDeleteSpread}
               onDeleteSpreads={requestDeleteSpreads}
+              onHideOfficialSpread={requestHideOfficialSpread}
               onSaveSpread={saveSpread}
               onUpdateNewSpreadName={(name) => {
                 setNewSpreadName(name);
@@ -1304,6 +1364,16 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
         destructive
         onConfirm={confirmDeleteSpread}
         onClose={() => setPendingDeleteSpreadNames([])}
+      />
+
+      <ConfirmDialog
+        isOpen={Boolean(pendingHideOfficialSpreadName)}
+        title="隐藏官方牌阵"
+        message={`确定要隐藏“${pendingHideOfficialSpreadName}”吗？已经保存的手记不会受影响，之后也可以一键恢复官方牌阵。`}
+        confirmText="隐藏"
+        cancelText="取消"
+        onConfirm={confirmHideOfficialSpread}
+        onClose={() => setPendingHideOfficialSpreadName('')}
       />
 
       <div
@@ -1738,11 +1808,11 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
         </div>
       )}
 
-	        <div className="sticky bottom-[4.35rem] z-20 rounded-[1.25rem] border border-forest-accent/7 bg-white/68 p-2 shadow-[0_14px_46px_-40px_rgba(62,58,54,0.48)] backdrop-blur-md sm:static sm:border-0 sm:bg-transparent sm:p-0 sm:shadow-none">
+      <div className="sticky bottom-[4.35rem] z-20 rounded-[1.25rem] border border-forest-accent/7 bg-white/68 p-2 shadow-[0_14px_46px_-40px_rgba(62,58,54,0.48)] backdrop-blur-md sm:static sm:border-0 sm:bg-transparent sm:p-0 sm:shadow-none">
         <button
           type="submit"
           disabled={isLoading}
-	          className="flex min-h-12 w-full items-center justify-center gap-2 rounded-2xl bg-forest-accent/88 px-4 py-3 font-medium text-white shadow-sm transition-all hover:bg-forest-accent active:scale-[0.98] disabled:opacity-50 sm:min-h-[3.1rem] sm:gap-3 sm:py-3.5"
+          className="flex min-h-12 w-full items-center justify-center gap-2 rounded-2xl bg-forest-accent/88 px-4 py-3 font-medium text-white shadow-sm transition-all hover:bg-forest-accent active:scale-[0.98] disabled:opacity-50 sm:min-h-[3.1rem] sm:gap-3 sm:py-3.5"
         >
           {isLoading ? (
             <><motion.div animate={{ rotate: 360 }} transition={{ repeat: Infinity, duration: 1, ease: "linear" }}><Sparkles size={20} /></motion.div> 保存中...</>
@@ -1757,7 +1827,7 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
         </button>
         {!isLoading && (
           <p className="mt-1.5 text-center text-[10px] leading-tight text-forest-muted">
-            {isLoggedIn ? '会先写入本机，并继续同步云端。' : '会先保存在本机；登录后可同步云端。'}
+            只要有问题、牌阵和至少一张牌就能保存；未补齐牌面或解读时，会自动标记为待补全。{isLoggedIn ? '会先写入本机，并继续同步云端。' : '会先保存在本机；登录后可同步云端。'}
           </p>
         )}
       </div>

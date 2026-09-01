@@ -47,6 +47,7 @@ export interface ReadingKeywordCandidate {
 }
 
 export type ReadingAiAnswerMode = 'mentor' | 'consultant';
+export type ReadingStatus = 'complete' | 'draft';
 
 export interface CardKeywordMemoryEntry {
   keyword: string;
@@ -172,6 +173,7 @@ export interface TarotReading {
   processedByAi?: boolean;
   skipAi?: boolean;
   showSlotNumbers?: boolean;
+  status?: ReadingStatus;
   updatedAt?: string;
 }
 
@@ -186,6 +188,7 @@ export interface SpreadDefinition {
   name: string;
   layout: string;
   slots: string[];
+  isHidden?: boolean;
   slotPositions?: string[];
   rotatedSlots?: number[];
   gridCols?: number;
@@ -229,6 +232,7 @@ export interface ReadingFormData {
   category: string;
   manualTags?: string[];
   skipAi: boolean;
+  status?: ReadingStatus;
   cards: ReadingSlotData[];
   cardInterpretations: string[];
   cardQuestions: string[];

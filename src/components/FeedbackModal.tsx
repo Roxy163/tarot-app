@@ -103,7 +103,7 @@ const createFeedbackEmailHref = (draft: FeedbackDraft, attachmentCount: number) 
   const subject = `[塔罗研习阁反馈] ${categoryLabel}`;
   const screenshotLine = attachmentCount > 0
     ? `站内已选择 ${attachmentCount} 张截图；如果自动发送失败，请在这封邮件里重新添加截图。`
-    : '请添加问题页面、报错提示或异常状态截图。';
+    : '请添加报错提示或异常状态截图。';
   const body = [
     '请在邮件里附上问题截图，并保留下面的文字说明。',
     '',
@@ -267,7 +267,7 @@ export function FeedbackModal({ isOpen, onClose, onSent, userContext }: Feedback
             <div className="min-w-0 flex-1">
               <p className="text-xs font-medium text-forest-accent">优先附截图说明</p>
               <p className="mt-1 text-xs leading-5 text-forest-muted">
-                可以直接发送文字和截图。截图最好包含出问题的页面、弹窗或报错，以及你刚点过的按钮。
+                可以直接发送文字和截图。截图最好包含弹窗、报错或异常状态，以及你刚点过的按钮。
               </p>
               <p className="mt-1 text-[10px] leading-4 text-forest-muted/85">
                 如果不开 VPN 时发送失败，可复制底部邮箱，附上截图和文字手动反馈。
@@ -304,7 +304,7 @@ export function FeedbackModal({ isOpen, onClose, onSent, userContext }: Feedback
             onChange={event => updateDraft({ message: event.target.value })}
             maxLength={FEEDBACK_MESSAGE_MAX_LENGTH}
             rows={4}
-            placeholder="哪个页面、点了什么、发生了什么？截图可在下方添加。"
+            placeholder="刚刚点了什么、发生了什么？截图可在下方添加。"
             className="min-h-24 w-full resize-y rounded-[1.15rem] border border-forest-accent/10 bg-white/56 px-3.5 py-2.5 text-sm leading-5 text-forest-ink outline-none transition focus:border-forest-accent/30 focus:ring-2 focus:ring-forest-accent/8"
           />
           <span className="block text-right text-[10px] text-forest-muted/70">

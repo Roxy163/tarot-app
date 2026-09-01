@@ -1,4 +1,5 @@
 import { TarotReading } from '../types';
+import { getReadingCompletionLabel } from './readingCompletion';
 import type { ExportLine } from './pdfExport';
 
 export interface ReadingReviewStats {
@@ -113,6 +114,7 @@ const escapeCsv = (value: string | number | boolean | undefined) => {
 export const exportReadingsToCsv = (readings: TarotReading[]) => {
   const header = [
     '日期',
+    '状态',
     '问题',
     '分类',
     '对象',
@@ -131,6 +133,7 @@ export const exportReadingsToCsv = (readings: TarotReading[]) => {
 
   const rows = sortReadingsNewestFirst(readings).map(reading => [
     formatDate(getReadingDate(reading)),
+    getReadingCompletionLabel(reading),
     reading.question,
     reading.category || '',
     getAudienceLabel(reading),
@@ -172,6 +175,7 @@ export const exportReadingsToMarkdown = (
       `## ${formatDate(getReadingDate(reading))}｜${safeText(reading.question, '未命名问题')}`,
       '',
       `- 对象：${getAudienceLabel(reading)}`,
+      `- 状态：${getReadingCompletionLabel(reading)}`,
       `- 牌阵：${safeText(reading.spread)}`,
       `- 分类：${safeText(reading.category, '未分类')}`,
       `- 关键词：${reading.keywords.join('、') || '无'}`,
@@ -266,7 +270,7 @@ export const buildReadingReviewPdfLines = (
       gapBefore: index === 0 ? 4 : 14,
     });
     lines.push({
-      text: `${getAudienceLabel(reading)}｜${safeText(reading.spread)}｜${safeText(reading.category, '未分类')}`,
+      text: `${getAudienceLabel(reading)}｜${getReadingCompletionLabel(reading)}｜${safeText(reading.spread)}｜${safeText(reading.category, '未分类')}`,
       style: 'muted',
       indent: 12,
     });

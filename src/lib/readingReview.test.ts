@@ -80,12 +80,15 @@ describe('reading review export', () => {
     const markdown = exportReadingsToMarkdown([reading], '典籍复盘记录', '阿若');
 
     expect(csv).toContain('"我的复盘"');
+    expect(csv).toContain('"状态"');
+    expect(csv).toContain('"完整"');
     expect(csv).toContain('"AI参照"');
     expect(csv).toContain('"AI建议先观察。\n再行动。"');
     expect(csv).toContain('"晚上回看，确实对应到一次新尝试。\n但需要慢一点。"');
     expect(csv).toContain('"起点：愚者（正位）\n阻碍：战车（逆位）"');
     expect(markdown).toContain('# 阿若的典籍复盘记录');
     expect(markdown).toContain('## 2026/07/03｜我该如何看待这件事？');
+    expect(markdown).toContain('- 状态：完整');
     expect(markdown).toContain('### AI参照');
     expect(markdown).toContain('AI建议先观察。');
     expect(markdown).toContain('晚上回看，确实对应到一次新尝试。');

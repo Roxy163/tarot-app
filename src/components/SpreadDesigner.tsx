@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { motion } from 'motion/react';
-import { Layers, X, Plus, RotateCcw, FolderOpen, Trash2, RefreshCw, Sparkles } from 'lucide-react';
+import { EyeOff, Layers, X, Plus, RotateCcw, FolderOpen, Trash2, RefreshCw, Sparkles } from 'lucide-react';
 import { SpreadDefinition, ReadingSlotData } from '../types';
 import { OFFICIAL_SPREADS } from '../constants';
 import { FreeLayoutEditor } from './FreeLayoutEditor';
@@ -24,6 +24,7 @@ interface SpreadDesignerProps {
   onSelectSpread: (spread: SpreadDefinition, options?: { useAsTemplate?: boolean }) => void;
   onDeleteSpread: (name: string) => void;
   onDeleteSpreads?: (names: string[]) => void;
+  onHideOfficialSpread?: (name: string) => void;
   onSaveSpread: () => void;
   onUpdateNewSpreadName: (name: string) => void;
   saveNotice?: string;
@@ -58,6 +59,7 @@ export const SpreadDesigner: React.FC<SpreadDesignerProps> = ({
   onSelectSpread,
   onDeleteSpread,
   onDeleteSpreads,
+  onHideOfficialSpread,
   onSaveSpread,
   onUpdateNewSpreadName,
   saveNotice,
@@ -96,6 +98,17 @@ export const SpreadDesigner: React.FC<SpreadDesignerProps> = ({
 
   const isOfficialSpread = OFFICIAL_SPREADS.some(s => s.name === currentSpread);
   const officialSpreadNames = useMemo(() => new Set(OFFICIAL_SPREADS.map(spread => spread.name)), []);
+  const officialSpreads = useMemo(() => {
+    const savedByName = new Map(spreads.map(spread => [spread.name, spread]));
+
+    return OFFICIAL_SPREADS
+      .map(spread => (savedByName.get(spread.name) || spread) as SpreadDefinition)
+      .filter(spread => !spread.isHidden);
+  }, [spreads]);
+  const hiddenOfficialSpreadCount = useMemo(
+    () => OFFICIAL_SPREADS.filter(spread => spreads.find(item => item.name === spread.name)?.isHidden).length,
+    [spreads],
+  );
   const customSpreads = useMemo(
     () => spreads.filter(spread => !officialSpreadNames.has(spread.name)),
     [officialSpreadNames, spreads],
@@ -226,11 +239,13 @@ export const SpreadDesigner: React.FC<SpreadDesignerProps> = ({
                   className="min-h-11 w-full cursor-pointer appearance-none rounded-lg border border-forest-accent/8 bg-white/52 py-1.5 pl-8 pr-2.5 text-sm text-forest-ink focus:ring-2 focus:ring-forest-accent/15 sm:min-h-10"
                 >
                   <option value="">空白创作，不套用模板</option>
+                  {officialSpreads.length > 0 && (
                   <optgroup label="官方牌阵">
-                    {OFFICIAL_SPREADS.map(spread => (
+                    {officialSpreads.map(spread => (
                       <option key={spread.name} value={spread.name}>{spread.name}</option>
                     ))}
                   </optgroup>
+                  )}
                   {customSpreads.length > 0 && (
                     <optgroup label={`自定义牌阵 (${customSpreads.length})`}>
                       {customSpreads.map(spread => (
@@ -378,12 +393,17 @@ export const SpreadDesigner: React.FC<SpreadDesignerProps> = ({
                   onClick={() => onRestoreDefaults()}
                   className="flex min-h-11 items-center gap-1.5 rounded-lg px-2 py-1.5 text-xs font-semibold text-forest-muted transition-colors hover:bg-amber-50/70 hover:text-amber-600 sm:min-h-10"
                 >
-                  <RefreshCw size={14} /> 恢复全部官方默认
+                  <RefreshCw size={14} /> {hiddenOfficialSpreadCount > 0 ? `恢复全部官方牌阵 (${hiddenOfficialSpreadCount})` : '恢复全部官方默认'}
                 </button>
-                {isOfficialSpread && (
-                  <span className="flex min-h-11 items-center px-1.5 text-[10px] font-semibold text-forest-muted sm:min-h-10">
-                    官方牌阵不可删除
-                  </span>
+                {isOfficialSpread && officialSpreads.length > 1 && (
+                  <button
+                    type="button"
+                    onClick={() => onHideOfficialSpread?.(currentSpread)}
+                    className="flex min-h-11 items-center gap-1.5 rounded-lg px-2 py-1.5 text-xs font-semibold text-amber-600 transition-colors hover:bg-amber-50/80 sm:min-h-10"
+                    aria-label={`隐藏官方牌阵 ${currentSpread}`}
+                  >
+                    <EyeOff size={14} /> 隐藏当前
+                  </button>
                 )}
                 {canDeleteCurrentSpread && (
                   <button

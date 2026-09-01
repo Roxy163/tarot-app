@@ -22,8 +22,8 @@ const renderForm = (overrides: {
     existingReadings: overrides.existingReadings || [],
   };
 
-  render(<AddReadingForm {...props} />);
-  return props;
+  const utils = render(<AddReadingForm {...props} />);
+  return { ...props, ...utils };
 };
 
 const makeReading = (
@@ -442,6 +442,58 @@ describe('AddReadingForm spread designer flow', () => {
     await waitFor(() => {
       expect(screen.getByPlaceholderText('记录关于“第一张”的直觉与洞察...')).toBeInTheDocument();
     });
+  });
+
+  it('saves an incomplete multi-card reading from the unified save action', async () => {
+    const user = userEvent.setup();
+    const props = renderForm();
+
+    await user.type(screen.getByPlaceholderText('占卜的问题是什么？'), '先把牌面记下来');
+    await user.selectOptions(screen.getByRole('combobox'), '无牌阵三张');
+    await user.click(screen.getByRole('button', { name: '1 第一张' }));
+    await user.click(screen.getByRole('button', { name: '愚者 愚者' }));
+    await user.click(screen.getByRole('button', { name: '保存手记' }));
+
+    expect(props.onSubmit).toHaveBeenCalledWith(expect.objectContaining({
+      status: 'draft',
+      question: '先把牌面记下来',
+      cards: expect.arrayContaining([
+        expect.objectContaining({ name: '愚者' }),
+      ]),
+      cardInterpretations: ['', '', ''],
+    }));
+  });
+
+  it('lets users hide an official spread without deleting it', async () => {
+    const user = userEvent.setup();
+    const props = renderForm();
+
+    await user.click(screen.getByRole('button', { name: '隐藏官方牌阵 单牌阵' }));
+    expect(screen.getByRole('dialog', { name: '隐藏官方牌阵' })).toBeInTheDocument();
+    await user.click(within(screen.getByRole('dialog', { name: '隐藏官方牌阵' })).getByRole('button', { name: '隐藏' }));
+
+    expect(props.onUpdateSpreads).toHaveBeenCalledWith(expect.arrayContaining([
+      expect.objectContaining({ name: '单牌阵', isHidden: true }),
+    ]));
+    expect((screen.getByRole('combobox') as HTMLSelectElement).value).not.toBe('单牌阵');
+  });
+
+  it('restores hidden official spreads from the spread selector', async () => {
+    const user = userEvent.setup();
+
+    const hiddenSpreads = OFFICIAL_SPREADS.map((spread, index) => (
+      index === 1 ? { ...spread, isHidden: true } : spread
+    ));
+    const props = renderForm({ spreads: hiddenSpreads });
+
+    await user.click(screen.getByRole('button', { name: '恢复隐藏的官方牌阵，共 1 个' }));
+    await user.click(within(screen.getByRole('dialog', { name: '恢复默认设置' })).getByRole('button', { name: '确定恢复' }));
+
+    expect(props.onUpdateSpreads).toHaveBeenCalledWith(expect.arrayContaining([
+      expect.objectContaining({ name: OFFICIAL_SPREADS[1].name }),
+    ]));
+    const restoredSpreads = props.onUpdateSpreads.mock.calls[0][0] as SpreadDefinition[];
+    expect(restoredSpreads.find(spread => spread.name === OFFICIAL_SPREADS[1].name)?.isHidden).toBeUndefined();
   });
 
   it('shows a gentle AI prompt reminder only after users try to generate it too early', async () => {

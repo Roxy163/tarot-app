@@ -82,6 +82,23 @@ describe('reading session merge', () => {
     expect(merged.map(spread => spread.name)).toEqual(['单牌阵', '云端牌阵', '本地牌阵']);
   });
 
+  it('preserves local official spread visibility when merging cloud and local spreads', () => {
+    const officialSpreads: SpreadDefinition[] = [
+      { name: '单牌阵', layout: 'horizontal', slots: ['主牌'] },
+      { name: '三牌阵', layout: 'custom', slots: ['一', '二', '三'] },
+    ];
+    const cloudSpreads: SpreadDefinition[] = [
+      { name: '三牌阵', layout: 'custom', slots: ['一', '二', '三'], isHidden: false },
+    ];
+    const localSpreads: SpreadDefinition[] = [
+      { name: '三牌阵', layout: 'custom', slots: ['一', '二', '三'], isHidden: true },
+    ];
+
+    const merged = mergeSpreadSources([cloudSpreads, localSpreads], officialSpreads);
+
+    expect(merged.find(spread => spread.name === '三牌阵')?.isHidden).toBe(true);
+  });
+
   it('merges cloud and local card metadata instead of choosing only one side', () => {
     const cloudMetadata: TarotCardMetadata[] = [{
       id: 'ar02',

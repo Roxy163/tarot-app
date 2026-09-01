@@ -76,6 +76,31 @@ describe('PrivateTab', () => {
     expect(screen.getByText('客户: 小林')).toBeInTheDocument();
   });
 
+  it('filters readings that still need cards or interpretations filled in', async () => {
+    const user = userEvent.setup();
+    renderPrivateTab([
+      createReading({ id: 'complete-reading', question: '已经完整', status: 'complete' }),
+      createReading({
+        id: 'incomplete-reading',
+        question: '还要补解读',
+        status: 'draft',
+        spread: '无牌阵三张',
+        cards: [
+          { name: '愚者', isReversed: false },
+          { name: '', isReversed: false },
+          { name: '', isReversed: false },
+        ],
+      }),
+    ]);
+
+    await user.click(screen.getByRole('button', { name: /筛选/ }));
+    await user.click(screen.getByRole('button', { name: '待补全' }));
+
+    expect(screen.getByText('还要补解读')).toBeInTheDocument();
+    expect(screen.queryByText('已经完整')).not.toBeInTheDocument();
+    expect(screen.getByText('状态: 待补全')).toBeInTheDocument();
+  });
+
   it('filters the archive by tags from the compact filter menu', async () => {
     const user = userEvent.setup();
     const readings = [
@@ -295,7 +320,7 @@ describe('PrivateTab', () => {
     expect(screen.getByRole('button', { name: '导出2' })).toBeEnabled();
   });
 
-  it('keeps delete hidden until users enter selection mode', async () => {
+  it('supports single delete in normal mode and batch delete in selection mode', async () => {
     const user = userEvent.setup();
     const onDelete = vi.fn();
     renderPrivateTab([
@@ -303,7 +328,12 @@ describe('PrivateTab', () => {
       createReading({ id: 'second-reading', question: '第二条记录' }),
     ], { onDelete });
 
-    expect(screen.queryByRole('button', { name: '删除手记' })).not.toBeInTheDocument();
+    await user.click(screen.getAllByRole('button', { name: '删除手记' })[0]);
+    expect(screen.getByRole('dialog', { name: '删除手记' })).toBeInTheDocument();
+    await user.click(within(screen.getByRole('dialog', { name: '删除手记' })).getByRole('button', { name: '删除' }));
+
+    expect(onDelete).toHaveBeenCalledTimes(1);
+    expect(onDelete).toHaveBeenCalledWith('first-reading');
     expect(screen.queryByRole('button', { name: '删除所选' })).not.toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: '多选' }));
@@ -313,9 +343,9 @@ describe('PrivateTab', () => {
     await user.click(screen.getByRole('button', { name: '删除所选' }));
     expect(screen.getByRole('dialog', { name: '删除所选手记' })).toBeInTheDocument();
 
-    await user.click(screen.getByRole('button', { name: '删除' }));
+    await user.click(within(screen.getByRole('dialog', { name: '删除所选手记' })).getByRole('button', { name: '删除' }));
 
-    expect(onDelete).toHaveBeenCalledTimes(2);
+    expect(onDelete).toHaveBeenCalledTimes(3);
     expect(onDelete).toHaveBeenCalledWith('first-reading');
     expect(onDelete).toHaveBeenCalledWith('second-reading');
   });

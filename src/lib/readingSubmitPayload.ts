@@ -1,4 +1,4 @@
-import { ReadingFormData, ReadingSlotData } from '../types';
+import { ReadingFormData, ReadingSlotData, ReadingStatus } from '../types';
 
 export const EMPTY_READING_NOTICE = '还差一点：请至少录入一张牌。';
 export const REQUIRED_QUESTION_NOTICE = '还差一点：先写下这次想问的问题。';
@@ -44,6 +44,8 @@ export type ReadingFormState = Omit<ReadingFormData, 'interpretation' | 'cards' 
 export type ReadingSubmitPayloadResult =
   | { ok: true; payload: Partial<ReadingFormData> }
   | { ok: false; notice: string };
+
+export type ReadingSubmitMode = 'auto' | 'complete' | 'draft';
 
 const isSingleCardReading = (formData: ReadingFormState, cardSlots: ReadingSlotData[]) => (
   formData.category === '日运'
@@ -122,16 +124,37 @@ export const getReadingRequiredFieldIssue = ({
   return null;
 };
 
+export const getReadingDraftRequiredFieldIssue = ({
+  formData,
+  cardSlots,
+}: {
+  formData: ReadingFormState;
+  cardSlots: ReadingSlotData[];
+}): ReadingRequiredFieldIssue | null => {
+  if (!formData.question.trim()) return { field: 'question', notice: REQUIRED_QUESTION_NOTICE };
+  if (!formData.spread.trim()) return { field: 'spread', notice: REQUIRED_SPREAD_NOTICE };
+  if (formData.isForClient && !formData.clientName.trim()) {
+    return { field: 'clientName', notice: REQUIRED_CLIENT_NAME_NOTICE };
+  }
+  if (cardSlots.length === 0 || !cardSlots.some(slot => slot.name.trim())) {
+    return { field: 'cards', notice: EMPTY_READING_NOTICE };
+  }
+
+  return null;
+};
+
 export const buildReadingSubmitPayload = ({
   formData,
   cardSlots,
   cardInterpretations,
   cardQuestions = [],
+  mode = 'auto',
 }: {
   formData: ReadingFormState;
   cardSlots: ReadingSlotData[];
   cardInterpretations: string[];
   cardQuestions?: string[];
+  mode?: ReadingSubmitMode;
 }): ReadingSubmitPayloadResult => {
   const {
     singleCard,
@@ -147,8 +170,14 @@ export const buildReadingSubmitPayload = ({
     ...rest
   } = formData;
 
-  const requiredFieldNotice = validateReadingRequiredFields({ formData, cardSlots, cardInterpretations });
-  if (requiredFieldNotice) return { ok: false, notice: requiredFieldNotice };
+  const completeIssue = getReadingRequiredFieldIssue({ formData, cardSlots, cardInterpretations });
+  const requiredIssue = mode === 'complete'
+    ? completeIssue
+    : getReadingDraftRequiredFieldIssue({ formData, cardSlots });
+  if (requiredIssue) return { ok: false, notice: requiredIssue.notice };
+  const submittedStatus: ReadingStatus = mode === 'draft' || (mode === 'auto' && completeIssue)
+    ? 'draft'
+    : 'complete';
 
   const submittedCards = cardSlots;
   const submittedInterpretations = cardSlots.map((_, index) => getReadingSlotInterpretation({
@@ -184,6 +213,7 @@ export const buildReadingSubmitPayload = ({
       aiAnswerMode: submittedAiAnswer ? submittedAiAnswerMode : undefined,
       aiAnswerUpdatedAt: submittedAiAnswer ? (aiAnswerUpdatedAt || new Date().toISOString()) : undefined,
       manualTags: parseReadingManualTags(formData.category),
+      status: submittedStatus,
       cards: submittedCards,
       slotLabels: submittedCards.map(slot => slot.label || ''),
       slotPositions: submittedCards.map(slot => slot.position || ''),

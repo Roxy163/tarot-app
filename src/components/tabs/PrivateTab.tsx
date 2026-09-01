@@ -11,6 +11,7 @@ import {
   Filter,
   LayoutGrid,
   List,
+  PencilLine,
   Search,
   Table2,
   Tag,
@@ -38,6 +39,7 @@ import {
   buildReadingArchiveIndex,
   readingMatchesArchiveIndexFilter,
 } from '../../lib/readingArchiveIndex';
+import { isReadingIncomplete } from '../../lib/readingCompletion';
 import { trackEvent } from '../../lib/analytics';
 import type { ReadingArchiveIndexFilter } from '../../lib/readingArchiveIndex';
 
@@ -92,7 +94,7 @@ export const PrivateTab: React.FC<PrivateTabProps> = ({
   cardMetadata,
   highlightedReadingId,
 }) => {
-  const [reviewFilter, setReviewFilter] = useState<'all' | 'reviewed' | 'unreviewed'>('all');
+  const [reviewFilter, setReviewFilter] = useState<'all' | 'incomplete' | 'reviewed' | 'unreviewed'>('all');
   const [audienceFilter, setAudienceFilter] = useState<'all' | 'self' | 'client'>('all');
   const [clientFilter, setClientFilter] = useState('');
   const [readingViewMode, setReadingViewMode] = useState<'grid' | 'list'>('grid');
@@ -148,6 +150,8 @@ export const PrivateTab: React.FC<PrivateTabProps> = ({
     if (hasRealReadings && r.isExample) return false;
 
     const hasFeedback = !!r.userFeedback?.trim();
+    const isIncomplete = isReadingIncomplete(r);
+    if (reviewFilter === 'incomplete' && !isIncomplete) return false;
     if (reviewFilter === 'reviewed' && !hasFeedback) return false;
     if (reviewFilter === 'unreviewed' && hasFeedback) return false;
     if (audienceFilter === 'self' && r.isForClient) return false;
@@ -398,6 +402,7 @@ export const PrivateTab: React.FC<PrivateTabProps> = ({
 
   const reviewFilterOptions = [
     { id: 'all' as const, label: '全部', icon: BookOpen },
+    { id: 'incomplete' as const, label: '待补全', icon: PencilLine },
     { id: 'reviewed' as const, label: '已复盘', icon: CheckCircle2 },
     { id: 'unreviewed' as const, label: '未复盘', icon: Circle },
   ];
@@ -528,7 +533,7 @@ export const PrivateTab: React.FC<PrivateTabProps> = ({
             <div className="absolute right-0 top-full z-30 mt-2 w-[min(88vw,360px)] rounded-[1.25rem] border border-forest-accent/7 bg-white/80 p-3 shadow-[0_16px_42px_-36px_rgba(62,58,54,0.5)] backdrop-blur-md">
               <div className="space-y-3">
                 <div>
-                  <p className="mb-2 text-[10px] font-medium tracking-[0.14em] text-forest-muted">复盘状态</p>
+                  <p className="mb-2 text-[10px] font-medium tracking-[0.14em] text-forest-muted">记录状态</p>
                   <div className="flex flex-wrap gap-2">
                     {reviewFilterOptions.map(option => {
                       const Icon = option.icon;
@@ -969,7 +974,7 @@ export const PrivateTab: React.FC<PrivateTabProps> = ({
           ))}
           {reviewFilter !== 'all' && (
             <span className="px-2 py-0.5 bg-forest-accent/10 text-forest-accent rounded-full text-[10px] font-medium flex items-center gap-1">
-              复盘: {reviewFilter === 'reviewed' ? '已复盘' : '未复盘'}
+              状态: {activeReviewFilter.label}
               <X size={10} className="cursor-pointer" onClick={() => setReviewFilter('all')} />
             </span>
           )}
@@ -1100,9 +1105,10 @@ export const PrivateTab: React.FC<PrivateTabProps> = ({
                   onProcessAi={onProcessAi}
                   onExtractKeywordCandidates={onExtractKeywordCandidates}
                   onConfirmKeywordCandidates={onConfirmKeywordCandidates}
+                  onDelete={() => onDelete(reading.id)}
                   isHighlighted={reading.id === highlightedReadingId}
                   variant={readingViewMode === 'list' ? 'list' : 'card'}
-                  hideDeleteAction
+                  hideDeleteAction={isSelectionMode}
                 />
               </div>
             );

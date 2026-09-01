@@ -7,6 +7,7 @@ import { useBodyScrollLock } from '../hooks/useBodyScrollLock';
 import { TarotCardImage } from './TarotCardImage';
 import { MysticWatermark } from './MysticWatermark';
 import { formatReadingDateTime } from '../lib/dateFormat';
+import { isReadingIncomplete } from '../lib/readingCompletion';
 
 interface ReadingDetailModalProps {
   reading: TarotReading | null;
@@ -34,6 +35,11 @@ export const ReadingDetailModal: React.FC<ReadingDetailModalProps> = ({
   const aiReferenceModeLabel = reading.aiAnswerMode === 'consultant' ? '咨询解牌' : '导师复盘';
   const clientDisplayName = reading.clientName?.trim() || '未命名客户';
   const displayDate = formatReadingDateTime(reading.readingDate || reading.date);
+  const filledCardCount = (reading.cards || []).filter(card => card.name?.trim()).length;
+  const cardCountLabel = filledCardCount < (reading.cards?.length || 0)
+    ? `${filledCardCount}/${reading.cards.length}张牌`
+    : `${reading.cards.length}张牌`;
+  const isIncompleteReading = isReadingIncomplete(reading);
   const cardRows = (reading.cards || []).map((card, index) => {
     const cardData = TAROT_CARDS.find(item => (
       item.name === card.name ||
@@ -59,7 +65,7 @@ export const ReadingDetailModal: React.FC<ReadingDetailModalProps> = ({
   const notedCardCount = cardRows.filter(item => item.note).length;
   const learningLoopItems = [
     { label: '问题', value: reading.category || '未分类', done: Boolean(reading.question.trim()) },
-    { label: '牌面', value: `${reading.cards.length} 张 · ${reading.spread}`, done: reading.cards.length > 0 },
+    { label: '牌面', value: `${cardCountLabel} · ${reading.spread}`, done: filledCardCount === reading.cards.length && reading.cards.length > 0 },
     { label: '逐牌注疏', value: `${notedCardCount}/${reading.cards.length}`, done: notedCardCount >= reading.cards.length && reading.cards.length > 0 },
     { label: '复盘验证', value: feedbackText ? '已补写' : '待回看', done: Boolean(feedbackText) },
   ];
@@ -94,6 +100,11 @@ export const ReadingDetailModal: React.FC<ReadingDetailModalProps> = ({
                     已复盘
                   </span>
                 )}
+                {isIncompleteReading && (
+                  <span className="rounded-full bg-amber-100/75 px-2 py-0.5 text-[10px] font-semibold text-amber-700">
+                    待补全
+                  </span>
+                )}
                 {aiReferenceText && (
                   <span className="inline-flex items-center gap-1 rounded-full bg-forest-accent/8 px-2 py-0.5 text-[10px] font-semibold text-forest-accent">
                     <Sparkles size={11} />
@@ -108,7 +119,7 @@ export const ReadingDetailModal: React.FC<ReadingDetailModalProps> = ({
               </div>
               <h2 className="line-clamp-2 text-base font-semibold text-forest-ink sm:text-xl">{reading.question}</h2>
               <p className="text-xs text-forest-muted">
-                {displayDate} · {reading.spread} · {reading.cards.length}张牌
+                {displayDate} · {reading.spread} · {cardCountLabel}
                 {reading.isForClient ? ` · 客户：${clientDisplayName}` : ' · 给自己记录'}
               </p>
             </div>
@@ -195,12 +206,18 @@ export const ReadingDetailModal: React.FC<ReadingDetailModalProps> = ({
                   return (
                     <article key={`${item.card.name}-${index}`} className="flex gap-3 rounded-2xl border border-forest-accent/7 bg-white/36 p-3">
                       <div className={`w-16 h-24 sm:w-20 sm:h-30 rounded-xl overflow-hidden border border-forest-accent/8 shadow-sm shrink-0 bg-forest-bg ${item.card.isReversed ? 'rotate-180' : ''}`}>
-                        <TarotCardImage
-                          src={getCardImageUrl(item.cardData?.id || 'ar00')}
-                          alt={item.card.name}
-                          name={item.card.name}
-                          className="w-full h-full object-contain bg-white"
-                        />
+                        {item.card.name?.trim() ? (
+                          <TarotCardImage
+                            src={getCardImageUrl(item.cardData?.id || 'ar00')}
+                            alt={item.card.name}
+                            name={item.card.name}
+                            className="w-full h-full object-contain bg-white"
+                          />
+                        ) : (
+                          <div className="flex h-full w-full items-center justify-center bg-white/56 px-2 text-center text-[10px] font-medium leading-snug text-forest-muted">
+                            待选牌
+                          </div>
+                        )}
                       </div>
                       <div className="min-w-0 flex-1 space-y-2">
                         <div className="flex flex-wrap items-center gap-2">
@@ -208,7 +225,7 @@ export const ReadingDetailModal: React.FC<ReadingDetailModalProps> = ({
                             {item.label}
                           </span>
                           <span className="text-sm font-semibold text-forest-ink">
-                            {item.cardData?.name || item.card.name}
+                            {item.cardData?.name || item.card.name || '未选牌'}
                           </span>
                           <span className="text-[10px] text-forest-muted">
                             {item.card.isReversed ? '逆位' : '正位'}

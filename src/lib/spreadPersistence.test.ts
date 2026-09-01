@@ -6,6 +6,7 @@ import {
   getLegacyCustomSpreadNameMap,
   getSafeCustomSpreadName,
   getUniqueSpreadName,
+  hideOfficialSpread,
   mergeOfficialSpreadsWithCustom,
   normalizeLegacyReadingSpreadNames,
   restoreAllOfficialSpreads,
@@ -150,12 +151,25 @@ describe('spreadPersistence', () => {
 
   it('restores all official spreads and preserves custom spreads', () => {
     const changedOfficial = { ...officialSpreads[1], slots: ['被改过'] };
+    const hiddenOfficial = { ...officialSpreads[0], isHidden: true };
     const customSpread = { name: '私人牌阵', layout: 'custom', slots: ['一'] };
 
-    expect(restoreAllOfficialSpreads([changedOfficial, customSpread], officialSpreads)).toEqual([
+    expect(restoreAllOfficialSpreads([hiddenOfficial, changedOfficial, customSpread], officialSpreads)).toEqual([
       ...officialSpreads,
       customSpread,
     ]);
+  });
+
+  it('can hide an official spread and restore it later', () => {
+    const hidden = hideOfficialSpread(officialSpreads, officialSpreads, '单牌阵');
+
+    expect(hidden.official).toEqual({ ...officialSpreads[0], isHidden: true });
+    expect(hidden.spreads[0]).toEqual({ ...officialSpreads[0], isHidden: true });
+    expect(mergeOfficialSpreadsWithCustom(hidden.spreads, officialSpreads)[0]).toEqual({
+      ...officialSpreads[0],
+      isHidden: true,
+    });
+    expect(restoreAllOfficialSpreads(hidden.spreads, officialSpreads)[0]).toEqual(officialSpreads[0]);
   });
 
   it('always prefers current official definitions while preserving custom spreads', () => {

@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { SpreadDesigner } from './SpreadDesigner';
 import { SpreadDefinition } from '../types';
+import { OFFICIAL_SPREADS } from '../constants';
 
 const spreads: SpreadDefinition[] = [
   {
@@ -139,19 +140,24 @@ describe('SpreadDesigner', () => {
   it('can restore all official spreads without exposing official deletion', async () => {
     const user = userEvent.setup();
     const onRestoreDefaults = vi.fn();
+    const onHideOfficialSpread = vi.fn();
 
     renderDesigner({
+      spreads: [...OFFICIAL_SPREADS, ...spreads],
       currentSpread: '单牌阵',
       newSpreadName: '单牌阵 (自定义)',
       isEditingSession: false,
       onRestoreDefaults,
+      onHideOfficialSpread,
     });
 
     await user.click(screen.getByRole('button', { name: '恢复全部官方默认' }));
 
     expect(onRestoreDefaults).toHaveBeenCalledWith();
-    expect(screen.getByText('官方牌阵不可删除')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /删除牌阵 单牌阵/ })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: '隐藏官方牌阵 单牌阵' }));
+    expect(onHideOfficialSpread).toHaveBeenCalledWith('单牌阵');
   });
 
   it('updates the spread name from the name field', async () => {

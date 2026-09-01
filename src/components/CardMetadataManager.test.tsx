@@ -176,7 +176,7 @@ describe('CardMetadataManager', () => {
       />,
     );
 
-    await user.click(screen.getByRole('button', { name: '撰录成册' }));
+    await user.click(screen.getByRole('button', { name: '成册：导出 PDF / 表格 / Markdown' }));
 
     expect(screen.getByRole('menu')).toBeInTheDocument();
     expect(screen.getByText('当前筛选 78 张')).toBeInTheDocument();
@@ -199,7 +199,7 @@ describe('CardMetadataManager', () => {
       />,
     );
 
-    await user.click(screen.getByRole('button', { name: '撰录成册' }));
+    await user.click(screen.getByRole('button', { name: '成册：导出 PDF / 表格 / Markdown' }));
     expect(screen.getByRole('menu')).toBeInTheDocument();
 
     await user.click(screen.getByText('塔罗牌库'));

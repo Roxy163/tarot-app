@@ -14,7 +14,7 @@ describe('FeedbackModal', () => {
 
     expect(screen.getByText('反馈与建议')).toBeInTheDocument();
     expect(screen.getByText('优先附截图说明')).toBeInTheDocument();
-    expect(screen.getByText(/截图最好包含出问题的页面/)).toBeInTheDocument();
+    expect(screen.getByText(/截图最好包含弹窗、报错或异常状态/)).toBeInTheDocument();
     expect(screen.getByText(/如果不开 VPN 时发送失败/)).toBeInTheDocument();
     expect(screen.getByText(/最多 9 张，单张不超过 3MB，总计不超过 24\.0MB/)).toBeInTheDocument();
     expect(screen.getByText(/会附带登录状态和用户识别信息/)).toBeInTheDocument();
@@ -52,7 +52,7 @@ describe('FeedbackModal', () => {
 
     await user.click(screen.getByRole('button', { name: '遇到问题' }));
     await user.type(
-      screen.getByPlaceholderText(/哪个页面/),
+      screen.getByPlaceholderText(/刚刚点了什么/),
       '删除自定义牌阵时弹窗被底部导航挡住',
     );
     await user.upload(
@@ -107,7 +107,7 @@ describe('FeedbackModal', () => {
 
     render(<FeedbackModal isOpen onClose={onClose} onSent={vi.fn()} />);
 
-    await user.type(screen.getByPlaceholderText(/哪个页面/), '希望反馈入口更清楚');
+    await user.type(screen.getByPlaceholderText(/刚刚点了什么/), '希望反馈入口更清楚');
     await user.click(screen.getByRole('button', { name: '发送给作者' }));
 
     expect(await screen.findByText(/邮件服务还没配置完成/)).toBeInTheDocument();

@@ -51,6 +51,7 @@ describe('buildReadingSubmitPayload', () => {
       formData: baseFormData,
       cardSlots: [{ name: '', isReversed: false, label: '空位' }],
       cardInterpretations: [''],
+      mode: 'complete',
     })).toEqual({ ok: false, notice: INCOMPLETE_CARDS_NOTICE });
   });
 
@@ -75,6 +76,7 @@ describe('buildReadingSubmitPayload', () => {
       formData: baseFormData,
       cardSlots: completeSlots,
       cardInterpretations: ['过去解读', '', '未来解读'],
+      mode: 'complete',
     })).toEqual({ ok: false, notice: REQUIRED_CARD_INTERPRETATION_NOTICE });
   });
 
@@ -96,6 +98,30 @@ describe('buildReadingSubmitPayload', () => {
     expect(result.payload.cardInterpretations).toEqual(['过去解读', '现在解读', '未来解读']);
     expect(result.payload.cardQuestions).toEqual(['过去疑问', '', '未来疑问']);
     expect(result.payload.interpretation?.combination).toBe('组合原文');
+    expect(result.payload.status).toBe('complete');
+  });
+
+  it('automatically marks an incomplete reading as needing completion', () => {
+    const result = buildReadingSubmitPayload({
+      formData: baseFormData,
+      cardSlots: slots,
+      cardInterpretations: ['过去解读', '', ''],
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    expect(result.payload.status).toBe('draft');
+    expect(result.payload.cards).toEqual(slots);
+    expect(result.payload.cardInterpretations).toEqual(['过去解读', '', '']);
+  });
+
+  it('still requires at least one selected card before saving', () => {
+    expect(buildReadingSubmitPayload({
+      formData: baseFormData,
+      cardSlots: [{ name: '', isReversed: false, label: '空位' }],
+      cardInterpretations: [''],
+    })).toEqual({ ok: false, notice: '还差一点：请至少录入一张牌。' });
   });
 
   it('keeps free layout coordinates on submitted cards', () => {

@@ -706,6 +706,7 @@ export const useReadings = (
           ? newReading.cards.map((s: any) => s.label)
           : (newReading.cardInput ? [/* placeholder */] : []),
         cardInterpretations: newReading.cardInterpretations || [],
+        status: newReading.status === 'draft' ? 'draft' : 'complete',
         isAiProcessed: false,
         updatedAt: new Date().toISOString(),
       };
@@ -715,7 +716,7 @@ export const useReadings = (
       if (editingReading?.id) {
         const updatedReading = stampReadingUpdate({ ...editingReading, ...readingData });
         setReadings(readings.map(r => r.id === editingReading.id ? updatedReading : r));
-        onShowSnackbar?.('✨ 灵见手帖已更新。');
+        onShowSnackbar?.(updatedReading.status === 'draft' ? '已保存为待补全，可稍后继续补牌面或解读。' : '✨ 灵见手帖已更新。');
         savedReading = updatedReading;
       } else {
         const reading: TarotReading = {
@@ -728,7 +729,7 @@ export const useReadings = (
         const updatedReadings = [reading, ...readings.filter(item => !item.isExample)];
         setReadings(updatedReadings);
 
-        onShowSnackbar?.('✨ 灵见手帖已添入《阁中典籍》。');
+        onShowSnackbar?.(reading.status === 'draft' ? '已保存为待补全，可在《阁中典籍》继续编辑。' : '✨ 灵见手帖已添入《阁中典籍》。');
         savedReading = reading;
       }
 
@@ -764,6 +765,7 @@ export const useReadings = (
           is_public: Boolean(savedReading.isPublic),
           is_anonymous: Boolean(savedReading.isAnonymous),
           label_count: savedReading.manualTags?.length || 0,
+          status: savedReading.status || 'complete',
           auth_state: session?.uid ? 'signed_in' : 'guest',
         });
       }

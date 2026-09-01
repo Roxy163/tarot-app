@@ -6,6 +6,7 @@ import { TAROT_CARDS, getCardImageUrl, LAYOUT_TEMPLATES } from '../constants';
 import { ConfirmDialog } from './ConfirmDialog';
 import { TarotCardImage } from './TarotCardImage';
 import { formatReadingDateTime } from '../lib/dateFormat';
+import { isReadingIncomplete } from '../lib/readingCompletion';
 import {
   FREE_LAYOUT_CANVAS_HEIGHT,
   FREE_LAYOUT_CANVAS_WIDTH,
@@ -51,6 +52,19 @@ const celticPreviewPositions = [
 
 const YEARLY_PREVIEW_SLOT_SCALE = 0.95;
 const CELTIC_PREVIEW_SLOT_SCALE = 0.96;
+const SWIPE_ACTION_WIDTH = 84;
+const SWIPE_OPEN_THRESHOLD = 42;
+
+interface SwipeDragState {
+  pointerId: number | null;
+  startX: number;
+  startY: number;
+  startOffset: number;
+  isTracking: boolean;
+  isDragging: boolean;
+}
+
+const clampSwipeOffset = (value: number) => Math.min(0, Math.max(-SWIPE_ACTION_WIDTH, value));
 
 interface ReadingCardProps {
   reading: TarotReading;
@@ -110,6 +124,34 @@ export const ReadingCard: React.FC<ReadingCardProps> = ({
   const mobilePreviewTouchAnchor = useRef<{ x: number; y: number } | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const isListView = variant === 'list';
+  const canShowDeleteAction = Boolean(onDelete && !reading.isExample && !hideDeleteAction);
+  const canShowSwipeDelete = canShowDeleteAction && !isMini && !isPublicView;
+  const [swipeOffset, setSwipeOffset] = useState(0);
+  const [isSwipeOpen, setIsSwipeOpen] = useState(false);
+  const showSwipeAction = canShowSwipeDelete && (isSwipeOpen || swipeOffset < -8);
+  const swipeStateRef = useRef<SwipeDragState>({
+    pointerId: null,
+    startX: 0,
+    startY: 0,
+    startOffset: 0,
+    isTracking: false,
+    isDragging: false,
+  });
+  const didSwipeRef = useRef(false);
+
+  const closeSwipe = useCallback(() => {
+    setSwipeOffset(0);
+    setIsSwipeOpen(false);
+  }, []);
+
+  const openSwipe = useCallback(() => {
+    setSwipeOffset(-SWIPE_ACTION_WIDTH);
+    setIsSwipeOpen(true);
+  }, []);
+
+  useEffect(() => {
+    closeSwipe();
+  }, [closeSwipe, reading.id, hideDeleteAction]);
 
   useEffect(() => {
     const element = containerRef.current;
@@ -322,14 +364,81 @@ export const ReadingCard: React.FC<ReadingCardProps> = ({
     }
   }, [mobilePreviewPosition.x, mobilePreviewPosition.y]);
 
+  const handleSwipePointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (!canShowSwipeDelete || event.button !== 0) return;
+    const isMobileViewport = typeof window !== 'undefined' && window.innerWidth < 640;
+    if (!isMobileViewport && event.pointerType !== 'touch') return;
+
+    swipeStateRef.current = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      startOffset: isSwipeOpen ? -SWIPE_ACTION_WIDTH : 0,
+      isTracking: true,
+      isDragging: false,
+    };
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+  };
+
+  const handleSwipePointerMove = (event: React.PointerEvent<HTMLDivElement>) => {
+    const state = swipeStateRef.current;
+    if (!state.isTracking || state.pointerId !== event.pointerId) return;
+
+    const deltaX = event.clientX - state.startX;
+    const deltaY = event.clientY - state.startY;
+    if (!state.isDragging && (Math.abs(deltaX) < 8 || Math.abs(deltaX) < Math.abs(deltaY))) return;
+
+    state.isDragging = true;
+    didSwipeRef.current = true;
+    event.preventDefault();
+    setSwipeOffset(clampSwipeOffset(state.startOffset + deltaX));
+  };
+
+  const handleSwipePointerEnd = (event: React.PointerEvent<HTMLDivElement>) => {
+    const state = swipeStateRef.current;
+    if (!state.isTracking || state.pointerId !== event.pointerId) return;
+
+    const finalOffset = clampSwipeOffset(state.startOffset + event.clientX - state.startX);
+    swipeStateRef.current = { ...state, isTracking: false, isDragging: false };
+    event.currentTarget.releasePointerCapture?.(event.pointerId);
+
+    if (!state.isDragging) return;
+    if (finalOffset <= -SWIPE_OPEN_THRESHOLD) openSwipe();
+    else closeSwipe();
+  };
+
+  const handleDeleteFromSwipe = () => {
+    closeSwipe();
+    setShowDeleteConfirm(true);
+  };
+
   const handleMobileCardOpen = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
+    if (didSwipeRef.current) {
+      didSwipeRef.current = false;
+      event.preventDefault();
+      event.stopPropagation();
+      return;
+    }
+
+    if (isSwipeOpen) {
+      closeSwipe();
+      event.preventDefault();
+      event.stopPropagation();
+      return;
+    }
+
     if (!onViewDetails) return;
-    if (typeof window === 'undefined' || !window.matchMedia('(max-width: 639px)').matches) return;
+    const isMobileViewport = typeof window !== 'undefined' && (
+      typeof window.matchMedia === 'function'
+        ? window.matchMedia('(max-width: 639px)').matches
+        : window.innerWidth < 640
+    );
+    if (!isMobileViewport) return;
 
     const target = event.target as HTMLElement | null;
     if (target?.closest('button, a, input, textarea, select, [role="button"]')) return;
     onViewDetails();
-  }, [onViewDetails]);
+  }, [closeSwipe, isSwipeOpen, onViewDetails]);
 
   const zoomFromWheelDelta = useCallback((deltaY: number) => {
     const delta = deltaY > 0 ? -0.1 : 0.1;
@@ -351,6 +460,11 @@ export const ReadingCard: React.FC<ReadingCardProps> = ({
   }, [zoomFromWheelDelta]);
 
   const canReviewKeywords = !isPublicView && !reading.isExample && !!onExtractKeywordCandidates && !!onConfirmKeywordCandidates;
+  const filledCardCount = (reading.cards || []).filter(card => card.name?.trim()).length;
+  const cardCountLabel = filledCardCount < (reading.cards?.length || 0)
+    ? `${filledCardCount}/${reading.cards.length}张牌`
+    : `${reading.cards.length}张牌`;
+  const isIncompleteReading = isReadingIncomplete(reading);
   const hasFeedback = !!reading.userFeedback?.trim();
   const hasAiReference = !!reading.aiAnswer?.trim();
   const aiReferenceModeLabel = reading.aiAnswerMode === 'consultant' ? '咨询解牌' : '导师复盘';
@@ -429,6 +543,11 @@ export const ReadingCard: React.FC<ReadingCardProps> = ({
   };
 
   const renderCards = () => {
+    const renderedCardEntries = reading.cards
+      .map((card, idx) => ({ card, idx }))
+      .filter(item => item.card.name?.trim());
+    if (renderedCardEntries.length === 0) return null;
+
     const layout = reading.layoutType ? (LAYOUT_TEMPLATES[reading.layoutType] || LAYOUT_TEMPLATES.horizontal) : null;
     const isCeltic = reading.layoutType === 'celtic' || reading.layoutType === 'celtic-cross' || reading.spread === '凯尔特十字牌阵';
     const isYearly = reading.layoutType === 'yearly' || reading.spread === '年运十二宫牌阵';
@@ -516,7 +635,7 @@ export const ReadingCard: React.FC<ReadingCardProps> = ({
               } : {}),
             }}
           >
-            {reading.cards.map((card, idx) => {
+            {renderedCardEntries.map(({ card, idx }) => {
               const cardData = TAROT_CARDS.find(c =>
                 c.name === card.name ||
                 c.english === card.name ||
@@ -768,7 +887,10 @@ export const ReadingCard: React.FC<ReadingCardProps> = ({
     wrapperClassName = 'px-2.5 pb-2 pt-0 sm:hidden',
     frameClassName = 'h-16',
   ) => {
-    const visibleCards = reading.cards.slice(0, 8);
+    const visibleCards = reading.cards
+      .map((card, index) => ({ card, index }))
+      .filter(item => item.card.name?.trim())
+      .slice(0, 8);
     if (visibleCards.length === 0) return null;
 
     const layout = reading.layoutType ? (LAYOUT_TEMPLATES[reading.layoutType] || LAYOUT_TEMPLATES.horizontal) : LAYOUT_TEMPLATES.horizontal;
@@ -776,12 +898,12 @@ export const ReadingCard: React.FC<ReadingCardProps> = ({
     const isYearly = reading.layoutType === 'yearly' || reading.spread === '年运十二宫牌阵';
     const isFreeLayout = reading.layoutType === 'free';
     const freeLayoutFrame = isFreeLayout ? getFreeLayoutDisplayFrame(reading.cards) : null;
-    const gridPositions = visibleCards.map((_, index) => reading.slotPositions?.[index] || layout?.itemClasses[index] || '');
+    const gridPositions = visibleCards.map(item => reading.slotPositions?.[item.index] || layout?.itemClasses[item.index] || '');
     const parsedPositions = gridPositions.map((position, index) => {
       const col = getGridNumber(position, 'col');
       const row = getGridNumber(position, 'row');
       return {
-        col: Number.isFinite(col) ? col : index + 1,
+        col: Number.isFinite(col) ? col : visibleCards[index].index + 1,
         row: Number.isFinite(row) ? row : 1,
       };
     });
@@ -793,14 +915,14 @@ export const ReadingCard: React.FC<ReadingCardProps> = ({
       max === min ? 50 : start + ((value - min) / (max - min)) * (end - start)
     );
 
-    const points = visibleCards.map((card, idx) => {
+    const points = visibleCards.map(({ card, index: originalIndex }, idx) => {
       if (isYearly) {
-        const point = yearlyPreviewPositions[idx] || yearlyPreviewPositions[yearlyPreviewPositions.length - 1];
+        const point = yearlyPreviewPositions[originalIndex] || yearlyPreviewPositions[yearlyPreviewPositions.length - 1];
         return { x: point.x, y: point.y };
       }
 
       if (isCeltic) {
-        const point = celticPreviewPositions[idx] || celticPreviewPositions[0];
+        const point = celticPreviewPositions[originalIndex] || celticPreviewPositions[0];
         return { x: point.x, y: point.y };
       }
 
@@ -847,24 +969,24 @@ export const ReadingCard: React.FC<ReadingCardProps> = ({
               <div className="absolute inset-y-2 left-1/2 border-l border-dashed border-forest-accent/7" aria-hidden />
             </>
           )}
-          {visibleCards.map((card, idx) => {
+          {visibleCards.map(({ card, index: originalIndex }, idx) => {
             const cardData = TAROT_CARDS.find(c =>
               c.name === card.name || c.english === card.name || c.id === card.name
             );
             const cardName = cardData?.name || card.name;
-            const isRotated = reading.rotatedSlots?.includes(idx) || (isCeltic && idx === 1);
+            const isRotated = reading.rotatedSlots?.includes(originalIndex) || (isCeltic && originalIndex === 1);
             const rotation = (isRotated ? 90 : 0) + (card.isReversed ? 180 : 0);
 
             return (
               <div
-                key={`${card.name}-${idx}`}
+                key={`${card.name}-${originalIndex}`}
                 className={`absolute border border-forest-accent/12 bg-white/70 shadow-[0_6px_16px_-14px_rgba(62,58,54,0.55)] ${compactCards ? 'h-6 w-4 rounded-[0.28rem]' : 'h-8 w-[21px] rounded-[0.35rem]'}`}
                 style={{
                   left: `${points[idx].x}%`,
                   top: `${points[idx].y}%`,
                   transform: `translate(-50%, -50%) rotate(${rotation}deg)`,
                 }}
-                title={`${reading.slotLabels?.[idx] || `第 ${idx + 1} 张`}：${cardName}${card.isReversed ? '（逆位）' : '（正位）'}`}
+                title={`${reading.slotLabels?.[originalIndex] || `第 ${originalIndex + 1} 张`}：${cardName}${card.isReversed ? '（逆位）' : '（正位）'}`}
               >
                 <TarotCardImage
                   src={getCardImageUrl(cardData?.id || 'ar00')}
@@ -875,14 +997,14 @@ export const ReadingCard: React.FC<ReadingCardProps> = ({
                   className="h-full w-full rounded-[0.3rem] object-cover"
                 />
                 <span className="absolute -bottom-1 -right-1 flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-white/88 px-0.5 text-[8px] font-medium leading-none text-forest-accent shadow-sm">
-                  {idx + 1}
+                  {originalIndex + 1}
                 </span>
               </div>
             );
           })}
-          {reading.cards.length > visibleCards.length && (
+          {filledCardCount > visibleCards.length && (
             <span className="absolute bottom-1.5 right-2 rounded-full bg-white/80 px-2 py-0.5 text-[10px] font-medium text-forest-muted shadow-sm">
-              +{reading.cards.length - visibleCards.length}
+              +{filledCardCount - visibleCards.length}
             </span>
           )}
           </div>
@@ -891,8 +1013,32 @@ export const ReadingCard: React.FC<ReadingCardProps> = ({
     );
   };
 
-  const canShowDeleteAction = Boolean(onDelete && !reading.isExample && !hideDeleteAction);
   const hasCardActions = !isPublicView && (onTogglePublic || onEdit || canShowDeleteAction);
+  const renderSwipeDeleteAction = () => {
+    if (!canShowSwipeDelete) return null;
+
+    return (
+      <div
+        className={`absolute inset-y-0 right-0 flex w-[5.25rem] items-stretch justify-end bg-red-50 transition-opacity sm:hidden ${
+          showSwipeAction ? 'pointer-events-auto opacity-100' : 'pointer-events-none opacity-0'
+        }`}
+        aria-hidden={!showSwipeAction}
+      >
+        <button
+          type="button"
+          onClick={handleDeleteFromSwipe}
+          tabIndex={isSwipeOpen ? 0 : -1}
+          aria-label={`删除手记：${reading.question || '未命名问题'}`}
+          className={`flex w-full flex-col items-center justify-center gap-1 text-xs font-medium text-red-500 transition-colors hover:bg-red-100 ${
+            showSwipeAction ? 'visible' : 'invisible'
+          }`}
+        >
+          <Trash2 size={17} />
+          删除
+        </button>
+      </div>
+    );
+  };
   const renderCardActions = (className: string) => {
     if (!hasCardActions) return null;
 
@@ -937,6 +1083,7 @@ export const ReadingCard: React.FC<ReadingCardProps> = ({
   };
 
   const listCardSummary = reading.cards
+    .filter(card => card.name?.trim())
     .map((card) => {
         const cardData = TAROT_CARDS.find(c =>
           c.name === card.name || c.english === card.name || c.id === card.name
@@ -948,15 +1095,24 @@ export const ReadingCard: React.FC<ReadingCardProps> = ({
 
   if (isListView) {
     return (
-      <motion.div
+      <div
         data-highlighted-reading={isHighlighted ? 'true' : undefined}
+        className="relative overflow-hidden rounded-[1.05rem]"
+      >
+      {renderSwipeDeleteAction()}
+      <motion.div
         initial={{ opacity: 0, y: 8 }}
         animate={{
           opacity: 1,
           y: 0,
+          x: canShowSwipeDelete ? swipeOffset : 0,
           scale: isHighlighted ? [1, 1.01, 1] : 1,
         }}
         transition={{ duration: isHighlighted ? 0.55 : 0.18 }}
+        onPointerDown={handleSwipePointerDown}
+        onPointerMove={handleSwipePointerMove}
+        onPointerUp={handleSwipePointerEnd}
+        onPointerCancel={handleSwipePointerEnd}
         className={`overflow-hidden rounded-[1.05rem] border bg-white/45 backdrop-blur-[2px] transition-all duration-300 ${
           isHighlighted
             ? 'border-forest-accent/45 ring-2 ring-forest-accent/12'
@@ -980,7 +1136,11 @@ export const ReadingCard: React.FC<ReadingCardProps> = ({
               <span className="min-w-0 flex-1 truncate text-sm font-medium leading-snug text-forest-ink">
                 {reading.question || '未命名问题'}
               </span>
-              {hasFeedback ? (
+              {isIncompleteReading ? (
+                <span className="shrink-0 rounded-full bg-amber-100 px-1.5 py-0.5 text-[9px] font-medium text-amber-700">
+                  待补全
+                </span>
+              ) : hasFeedback ? (
                 <span className="shrink-0 rounded-full bg-forest-accent/8 px-1.5 py-0.5 text-[9px] font-medium text-forest-accent">
                   已复盘
                 </span>
@@ -995,7 +1155,7 @@ export const ReadingCard: React.FC<ReadingCardProps> = ({
               <span className="text-forest-accent/25">·</span>
               <span className="truncate">{reading.spread}</span>
               <span className="text-forest-accent/25">·</span>
-              <span className="shrink-0">{reading.cards.length}张牌</span>
+              <span className="shrink-0">{cardCountLabel}</span>
               {reading.isForClient && (
                 <>
                   <span className="text-forest-accent/25">·</span>
@@ -1022,23 +1182,35 @@ export const ReadingCard: React.FC<ReadingCardProps> = ({
           onClose={() => setShowDeleteConfirm(false)}
         />
       </motion.div>
+      </div>
     );
   }
 
   return (
-    <motion.div
+    <div
       data-highlighted-reading={isHighlighted ? 'true' : undefined}
+      className={`relative overflow-hidden rounded-[1.1rem] sm:rounded-[1.35rem] ${
+        isHighlighted ? 'ring-4 ring-forest-accent/15' : ''
+      }`}
+    >
+    {renderSwipeDeleteAction()}
+    <motion.div
       initial={{ opacity: 0, y: 20 }}
       animate={{
         opacity: 1,
         y: 0,
+        x: canShowSwipeDelete ? swipeOffset : 0,
         scale: isHighlighted ? [1, 1.015, 1] : 1,
       }}
       transition={{ duration: isHighlighted ? 0.7 : 0.25 }}
       onClick={handleMobileCardOpen}
+      onPointerDown={handleSwipePointerDown}
+      onPointerMove={handleSwipePointerMove}
+      onPointerUp={handleSwipePointerEnd}
+      onPointerCancel={handleSwipePointerEnd}
       className={`bg-white/58 rounded-[1.1rem] border shadow-sm overflow-hidden transition-all duration-500 backdrop-blur-[2px] sm:rounded-[1.35rem] ${
         isHighlighted
-          ? 'border-forest-accent/60 ring-4 ring-forest-accent/15 shadow-forest-accent/20'
+          ? 'border-forest-accent/60 shadow-forest-accent/20'
           : 'border-forest-accent/8'
       } ${isListView ? 'rounded-[1.1rem]' : ''}`}
     >
@@ -1067,7 +1239,13 @@ export const ReadingCard: React.FC<ReadingCardProps> = ({
                   客户记录
                 </span>
               )}
-              {hasFeedback && (
+              {isIncompleteReading && (
+                <span className="px-1.5 py-0.5 bg-amber-100 text-amber-700 text-[10px] rounded-full font-bold inline-flex items-center gap-1 shrink-0">
+                  <PencilLine size={10} strokeWidth={2.5} />
+                  待补全
+                </span>
+              )}
+              {!isIncompleteReading && hasFeedback && (
                 <span className="px-1.5 py-0.5 bg-forest-accent/10 text-forest-accent text-[10px] rounded-full font-bold inline-flex items-center gap-1 shrink-0">
                   <CheckCircle2 size={10} strokeWidth={2.5} />
                   已复盘
@@ -1079,7 +1257,7 @@ export const ReadingCard: React.FC<ReadingCardProps> = ({
                   AI参照
                 </span>
               )}
-              {!hasFeedback && !reading.isExample && (
+              {!isIncompleteReading && !hasFeedback && !reading.isExample && (
                 <span className="px-1.5 py-0.5 bg-forest-pink/10 text-forest-pink text-[10px] rounded-full font-bold inline-flex items-center gap-1 shrink-0">
                   <Clock3 size={10} strokeWidth={2.5} />
                   待复盘
@@ -1090,7 +1268,7 @@ export const ReadingCard: React.FC<ReadingCardProps> = ({
             <div className={`${isListView ? 'mt-1' : 'mt-1 sm:mt-2'} flex flex-wrap items-center gap-1.5`}>
               <span className="text-[11px] text-forest-muted sm:text-xs">{reading.spread}</span>
               <span className="text-forest-accent/30">|</span>
-              <span className="text-[11px] text-forest-muted sm:text-xs">{reading.cards.length}张牌</span>
+              <span className="text-[11px] text-forest-muted sm:text-xs">{cardCountLabel}</span>
               {reading.isForClient && (
                 <>
                   <span className="text-forest-accent/30">|</span>
@@ -1343,5 +1521,6 @@ export const ReadingCard: React.FC<ReadingCardProps> = ({
         onClose={() => setShowDeleteConfirm(false)}
       />
     </motion.div>
+    </div>
   );
 };
