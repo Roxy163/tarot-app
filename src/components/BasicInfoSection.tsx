@@ -1,6 +1,6 @@
 import React from 'react';
 import { AnimatePresence, motion } from 'motion/react';
-import { ChevronDown, EyeOff, Layers, Plus, RotateCcw, Trash2, Calendar, Tag } from 'lucide-react';
+import { ChevronDown, Layers, Plus, Trash2, Calendar, Tag } from 'lucide-react';
 import { SpreadDefinition } from '../types';
 import { OFFICIAL_SPREADS } from '../constants';
 import type { ReadingTagSuggestion } from '../lib/readingTagSuggestions';
@@ -18,8 +18,6 @@ interface BasicInfoSectionProps {
   onOpenSpreadManager: () => void;
   onCreateSpread: () => void;
   onDeleteSpread?: (name: string) => void;
-  onHideOfficialSpread?: (name: string) => void;
-  onRestoreOfficialSpreads?: () => void;
   isMultiCard: boolean;
   activeSlotIndex: number;
   onSetActiveSlotIndex: (idx: number) => void;
@@ -50,8 +48,6 @@ export const BasicInfoSection: React.FC<BasicInfoSectionProps> = ({
   onOpenSpreadManager,
   onCreateSpread,
   onDeleteSpread,
-  onHideOfficialSpread,
-  onRestoreOfficialSpreads,
   isMultiCard,
   activeSlotIndex,
   onSetActiveSlotIndex,
@@ -72,15 +68,8 @@ export const BasicInfoSection: React.FC<BasicInfoSectionProps> = ({
   const tagSuggestionListId = React.useId();
   const tagSuggestionLabelId = React.useId();
   const officialSpreadNames = new Set(OFFICIAL_SPREADS.map(item => item.name));
-  const officialSpreads = spreads.filter(item => (
-    officialSpreadNames.has(item.name)
-    && (!item.isHidden || item.name === spread)
-  ));
-  const hiddenOfficialSpreadCount = spreads.filter(item => officialSpreadNames.has(item.name) && item.isHidden).length;
+  const officialSpreads = spreads.filter(item => officialSpreadNames.has(item.name));
   const customSpreads = spreads.filter(item => !officialSpreadNames.has(item.name));
-  const selectedOfficialSpread = spreads.find(item => item.name === spread && officialSpreadNames.has(item.name));
-  const isSelectedOfficialSpread = Boolean(selectedOfficialSpread);
-  const isSelectedVisibleOfficialSpread = Boolean(selectedOfficialSpread && !selectedOfficialSpread.isHidden);
   const isSelectedCustomSpread = customSpreads.some(item => item.name === spread);
   const selectSelfMode = () => {
     if (isForClient) onToggleClientMode();
@@ -333,30 +322,6 @@ export const BasicInfoSection: React.FC<BasicInfoSectionProps> = ({
                   >
                     <Trash2 size={14} />
                     <span className="sr-only sm:not-sr-only">删除</span>
-                  </button>
-                )}
-                {isSelectedVisibleOfficialSpread && officialSpreads.length > 1 && (
-                  <button
-                    type="button"
-                    onClick={() => onHideOfficialSpread?.(spread)}
-                    aria-label={`隐藏官方牌阵 ${spread}`}
-                    className="flex min-h-11 min-w-11 items-center justify-center gap-1 rounded-lg border border-amber-100 bg-amber-50/55 px-2 text-xs font-medium text-amber-600 transition-all hover:border-amber-200 hover:bg-amber-50 sm:min-h-10 sm:min-w-[4.5rem] sm:px-2.5"
-                    title="隐藏当前官方牌阵"
-                  >
-                    <EyeOff size={14} />
-                    <span className="sr-only sm:not-sr-only">隐藏</span>
-                  </button>
-                )}
-                {hiddenOfficialSpreadCount > 0 && (
-                  <button
-                    type="button"
-                    onClick={onRestoreOfficialSpreads}
-                    aria-label={`恢复隐藏的官方牌阵，共 ${hiddenOfficialSpreadCount} 个`}
-                    className="flex min-h-11 min-w-11 items-center justify-center gap-1 rounded-lg border border-forest-accent/7 bg-white/36 px-2 text-xs font-medium text-forest-accent transition-all hover:border-forest-accent/20 hover:bg-white/60 sm:min-h-10 sm:min-w-[4.5rem] sm:px-2.5"
-                    title="恢复隐藏的官方牌阵"
-                  >
-                    <RotateCcw size={14} />
-                    <span className="sr-only sm:not-sr-only">恢复</span>
                   </button>
                 )}
               </div>

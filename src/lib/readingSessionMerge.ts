@@ -1,7 +1,7 @@
 import { OFFICIAL_SPREADS } from '../constants';
 import { CardKeywordMemory, CardKeywordMemoryEntry, QuizMemoryAttempt, QuizMemoryEntry, SpreadDefinition, TarotCardMetadata, TarotReading } from '../types';
 import { getReadingVersionTime, pickNewestReading } from './readingCloudSync';
-import { applyOfficialSpreadVisibility, normalizeLegacyCustomSpreads } from './spreadPersistence';
+import { normalizeLegacyCustomSpreads } from './spreadPersistence';
 
 export const getPersistableReadings = (readings: TarotReading[]) => (
   readings.filter(reading => Boolean(reading?.id) && !reading.isExample)
@@ -32,15 +32,13 @@ export const mergeSpreadSources = (
   officialSpreads: SpreadDefinition[] = OFFICIAL_SPREADS,
 ) => {
   const customByName = new Map<string, SpreadDefinition>();
-  const spreadSourceItems = spreadSources.flatMap(source => Array.isArray(source) ? source : []);
-
   spreadSources.forEach(source => {
     normalizeLegacyCustomSpreads(source, officialSpreads).forEach(spread => {
       customByName.set(spread.name, spread);
     });
   });
 
-  return [...applyOfficialSpreadVisibility(spreadSourceItems, officialSpreads), ...customByName.values()];
+  return [...officialSpreads, ...customByName.values()];
 };
 
 const mergeKeywordLists = (sources: Array<string[] | undefined>) => (

@@ -137,10 +137,9 @@ describe('SpreadDesigner', () => {
     expect(onDeleteSpreads).toHaveBeenCalledWith(['自由牌阵']);
   });
 
-  it('can restore all official spreads without exposing official deletion', async () => {
+  it('restores only the current official spread without exposing official hide or delete actions', async () => {
     const user = userEvent.setup();
     const onRestoreDefaults = vi.fn();
-    const onHideOfficialSpread = vi.fn();
 
     renderDesigner({
       spreads: [...OFFICIAL_SPREADS, ...spreads],
@@ -148,16 +147,14 @@ describe('SpreadDesigner', () => {
       newSpreadName: '单牌阵 (自定义)',
       isEditingSession: false,
       onRestoreDefaults,
-      onHideOfficialSpread,
     });
 
-    await user.click(screen.getByRole('button', { name: '恢复全部官方默认' }));
+    await user.click(screen.getByRole('button', { name: '恢复当前' }));
 
-    expect(onRestoreDefaults).toHaveBeenCalledWith();
+    expect(onRestoreDefaults).toHaveBeenCalledWith('单牌阵');
     expect(screen.queryByRole('button', { name: /删除牌阵 单牌阵/ })).not.toBeInTheDocument();
-
-    await user.click(screen.getByRole('button', { name: '隐藏官方牌阵 单牌阵' }));
-    expect(onHideOfficialSpread).toHaveBeenCalledWith('单牌阵');
+    expect(screen.queryByRole('button', { name: /隐藏官方牌阵/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /恢复全部官方/ })).not.toBeInTheDocument();
   });
 
   it('updates the spread name from the name field', async () => {

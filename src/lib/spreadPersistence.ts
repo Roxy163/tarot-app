@@ -81,36 +81,6 @@ const getNormalizedCustomSpreadEntries = (
   return { nameMap, spreads };
 };
 
-const getOfficialSpreadVisibilityMap = (
-  savedSpreads: Array<Partial<SpreadDefinition> | null | undefined> | null | undefined,
-  officialSpreads: SpreadDefinition[],
-) => {
-  const officialNames = new Set(officialSpreads.map(spread => spread.name));
-  const visibilityByName = new Map<string, boolean>();
-
-  (Array.isArray(savedSpreads) ? savedSpreads : []).forEach(spread => {
-    if (!spread?.name || !officialNames.has(spread.name)) return;
-    if (typeof spread.isHidden === 'boolean') {
-      visibilityByName.set(spread.name, spread.isHidden);
-    }
-  });
-
-  return visibilityByName;
-};
-
-export const applyOfficialSpreadVisibility = (
-  savedSpreads: Array<Partial<SpreadDefinition> | null | undefined> | null | undefined,
-  officialSpreads: SpreadDefinition[],
-) => {
-  const visibilityByName = getOfficialSpreadVisibilityMap(savedSpreads, officialSpreads);
-
-  return officialSpreads.map(spread => (
-    visibilityByName.get(spread.name)
-      ? { ...spread, isHidden: true }
-      : spread
-  ));
-};
-
 export const getSafeCustomSpreadName = (
   currentSpreadName: string,
   requestedName: string,
@@ -216,34 +186,10 @@ export const restoreOfficialSpread = (
 
   return {
     official,
-    spreads: spreads.map(spread => (spread.name === name ? official : spread)),
+    spreads: spreads.some(spread => spread.name === name)
+      ? spreads.map(spread => (spread.name === name ? official : spread))
+      : [official, ...normalizeLegacyCustomSpreads(spreads, officialSpreads)],
   };
-};
-
-export const hideOfficialSpread = (
-  spreads: SpreadDefinition[],
-  officialSpreads: SpreadDefinition[],
-  name: string,
-) => {
-  const official = officialSpreads.find(spread => spread.name === name);
-  if (!official) return { spreads, official: null };
-
-  const hiddenOfficial = { ...official, isHidden: true };
-  const hasSpread = spreads.some(spread => spread.name === name);
-
-  return {
-    official: hiddenOfficial,
-    spreads: hasSpread
-      ? spreads.map(spread => (spread.name === name ? hiddenOfficial : spread))
-      : [hiddenOfficial, ...spreads],
-  };
-};
-
-export const restoreAllOfficialSpreads = (
-  spreads: SpreadDefinition[],
-  officialSpreads: SpreadDefinition[],
-) => {
-  return [...officialSpreads, ...normalizeLegacyCustomSpreads(spreads, officialSpreads)];
 };
 
 export const createBlankSlotsForSpread = (spread: SpreadDefinition) => (
@@ -278,5 +224,5 @@ export const mergeOfficialSpreadsWithCustom = (
 ): SpreadDefinition[] => {
   const customSpreads = normalizeLegacyCustomSpreads(savedSpreads, officialSpreads);
 
-  return [...applyOfficialSpreadVisibility(savedSpreads, officialSpreads), ...customSpreads];
+  return [...officialSpreads, ...customSpreads];
 };

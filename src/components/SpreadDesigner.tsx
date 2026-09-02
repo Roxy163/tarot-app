@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { motion } from 'motion/react';
-import { EyeOff, Layers, X, Plus, RotateCcw, FolderOpen, Trash2, RefreshCw, Sparkles } from 'lucide-react';
+import { Layers, X, Plus, RotateCcw, FolderOpen, Trash2, RefreshCw, Sparkles } from 'lucide-react';
 import { SpreadDefinition, ReadingSlotData } from '../types';
 import { OFFICIAL_SPREADS } from '../constants';
 import { FreeLayoutEditor } from './FreeLayoutEditor';
@@ -24,7 +24,6 @@ interface SpreadDesignerProps {
   onSelectSpread: (spread: SpreadDefinition, options?: { useAsTemplate?: boolean }) => void;
   onDeleteSpread: (name: string) => void;
   onDeleteSpreads?: (names: string[]) => void;
-  onHideOfficialSpread?: (name: string) => void;
   onSaveSpread: () => void;
   onUpdateNewSpreadName: (name: string) => void;
   saveNotice?: string;
@@ -34,7 +33,7 @@ interface SpreadDesignerProps {
   onUpdateSlotLabel: (idx: number, label: string) => void;
   onSetDesignActiveSlot: (idx: number, fromSelect?: boolean) => void;
   onRemoveSlot: (idx: number) => void;
-  onRestoreDefaults: (name?: string) => void;
+  onRestoreDefaults: (name: string) => void;
   onUpdateGrid?: (cols: number, rows: number) => void;
   gridCols?: number;
   gridRows?: number;
@@ -59,7 +58,6 @@ export const SpreadDesigner: React.FC<SpreadDesignerProps> = ({
   onSelectSpread,
   onDeleteSpread,
   onDeleteSpreads,
-  onHideOfficialSpread,
   onSaveSpread,
   onUpdateNewSpreadName,
   saveNotice,
@@ -102,13 +100,8 @@ export const SpreadDesigner: React.FC<SpreadDesignerProps> = ({
     const savedByName = new Map(spreads.map(spread => [spread.name, spread]));
 
     return OFFICIAL_SPREADS
-      .map(spread => (savedByName.get(spread.name) || spread) as SpreadDefinition)
-      .filter(spread => !spread.isHidden);
+      .map(spread => (savedByName.get(spread.name) || spread) as SpreadDefinition);
   }, [spreads]);
-  const hiddenOfficialSpreadCount = useMemo(
-    () => OFFICIAL_SPREADS.filter(spread => spreads.find(item => item.name === spread.name)?.isHidden).length,
-    [spreads],
-  );
   const customSpreads = useMemo(
     () => spreads.filter(spread => !officialSpreadNames.has(spread.name)),
     [officialSpreadNames, spreads],
@@ -117,7 +110,6 @@ export const SpreadDesigner: React.FC<SpreadDesignerProps> = ({
   const editorStateLabel = currentSpread ? (isEditingSession ? '正在编辑' : '套用模板') : '空白创作';
   const areAllCustomSpreadsSelected = customSpreads.length > 0 && selectedCustomSpreadNames.length === customSpreads.length;
   const canDeleteSelectedCustomSpreads = Boolean(onDeleteSpreads && selectedCustomSpreadNames.length > 0);
-  const canRestoreOfficialSpreads = OFFICIAL_SPREADS.length > 0;
   const canDeleteCurrentSpread = Boolean(
     currentSpread
     && isEditingSession
@@ -361,7 +353,7 @@ export const SpreadDesigner: React.FC<SpreadDesignerProps> = ({
             )
           )}
 
-          {(canUndo || isOfficialSpread || canDeleteCurrentSpread || canRestoreOfficialSpreads) && (
+          {(canUndo || isOfficialSpread || canDeleteCurrentSpread) && (
           <div className="rounded-xl border border-forest-accent/8 bg-white/22 p-1 sm:p-1.5">
             <div className="flex flex-wrap items-center justify-between gap-1.5">
               <div className="flex min-h-9 items-center gap-1.5 px-1 text-[10px] font-semibold text-forest-muted">
@@ -386,23 +378,6 @@ export const SpreadDesigner: React.FC<SpreadDesignerProps> = ({
                     className="flex min-h-11 items-center gap-1.5 rounded-lg px-2 py-1.5 text-xs font-semibold text-forest-muted transition-colors hover:bg-amber-50/70 hover:text-amber-600 sm:min-h-10"
                   >
                     <RefreshCw size={14} /> 恢复当前
-                  </button>
-                )}
-                <button
-                  type="button"
-                  onClick={() => onRestoreDefaults()}
-                  className="flex min-h-11 items-center gap-1.5 rounded-lg px-2 py-1.5 text-xs font-semibold text-forest-muted transition-colors hover:bg-amber-50/70 hover:text-amber-600 sm:min-h-10"
-                >
-                  <RefreshCw size={14} /> {hiddenOfficialSpreadCount > 0 ? `恢复全部官方牌阵 (${hiddenOfficialSpreadCount})` : '恢复全部官方默认'}
-                </button>
-                {isOfficialSpread && officialSpreads.length > 1 && (
-                  <button
-                    type="button"
-                    onClick={() => onHideOfficialSpread?.(currentSpread)}
-                    className="flex min-h-11 items-center gap-1.5 rounded-lg px-2 py-1.5 text-xs font-semibold text-amber-600 transition-colors hover:bg-amber-50/80 sm:min-h-10"
-                    aria-label={`隐藏官方牌阵 ${currentSpread}`}
-                  >
-                    <EyeOff size={14} /> 隐藏当前
                   </button>
                 )}
                 {canDeleteCurrentSpread && (

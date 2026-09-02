@@ -1,6 +1,7 @@
 import React, { useState, useEffect, FormEvent, useRef, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'motion/react';
-import { Sparkles, Layers, User, MessageSquare, RotateCcw, BookOpen, Settings, Save, Hash, Orbit, Home, Wind, Info, Copy } from 'lucide-react';
+import { Sparkles, Layers, User, MessageSquare, BookOpen, Settings, Save, Hash, Orbit, Home, Wind, Info, Copy, X } from 'lucide-react';
 import { CardKeywordMemory, SpreadDefinition, TarotCardMetadata, ReadingSlotData, TarotReading, ReadingFormData } from '../types';
 import { LAYOUT_TEMPLATES, TAROT_CARDS, OFFICIAL_SPREADS } from '../constants';
 import { CardPicker } from './CardPicker';
@@ -30,8 +31,6 @@ import {
   createSpreadDefinitionFromSlots,
   getSafeCustomSpreadName,
   getUniqueSpreadName,
-  hideOfficialSpread,
-  restoreAllOfficialSpreads,
   restoreOfficialSpread,
   upsertSpreadDefinition,
 } from '../lib/spreadPersistence';
@@ -87,6 +86,100 @@ type SpreadSaveConflict = {
   spread: SpreadDefinition;
 };
 
+interface SpreadSaveConflictDialogProps {
+  conflict: SpreadSaveConflict | null;
+  onSaveAsCopy: () => void;
+  onOverwrite: (spread: SpreadDefinition) => void;
+  onClose: () => void;
+}
+
+const SpreadSaveConflictDialog: React.FC<SpreadSaveConflictDialogProps> = ({
+  conflict,
+  onSaveAsCopy,
+  onOverwrite,
+  onClose,
+}) => {
+  const titleId = React.useId();
+  const isOpen = Boolean(conflict);
+  useBodyScrollLock(isOpen);
+
+  const dialog = (
+    <AnimatePresence>
+      {conflict && (
+        <div className="fixed inset-0 z-[1200] flex min-h-[100dvh] items-center justify-center overflow-y-auto p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] overscroll-contain">
+          <motion.button
+            type="button"
+            aria-label="关闭牌阵名称冲突提示"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="absolute inset-0 cursor-default bg-forest-text/25 backdrop-blur-sm"
+            onClick={onClose}
+          />
+          <motion.div
+            initial={{ opacity: 0, y: 16, scale: 0.98 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 16, scale: 0.98 }}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby={titleId}
+            className="relative my-auto max-h-[calc(100dvh-2rem)] w-full max-w-sm space-y-3.5 overflow-y-auto rounded-3xl border border-forest-border bg-white p-5 shadow-2xl"
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex min-w-0 items-center gap-3 text-forest-accent">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-forest-accent/10">
+                  <Layers size={18} />
+                </div>
+                <h3 id={titleId} className="font-serif text-lg font-bold text-forest-ink">牌阵名称已存在</h3>
+              </div>
+              <button
+                type="button"
+                aria-label="关闭"
+                onClick={onClose}
+                className="flex h-9 w-9 items-center justify-center rounded-xl text-forest-muted transition-colors hover:bg-forest-accent/5 hover:text-forest-accent"
+              >
+                <X size={18} />
+              </button>
+            </div>
+            <p className="text-sm leading-relaxed text-forest-muted">
+              “{conflict.name}”已经存在。你可以覆盖原牌阵，或另存为一个副本。
+            </p>
+            <div className="grid gap-2 pt-1">
+              <button
+                type="button"
+                onClick={onSaveAsCopy}
+                className="min-h-11 rounded-xl bg-forest-accent/92 font-medium text-white transition-all hover:bg-forest-accent"
+              >
+                另存为副本
+              </button>
+              <button
+                type="button"
+                onClick={() => onOverwrite(conflict.spread)}
+                className="min-h-11 rounded-xl bg-amber-100 font-medium text-amber-700 transition-all hover:bg-amber-200"
+              >
+                覆盖原牌阵
+              </button>
+              <button
+                type="button"
+                onClick={onClose}
+                className="min-h-11 rounded-xl bg-forest-bg font-medium text-forest-muted transition-colors hover:text-forest-accent"
+              >
+                取消
+              </button>
+            </div>
+          </motion.div>
+        </div>
+      )}
+    </AnimatePresence>
+  );
+
+  if (typeof document === 'undefined') {
+    return dialog;
+  }
+
+  return createPortal(dialog, document.body);
+};
+
 type SpreadManagerDraftBackup = {
   spread: string;
   layoutType: string;
@@ -114,8 +207,7 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
   existingReadings = [],
   onCancel 
 }) => {
-  const restoreDialogTitleId = React.useId();
-  const defaultSpreadDefinition = spreads.find(spread => !spread.isHidden) || OFFICIAL_SPREADS[0];
+  const defaultSpreadDefinition = spreads[0] || OFFICIAL_SPREADS[0];
   const initialSpreadDefinition = initialData?.spread
     ? spreads.find(spread => spread.name === initialData.spread)
     : defaultSpreadDefinition;
@@ -194,16 +286,14 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
   const [gridRows, setGridRows] = useState(5);
   const [freeLayoutSaveMode, setFreeLayoutSaveMode] = useState<FreeLayoutSaveMode>('original');
   const [showUpdatePrompt, setShowUpdatePrompt] = useState<{ name: string, oldSlots: string[] } | null>(null);
-  const [showRestoreConfirm, setShowRestoreConfirm] = useState<{ name?: string } | null>(null);
+  const [pendingRestoreOfficialSpreadName, setPendingRestoreOfficialSpreadName] = useState('');
   const [spreadSaveConflict, setSpreadSaveConflict] = useState<SpreadSaveConflict | null>(null);
   const [spreadNameNotice, setSpreadNameNotice] = useState('');
   const [submitNotice, setSubmitNotice] = useState('');
   const [submitIssue, setSubmitIssue] = useState<ReadingRequiredFieldIssue | null>(null);
   const [pendingDeleteSpreadNames, setPendingDeleteSpreadNames] = useState<string[]>([]);
-  const [pendingHideOfficialSpreadName, setPendingHideOfficialSpreadName] = useState('');
   const readingDetailRef = useRef<HTMLDivElement | null>(null);
   const spreadManagerDraftBackupRef = useRef<SpreadManagerDraftBackup | null>(null);
-  useBodyScrollLock(Boolean(showRestoreConfirm || spreadSaveConflict || pendingHideOfficialSpreadName));
 
   const {
     isLongPressActive,
@@ -263,7 +353,7 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
 
     setSpreadNameNotice('');
     setSpreadSaveConflict(null);
-    setShowRestoreConfirm(null);
+    setPendingRestoreOfficialSpreadName('');
     clearSpreadManagerDraftBackup();
     setShowSpreadManager(false);
   };
@@ -519,46 +609,6 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
     setPendingDeleteSpreadNames(Array.from(new Set(safeNames)));
   };
 
-  const requestHideOfficialSpread = (spreadName: string) => {
-    if (!spreadName || !OFFICIAL_SPREADS.some(spread => spread.name === spreadName)) return;
-    setPendingHideOfficialSpreadName(spreadName);
-  };
-
-  const selectSpreadAfterVisibilityChange = (updatedSpreads: SpreadDefinition[], hiddenName: string) => {
-    const fallbackSpread = updatedSpreads.find(spread => !spread.isHidden && spread.name !== hiddenName)
-      || updatedSpreads.find(spread => !spread.isHidden)
-      || OFFICIAL_SPREADS[0];
-
-    if (formData.spread !== hiddenName || !fallbackSpread) return;
-
-    setFormData(prev => ({ ...prev, spread: fallbackSpread.name, layoutType: fallbackSpread.layout }));
-    setCardSlots(createBlankSlotsForSpread(fallbackSpread));
-    setGridCols(fallbackSpread.gridCols || 5);
-    setGridRows(fallbackSpread.gridRows || 5);
-    setNewSpreadName('');
-    setDesignActiveSlot(0);
-    setIsEditingSession(false);
-  };
-
-  const confirmHideOfficialSpread = () => {
-    if (!pendingHideOfficialSpreadName) return;
-
-    const { spreads: updatedSpreads, official } = hideOfficialSpread(
-      spreads,
-      OFFICIAL_SPREADS,
-      pendingHideOfficialSpreadName,
-    );
-    if (!official) {
-      setPendingHideOfficialSpreadName('');
-      return;
-    }
-
-    onUpdateSpreads(updatedSpreads);
-    selectSpreadAfterVisibilityChange(updatedSpreads, pendingHideOfficialSpreadName);
-    setPendingHideOfficialSpreadName('');
-    setSpreadActionMessage('已隐藏官方牌阵，可随时一键恢复');
-  };
-
   const confirmDeleteSpread = () => {
     if (pendingDeleteSpreadNames.length === 0) return;
 
@@ -578,7 +628,7 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
       if (showSpreadManager) {
         clearSpreadManagerDraftBackup();
         setSpreadSaveConflict(null);
-        setShowRestoreConfirm(null);
+        setPendingRestoreOfficialSpreadName('');
         setShowSpreadManager(false);
       }
     }
@@ -665,51 +715,28 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
     }, { replaceCurrentCustom: false });
   };
 
-  const restoreDefaults = (name?: string) => {
-    let updatedSpreads;
-    if (name && typeof name === 'string') {
-      const { spreads: restoredSpreads, official } = restoreOfficialSpread(spreads, OFFICIAL_SPREADS, name);
-      if (!official) return;
-      updatedSpreads = restoredSpreads;
+  const restoreDefaults = (name: string) => {
+    const { spreads: updatedSpreads, official } = restoreOfficialSpread(spreads, OFFICIAL_SPREADS, name);
+    if (!official) return;
 
-      if (formData.spread === name) {
-        const restoredSlots = createBlankSlotsForSpread(official);
+    if (formData.spread === name) {
+      const restoredSlots = createBlankSlotsForSpread(official);
 
-        if (showSpreadManager) {
-          setFormData(prev => ({ ...prev, layoutType: 'free' }));
-          setGridCols(20);
-          setGridRows(12);
-          setFreeLayoutSaveMode('original');
-          setCardSlots(toFreeEditorSlots(restoredSlots, official.layout));
-        } else {
-          setFormData(prev => ({ ...prev, layoutType: official.layout }));
-          setCardSlots(restoredSlots);
-        }
-      }
-    } else {
-      updatedSpreads = restoreAllOfficialSpreads(spreads, OFFICIAL_SPREADS);
-      const officialNames = OFFICIAL_SPREADS.map(os => os.name);
-
-      if (officialNames.includes(formData.spread)) {
-        const restored = OFFICIAL_SPREADS.find(os => os.name === formData.spread) || OFFICIAL_SPREADS[0];
-        const restoredSlots = createBlankSlotsForSpread(restored);
-
-        if (showSpreadManager) {
-          setFormData(prev => ({ ...prev, spread: restored.name, layoutType: 'free' }));
-          setGridCols(20);
-          setGridRows(12);
-          setFreeLayoutSaveMode('original');
-          setCardSlots(toFreeEditorSlots(restoredSlots, restored.layout));
-        } else {
-          setFormData(prev => ({ ...prev, spread: restored.name, layoutType: restored.layout }));
-          setCardSlots(restoredSlots);
-        }
+      if (showSpreadManager) {
+        setFormData(prev => ({ ...prev, layoutType: 'free' }));
+        setGridCols(20);
+        setGridRows(12);
+        setFreeLayoutSaveMode('original');
+        setCardSlots(toFreeEditorSlots(restoredSlots, official.layout));
+      } else {
+        setFormData(prev => ({ ...prev, layoutType: official.layout }));
+        setCardSlots(restoredSlots);
       }
     }
 
     onUpdateSpreads(updatedSpreads);
-    setSpreadActionMessage('已恢复官方牌阵默认设置');
-    setShowRestoreConfirm(null);
+    setSpreadActionMessage('已恢复当前官方牌阵默认设置');
+    setPendingRestoreOfficialSpreadName('');
   };
 
   const updateSlotPosition = (col: number, row: number) => {
@@ -1060,91 +1087,22 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
         )}
       </AnimatePresence>
 
-      <AnimatePresence>
-        {showRestoreConfirm && (
-          <div className="fixed inset-0 z-[150] flex items-center justify-center bg-forest-text/14 p-3 backdrop-blur-[2px] overscroll-contain">
-            <motion.div 
-              initial={{ opacity: 0, scale: 0.9 }} 
-              animate={{ opacity: 1, scale: 1 }} 
-              exit={{ opacity: 0, scale: 0.9 }}
-              role="dialog"
-              aria-modal="true"
-              aria-labelledby={restoreDialogTitleId}
-              className="w-full max-w-sm space-y-3.5 rounded-[1.4rem] border border-forest-accent/8 bg-white/82 p-4 shadow-[0_18px_56px_-42px_rgba(62,58,54,0.58)] backdrop-blur-md"
-            >
-              <div className="flex items-center gap-3 text-forest-accent">
-                <RotateCcw size={24} />
-                <h3 id={restoreDialogTitleId} className="font-serif text-lg font-semibold">恢复默认设置</h3>
-              </div>
-              <p className="text-sm text-forest-muted leading-relaxed">
-                {showRestoreConfirm.name
-                  ? `确定要将“${showRestoreConfirm.name}”恢复到官方默认设置吗？这将覆盖您对此牌阵的所有修改。`
-                  : "确定要恢复所有官方牌阵到默认设置吗？隐藏的官方牌阵会重新显示，也会覆盖您对官方牌阵的修改。"}
-              </p>
-              <div className="flex gap-3 pt-2">
-                <button 
-                  type="button"
-                  onClick={() => setShowRestoreConfirm(null)}
-                  className="flex-1 min-h-11 py-2 bg-forest-bg text-forest-muted rounded-xl font-medium hover:bg-forest-accent/5 transition-all"
-                >
-                  取消
-                </button>
-                <button 
-                  type="button"
-                  onClick={() => restoreDefaults(showRestoreConfirm.name)}
-                  className="flex-1 min-h-11 py-2 bg-forest-accent/92 text-white rounded-xl font-medium hover:bg-forest-accent transition-all"
-                >
-                  确定恢复
-                </button>
-              </div>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
+      <ConfirmDialog
+        isOpen={Boolean(pendingRestoreOfficialSpreadName)}
+        title="恢复官方默认"
+        message={`确定要将“${pendingRestoreOfficialSpreadName}”恢复到官方默认设置吗？这会覆盖你对这个官方牌阵做过的布局修改。`}
+        confirmText="恢复"
+        cancelText="取消"
+        onConfirm={() => restoreDefaults(pendingRestoreOfficialSpreadName)}
+        onClose={() => setPendingRestoreOfficialSpreadName('')}
+      />
 
-      <AnimatePresence>
-        {spreadSaveConflict && (
-          <div className="fixed inset-0 z-[150] flex items-center justify-center bg-forest-text/14 p-3 backdrop-blur-[2px] overscroll-contain">
-            <motion.div
-              initial={{ opacity: 0, scale: 0.9 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.9 }}
-              className="w-full max-w-sm space-y-3.5 rounded-[1.4rem] border border-forest-accent/8 bg-white/82 p-4 shadow-[0_18px_56px_-42px_rgba(62,58,54,0.58)] backdrop-blur-md"
-            >
-              <div className="flex items-center gap-3 text-forest-accent">
-                <Layers size={24} />
-                <h3 className="font-serif text-lg font-semibold">牌阵名称已存在</h3>
-              </div>
-              <p className="text-sm text-forest-muted leading-relaxed">
-                “{spreadSaveConflict.name}”已经存在。你可以覆盖原牌阵，或另存为一个副本。
-              </p>
-              <div className="grid gap-2 pt-2">
-                <button
-                  type="button"
-                  onClick={saveSpreadAsCopy}
-	                  className="min-h-11 rounded-xl bg-forest-accent/92 font-medium text-white transition-all hover:bg-forest-accent"
-                >
-                  另存为副本
-                </button>
-                <button
-                  type="button"
-                  onClick={() => completeSpreadSave(spreadSaveConflict.spread)}
-	                  className="min-h-11 rounded-xl bg-amber-100 font-medium text-amber-700 transition-all hover:bg-amber-200"
-                >
-                  覆盖原牌阵
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setSpreadSaveConflict(null)}
-	                  className="min-h-11 rounded-xl bg-forest-bg font-medium text-forest-muted transition-colors hover:text-forest-accent"
-                >
-                  取消
-                </button>
-              </div>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
+      <SpreadSaveConflictDialog
+        conflict={spreadSaveConflict}
+        onSaveAsCopy={saveSpreadAsCopy}
+        onOverwrite={completeSpreadSave}
+        onClose={() => setSpreadSaveConflict(null)}
+      />
 
       {/* Basic Info Section */}
       <BasicInfoSection 
@@ -1160,8 +1118,6 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
         onOpenSpreadManager={handleOpenSpreadManager}
         onCreateSpread={handleCreateNewSpread}
         onDeleteSpread={requestDeleteSpread}
-        onHideOfficialSpread={requestHideOfficialSpread}
-        onRestoreOfficialSpreads={() => setShowRestoreConfirm({})}
         isMultiCard={isMultiCard}
         activeSlotIndex={activeSlotIndex}
         onSetActiveSlotIndex={handleSlotClick}
@@ -1268,7 +1224,6 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
               onClose={handleCancelSpreadManager}
               onDeleteSpread={requestDeleteSpread}
               onDeleteSpreads={requestDeleteSpreads}
-              onHideOfficialSpread={requestHideOfficialSpread}
               onSaveSpread={saveSpread}
               onUpdateNewSpreadName={(name) => {
                 setNewSpreadName(name);
@@ -1342,7 +1297,7 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
                 setIsEditingSession(true);
               }}
               onRestoreDefaults={(name) => {
-                setShowRestoreConfirm({ name });
+                if (name) setPendingRestoreOfficialSpreadName(name);
               }}
               canUndo={history.length > 0}
               onUndo={undo}
@@ -1364,16 +1319,6 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
         destructive
         onConfirm={confirmDeleteSpread}
         onClose={() => setPendingDeleteSpreadNames([])}
-      />
-
-      <ConfirmDialog
-        isOpen={Boolean(pendingHideOfficialSpreadName)}
-        title="隐藏官方牌阵"
-        message={`确定要隐藏“${pendingHideOfficialSpreadName}”吗？已经保存的手记不会受影响，之后也可以一键恢复官方牌阵。`}
-        confirmText="隐藏"
-        cancelText="取消"
-        onConfirm={confirmHideOfficialSpread}
-        onClose={() => setPendingHideOfficialSpreadName('')}
       />
 
       <div
