@@ -24,7 +24,7 @@ import {
   normalizeLegacyCustomSpreads,
   normalizeLegacyReadingSpreadNames,
 } from './lib/spreadPersistence';
-import { getAuthorDisplayName, syncReadingAuthorName } from './lib/readingAuthor';
+import { getAuthorDisplayName, syncReadingAuthorProfile } from './lib/readingAuthor';
 import { warmTarotDeckImages } from './lib/tarotImagePreload';
 import { useBodyScrollLock } from './hooks/useBodyScrollLock';
 import { useMobileFocusScroll } from './hooks/useMobileFocusScroll';
@@ -217,33 +217,65 @@ function AppContent() {
   const [publicReadingsCache, setPublicReadingsCache] = useState<TarotReading[]>([]);
   const [isPublicModerator, setIsPublicModerator] = useState(false);
 
+  const refreshPublicModeratorStatus = useCallback(async (showNotice = false) => {
+    if (!session?.uid) {
+      setIsPublicModerator(false);
+      return false;
+    }
+
+    try {
+      const allowed = await getUserModeratorStatus(session.uid);
+      setIsPublicModerator(allowed);
+      if (showNotice) {
+        setSnackbar({
+          isOpen: true,
+          message: allowed
+            ? '作者账号已确认。'
+            : '还没有读到作者权限，请确认 Firebase 里的 moderators 文档 ID 和软件 UID 完全一致。',
+        });
+      }
+      return allowed;
+    } catch (error) {
+      console.warn('Failed to load public moderator status:', error);
+      setIsPublicModerator(false);
+      if (showNotice) {
+        setSnackbar({ isOpen: true, message: '作者权限暂时没读到，请确认 Firestore 规则已发布。' });
+      }
+      return false;
+    }
+  }, [session?.uid]);
+
   useEffect(() => {
     installCloudflareWebAnalytics();
   }, []);
 
   useEffect(() => {
-    let cancelled = false;
+    void refreshPublicModeratorStatus();
+  }, [refreshPublicModeratorStatus]);
 
-    const loadModeratorStatus = async () => {
-      if (!session?.uid) {
-        setIsPublicModerator(false);
-        return;
-      }
+  useEffect(() => {
+    if (!session?.uid) return;
 
-      try {
-        const allowed = await getUserModeratorStatus(session.uid);
-        if (!cancelled) setIsPublicModerator(allowed);
-      } catch (error) {
-        console.warn('Failed to load public moderator status:', error);
-        if (!cancelled) setIsPublicModerator(false);
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === 'visible') {
+        void refreshPublicModeratorStatus();
       }
     };
 
-    void loadModeratorStatus();
+    window.addEventListener('focus', refreshWhenVisible);
+    document.addEventListener('visibilitychange', refreshWhenVisible);
     return () => {
-      cancelled = true;
+      window.removeEventListener('focus', refreshWhenVisible);
+      document.removeEventListener('visibilitychange', refreshWhenVisible);
     };
-  }, [session?.uid]);
+  }, [refreshPublicModeratorStatus, session?.uid]);
+
+  useEffect(() => {
+    if (!session?.uid) return;
+    if (activeTab === 'public' || activeTab === 'profile') {
+      void refreshPublicModeratorStatus();
+    }
+  }, [activeTab, refreshPublicModeratorStatus, session?.uid]);
 
   useEffect(() => {
     if (isAuthLoading) return;
@@ -946,6 +978,12 @@ function AppContent() {
   };
 
   const ownAuthorName = getAuthorDisplayName(profile, session);
+  const ownAuthorBio = (profile?.bio || profile?.signature || '').trim();
+  const sidebarAvatarUrl = profile?.avatar_url?.trim();
+  const sidebarAccountName = session ? ownAuthorName : '未登录';
+  const sidebarAccountSubtitle = session
+    ? ownAuthorBio || session.email || '还没有写个性签名'
+    : '本机保存 · 登录后同步';
 
   const sidebarInsights = useMemo(() => {
     const toDayStart = (value?: string) => {
@@ -975,21 +1013,49 @@ function AppContent() {
     closeSidebar();
   }, [closeSidebar]);
 
+  const openAccountFromSidebar = useCallback(() => {
+    if (session?.uid) {
+      navigateFromSidebar('profile');
+      return;
+    }
+
+    openAuthFromSidebar();
+  }, [navigateFromSidebar, openAuthFromSidebar, session?.uid]);
+
   // Sidebar Content
   const sidebarContent = (
     <div className="flex min-h-full flex-col px-4 py-5">
-      <div className="mb-5 flex items-center gap-3 px-1">
-        <img
-          src="/app-icon-192.png"
-          alt="塔罗研习阁图标"
-          className="h-11 w-11 rounded-2xl shadow-sm"
-          draggable={false}
-        />
-        <div className="min-w-0">
-          <h2 className="font-serif text-base font-semibold text-forest-ink">塔罗研习阁</h2>
-          <p className="text-[10px] text-forest-muted">灵见手记 · 稳稳同步</p>
+      <button
+        type="button"
+        onClick={openAccountFromSidebar}
+        className="group mb-4 flex min-h-[5rem] w-full items-center gap-3 rounded-[1.55rem] border border-forest-accent/7 bg-white/28 py-3 pl-3 pr-14 text-left transition-all hover:bg-white/48 active:scale-[0.99]"
+        aria-label={session ? '打开账号设置' : '登录开启同步'}
+      >
+        <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-forest-accent/8 bg-forest-accent/8 text-forest-accent shadow-sm">
+          {sidebarAvatarUrl ? (
+            <img
+              src={sidebarAvatarUrl}
+              alt="用户头像"
+              className="h-full w-full object-cover"
+              draggable={false}
+            />
+          ) : session ? (
+            <User size={22} />
+          ) : (
+            <LogIn size={22} />
+          )}
         </div>
-      </div>
+        <div className="min-w-0 flex-1">
+          <div className="flex min-w-0 items-center gap-1.5">
+            <h2 className="truncate font-serif text-lg font-semibold text-forest-ink">{sidebarAccountName}</h2>
+            {isPublicModerator ? (
+              <span className="shrink-0 rounded-full bg-forest-accent/10 px-2 py-0.5 text-[10px] font-medium text-forest-accent">作者账号</span>
+            ) : null}
+          </div>
+          <p className="mt-0.5 line-clamp-2 text-[11px] leading-relaxed text-forest-muted">{sidebarAccountSubtitle}</p>
+        </div>
+        <ChevronRight size={15} className="shrink-0 text-forest-muted transition-transform group-hover:translate-x-0.5" />
+      </button>
 
       <div className="space-y-3">
         <button
@@ -1058,36 +1124,6 @@ function AppContent() {
             </div>
             <ChevronRight size={14} className="text-forest-muted transition-transform group-hover:translate-x-1" />
           </button>
-
-          {session && (
-            <>
-              <button
-                type="button"
-                onClick={() => navigateFromSidebar('profile')}
-                className={`group flex min-h-11 w-full items-center justify-between rounded-xl px-2.5 transition-all hover:bg-white/54 ${
-                  activeTab === 'profile' ? 'text-forest-accent' : 'text-forest-text'
-                }`}
-              >
-                <div className="flex items-center gap-3">
-                  <User size={17} className="text-forest-accent" />
-                  <div className="text-left">
-                    <span className="block text-sm font-medium">账号设置</span>
-                    <span className="text-[10px] text-forest-muted">{ownAuthorName}</span>
-                  </div>
-                </div>
-                <ChevronRight size={14} className="text-forest-muted transition-transform group-hover:translate-x-1" />
-              </button>
-
-              <button
-                type="button"
-                onClick={() => { setShowLogoutConfirm(true); closeSidebar(); }}
-                className="flex min-h-11 w-full items-center gap-3 rounded-xl px-2.5 text-forest-muted transition-all hover:bg-white/54 hover:text-forest-accent"
-              >
-                <LogOut size={17} />
-                <span className="text-sm font-medium">退出登录</span>
-              </button>
-            </>
-          )}
         </div>
       </div>
 
@@ -1631,6 +1667,7 @@ function AppContent() {
               email={session?.email}
               isLoggedIn={!!session}
               isEmailVerified={isEmailVerified}
+              isPublicModerator={isPublicModerator}
               onLogin={() => setShowAuthPage(true)}
               onLogout={() => setShowLogoutConfirm(true)}
               onOpenSecurity={() => setIsSecurityModalOpen(true)}
@@ -1644,10 +1681,11 @@ function AppContent() {
                   if (Object.keys(updated).length > 0 && session?.uid) {
                     const nextProfile = await updateUserProfile(session.uid, updated);
                     const nextAuthorName = getAuthorDisplayName(nextProfile, session);
+                    const nextAuthorBio = nextProfile.bio || nextProfile.signature || '';
                     const profileCloudPending = hasPendingUserProfileUpdate(session.uid);
 
                     setProfile(nextProfile);
-                    setReadings(prev => syncReadingAuthorName(prev, session.uid!, nextAuthorName));
+                    setReadings(prev => syncReadingAuthorProfile(prev, session.uid!, nextAuthorName, nextAuthorBio));
                     setSnackbar({
                       isOpen: true,
                       message: profileCloudPending

@@ -104,6 +104,7 @@ service cloud.firestore {
           'isPublic',
           'isAnonymous',
           'authorName',
+          'authorBio',
           'layoutType',
           'slotLabels',
           'slotPositions',
@@ -122,6 +123,7 @@ service cloud.firestore {
         ])
         && (!data.keys().hasAny(['id']) || data.id == readingId)
         && data.isPublic == true
+        && (!data.keys().hasAny(['authorBio']) || data.authorBio is string)
         && (!data.keys().hasAny(['moderationStatus']) || data.moderationStatus in ['published', 'hidden'])
         && (!data.keys().hasAny(['moderatedAt']) || data.moderatedAt is string)
         && (!data.keys().hasAny(['moderatedBy']) || data.moderatedBy is string)

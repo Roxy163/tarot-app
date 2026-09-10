@@ -141,6 +141,8 @@ describe('PublicTab', () => {
       />,
     );
 
+    expect(screen.queryByText('普通账号')).not.toBeInTheDocument();
+
     await userEvent.click(await screen.findByRole('button', { name: '举报' }));
     await userEvent.click(screen.getByRole('button', { name: '隐私泄露' }));
     await userEvent.type(screen.getByPlaceholderText('哪里不合适？一句话就够。'), '里面有联系方式');
@@ -185,6 +187,7 @@ describe('PublicTab', () => {
       />,
     );
 
+    expect(screen.getByText('作者账号')).toBeInTheDocument();
     await userEvent.click(screen.getByRole('tab', { name: /管理/ }));
 
     expect(await screen.findByText('需要处理的公开手记')).toBeInTheDocument();

@@ -260,6 +260,9 @@ export const PublicTab: React.FC<PublicTabProps> = ({
   const selectedCardGroup = cardExampleGroups.find(group => group.cardName === selectedCardName) || cardExampleGroups[0];
   const reviewedCount = publicReadings.filter(isPublicReadingReviewed).length;
   const todayPrompt = useMemo(() => getTodayPracticePrompt(), []);
+  const accountStatusChip = canModerate
+    ? { label: '作者账号', className: 'bg-forest-accent/10 text-forest-accent' }
+    : null;
   const visibleSquareViews = useMemo(() => (
     canModerate
       ? [...squareViews, { id: 'moderation' as const, label: '管理', icon: ShieldCheck }]
@@ -441,6 +444,11 @@ export const PublicTab: React.FC<PublicTabProps> = ({
           <span className="rounded-full bg-white/46 px-2.5 py-1">牌例 {cardExampleGroups.length}</span>
           <span className="rounded-full bg-white/46 px-2.5 py-1">牌阵 {spreadGroups.length}</span>
           <span className="rounded-full bg-forest-accent/8 px-2.5 py-1 text-forest-accent">公开可见</span>
+          {accountStatusChip && (
+            <span className={`rounded-full px-2.5 py-1 ${accountStatusChip.className}`}>
+              {accountStatusChip.label}
+            </span>
+          )}
         </div>
       </div>
       <div className={`mt-3 grid ${canModerate ? 'grid-cols-5' : 'grid-cols-4'} gap-1.5 sm:flex sm:overflow-x-auto sm:pb-0.5 sm:no-scrollbar`} role="tablist" aria-label="广场内容">

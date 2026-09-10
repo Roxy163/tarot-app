@@ -1,7 +1,6 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   ArrowRight,
-  BookOpen,
   CheckCircle,
   Edit3,
   Home,
@@ -24,28 +23,21 @@ interface ProfileViewProps {
   email?: string | null;
   isLoggedIn?: boolean;
   isEmailVerified?: boolean;
+  isPublicModerator?: boolean;
   onLogin?: () => void;
   onLogout?: () => void;
   onOpenSecurity?: () => void;
   onBackHome?: () => void;
 }
 
-const AccountStat = ({ label, value }: { label: string; value: number | string }) => (
-  <div className="rounded-2xl border border-forest-accent/7 bg-white/34 px-3 py-3 text-center">
-    <p className="font-serif text-xl font-semibold text-forest-accent">{value}</p>
-    <p className="mt-0.5 text-[10px] font-medium text-forest-muted">{label}</p>
-  </div>
-);
-
 export function ProfileView({
   authorName,
-  readings,
-  cardMetadata,
   onUpdateProfile,
   profile,
   email,
   isLoggedIn = !!profile,
   isEmailVerified = false,
+  isPublicModerator = false,
   onLogin,
   onLogout,
   onOpenSecurity,
@@ -63,16 +55,8 @@ export function ProfileView({
     setBio(profile?.bio || profile?.signature || '观牌，也观心');
   }, [profile?.bio, profile?.signature]);
 
-  const realReadings = useMemo(() => readings.filter(reading => !reading.isExample), [readings]);
-  const reviewedCount = useMemo(
-    () => realReadings.filter(reading => Boolean(reading.userFeedback?.trim())).length,
-    [realReadings],
-  );
-  const cardAnnotationCount = useMemo(
-    () => cardMetadata.filter(item => item.meaning || item.reversedMeaning || item.keywords?.length).length,
-    [cardMetadata],
-  );
   const accountEmail = email || '尚未登录';
+  const publicId = profile?.user_public_id || '暂未生成';
 
   const saveProfile = async () => {
     if (!profile || isSaving) return;
@@ -143,14 +127,32 @@ export function ProfileView({
           </div>
           <div className="min-w-0 flex-1">
             <p className="text-[10px] font-medium uppercase tracking-[0.2em] text-forest-muted">账号设置</p>
-            <h2 className="mt-1 font-serif text-2xl font-bold text-forest-ink">管理登录与名称</h2>
+            <h2 className="mt-1 font-serif text-2xl font-bold text-forest-ink">公开资料</h2>
             <p className="mt-2 text-sm leading-relaxed text-forest-muted">
-              这里仅保留账号必需功能。研习记录与复盘入口仍在典籍里。
+              名字和签名会跟随公开手记展示；匿名公开时不会显示。
             </p>
           </div>
         </div>
 
-        <div className="mt-5 grid gap-3">
+        <div className="mt-5 rounded-[1.25rem] border border-forest-accent/8 bg-forest-bg/24 p-4" data-testid="public-profile-preview">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <p className="text-[10px] font-medium text-forest-muted">公开展示预览</p>
+              <h3 className="mt-1 truncate font-serif text-2xl font-bold text-forest-ink">{displayName.trim() || '研习阁主'}</h3>
+              <p className="mt-1 line-clamp-2 text-sm leading-relaxed text-forest-muted">{bio.trim() || '观牌，也观心'}</p>
+            </div>
+            {isPublicModerator && (
+              <span className="shrink-0 rounded-full bg-forest-accent/10 px-2.5 py-1 text-[10px] font-medium text-forest-accent">
+                作者账号
+              </span>
+            )}
+          </div>
+          <div className="mt-3 flex flex-wrap gap-2 text-[10px] font-medium text-forest-muted">
+            <span className="rounded-full bg-white/54 px-2.5 py-1">公开ID：{publicId}</span>
+          </div>
+        </div>
+
+        <div className="mt-4 grid gap-3">
           <label className="space-y-1.5">
             <span className="flex items-center gap-1.5 text-xs font-medium text-forest-muted">
               <Edit3 size={14} />
@@ -184,21 +186,6 @@ export function ProfileView({
           >
             {isSaving ? '保存中…' : '保存账号资料'}
           </button>
-        </div>
-      </section>
-
-      <section className="rounded-[1.6rem] border border-forest-accent/7 bg-white/36 p-4 shadow-none">
-        <div className="mb-3 flex items-center justify-between gap-3">
-          <div>
-            <p className="text-[10px] font-medium uppercase tracking-[0.2em] text-forest-muted">同步概况</p>
-            <h3 className="mt-1 font-serif text-xl font-bold text-forest-ink">云端数据</h3>
-          </div>
-          <BookOpen size={20} className="text-forest-accent" />
-        </div>
-        <div className="grid grid-cols-3 gap-2">
-          <AccountStat label="手记" value={realReadings.length} />
-          <AccountStat label="已复盘" value={reviewedCount} />
-          <AccountStat label="牌义注疏" value={cardAnnotationCount} />
         </div>
       </section>
 

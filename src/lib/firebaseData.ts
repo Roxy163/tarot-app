@@ -452,10 +452,18 @@ export const getPublicReadings = async (): Promise<TarotReading[]> => {
 };
 
 export const getUserModeratorStatus = async (uid: string): Promise<boolean> => {
-  const { doc, getDoc } = await loadFirestore();
+  const { doc, getDoc, getDocFromServer } = await loadFirestore();
   const firebaseDb = await getFirebaseDb();
-  const snapshot = await getDoc(doc(firebaseDb, 'moderators', uid));
+  const moderatorRef = doc(firebaseDb, 'moderators', uid);
 
+  try {
+    const snapshot = await getDocFromServer(moderatorRef);
+    return snapshot.exists();
+  } catch (error) {
+    if (!isFirebaseOfflineError(error)) throw error;
+  }
+
+  const snapshot = await getDoc(moderatorRef);
   return snapshot.exists();
 };
 
@@ -539,6 +547,7 @@ const toPublicReadingData = (reading: TarotReading) => withoutUndefined({
   isPublic: true,
   isAnonymous: !!reading.isAnonymous,
   authorName: reading.isAnonymous ? '匿名研习者' : (reading.authorName || '研习阁主'),
+  authorBio: reading.isAnonymous ? undefined : reading.authorBio,
   layoutType: reading.layoutType,
   slotLabels: reading.slotLabels || [],
   slotPositions: reading.slotPositions || [],

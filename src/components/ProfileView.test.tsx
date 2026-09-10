@@ -36,6 +36,7 @@ const baseProps = {
   profile,
   isLoggedIn: true,
   isEmailVerified: true,
+  isPublicModerator: true,
   email: 'roxy@example.com',
   readings: [
     makeReading('reading-1', '第一条'),
@@ -63,13 +64,20 @@ describe('ProfileView', () => {
     render(<ProfileView {...baseProps} />);
 
     expect(screen.getByTestId('account-settings-page')).toBeInTheDocument();
-    expect(screen.getByText('管理登录与名称')).toBeInTheDocument();
+    expect(screen.getByText('公开资料')).toBeInTheDocument();
+    expect(screen.getByTestId('public-profile-preview')).toBeInTheDocument();
+    expect(screen.getByText('公开展示预览')).toBeInTheDocument();
+    expect(screen.getByText('作者账号')).toBeInTheDocument();
+    expect(screen.getByText('公开ID：TAROT-00000001')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '复制 UID' })).not.toBeInTheDocument();
     expect(screen.getByDisplayValue('Roxy')).toBeInTheDocument();
     expect(screen.getByDisplayValue('在森林里记录牌的回声')).toBeInTheDocument();
     expect(screen.getByText('roxy@example.com')).toBeInTheDocument();
     expect(screen.getByText('已验证')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '邮箱与密码管理' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '退出登录' })).toBeInTheDocument();
+    expect(screen.queryByText('云端数据')).not.toBeInTheDocument();
+    expect(screen.queryByText('普通账号')).not.toBeInTheDocument();
 
     expect(screen.queryByText('公开案例')).not.toBeInTheDocument();
     expect(screen.queryByText('最近研习')).not.toBeInTheDocument();

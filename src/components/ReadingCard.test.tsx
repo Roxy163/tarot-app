@@ -88,6 +88,40 @@ describe('ReadingCard', () => {
     expect(screen.getByText('底牌')).toBeInTheDocument();
   });
 
+  it('shows the author bio on public non-anonymous readings', () => {
+    render(
+      <ReadingCard
+        reading={{
+          ...celticReading,
+          isPublic: true,
+          authorBio: '在森林里记录牌的回声',
+        }}
+        cardMetadata={[]}
+        isPublicView
+      />,
+    );
+
+    expect(screen.getByText('Roxy')).toBeInTheDocument();
+    expect(screen.getByText('在森林里记录牌的回声')).toBeInTheDocument();
+  });
+
+  it('keeps the author bio hidden on anonymous public readings', () => {
+    render(
+      <ReadingCard
+        reading={{
+          ...celticReading,
+          isPublic: true,
+          isAnonymous: true,
+          authorBio: '在森林里记录牌的回声',
+        }}
+        cardMetadata={[]}
+        isPublicView
+      />,
+    );
+
+    expect(screen.queryByText('在森林里记录牌的回声')).not.toBeInTheDocument();
+  });
+
   it('reveals a delete action after swiping a saved reading left on mobile', async () => {
     const onDelete = vi.fn();
     Object.defineProperty(window, 'innerWidth', {

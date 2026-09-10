@@ -469,6 +469,7 @@ export const ReadingCard: React.FC<ReadingCardProps> = ({
   const hasAiReference = !!reading.aiAnswer?.trim();
   const aiReferenceModeLabel = reading.aiAnswerMode === 'consultant' ? '咨询解牌' : '导师复盘';
   const displayAuthorName = reading.isAnonymous ? '匿名研习者' : reading.authorName;
+  const displayAuthorBio = isPublicView && !reading.isAnonymous ? reading.authorBio?.trim() : '';
   const clientDisplayName = reading.clientName?.trim() || '未命名客户';
   const displayDate = formatReadingDateTime(reading.readingDate || reading.date);
   const cardInterpretationRows = (reading.cards || [])
@@ -1295,12 +1296,19 @@ export const ReadingCard: React.FC<ReadingCardProps> = ({
               if (!reading.isAnonymous) onAuthorClick?.(displayAuthorName);
             }}
             disabled={reading.isAnonymous}
-            className="mt-3 hidden items-center gap-2 text-xs text-forest-accent transition-colors hover:text-forest-accent/80 sm:flex"
+            className="mt-3 flex max-w-full items-center gap-2 text-left text-xs text-forest-accent transition-colors hover:text-forest-accent/80"
           >
             <span className="w-6 h-6 rounded-full bg-gradient-to-br from-forest-accent to-forest-pink flex items-center justify-center text-white text-[10px] font-bold">
               {displayAuthorName.charAt(0)}
             </span>
-            <span className="font-medium">{displayAuthorName}</span>
+            <span className="min-w-0">
+              <span className="block font-medium">{displayAuthorName}</span>
+              {displayAuthorBio && (
+                <span className="mt-0.5 block max-w-[22rem] truncate text-[10px] font-normal text-forest-muted">
+                  {displayAuthorBio}
+                </span>
+              )}
+            </span>
           </button>
         )}
       </div>

@@ -694,9 +694,14 @@ export const useReadings = (
     spreads,
   ]);
   // 添加阅读记录
-  const handleAddReading = useCallback(async (newReading: any, profile?: { display_name?: string; nickname?: string }, onShowSnackbar?: (msg: string) => void) => {
+  const handleAddReading = useCallback(async (
+    newReading: any,
+    profile?: { display_name?: string; nickname?: string; bio?: string; signature?: string },
+    onShowSnackbar?: (msg: string) => void,
+  ) => {
     setIsProcessing(true);
     try {
+      const currentAuthorBio = (profile?.bio || profile?.signature || '').trim();
       const readingData = {
         ...newReading,
         cards: newReading.cards || [],
@@ -706,6 +711,7 @@ export const useReadings = (
           ? newReading.cards.map((s: any) => s.label)
           : (newReading.cardInput ? [/* placeholder */] : []),
         cardInterpretations: newReading.cardInterpretations || [],
+        authorBio: newReading.isAnonymous ? undefined : (currentAuthorBio || editingReading?.authorBio),
         status: newReading.status === 'draft' ? 'draft' : 'complete',
         isAiProcessed: false,
         updatedAt: new Date().toISOString(),

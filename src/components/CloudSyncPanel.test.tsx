@@ -40,10 +40,20 @@ describe('CloudSyncPanel', () => {
 
     expect(screen.getByTestId('cloud-sync-panel')).toBeInTheDocument();
     expect(screen.getByText('本机已保存')).toBeInTheDocument();
+    expect(screen.getByText('点这里登录，云端记录会自动合并。')).toBeInTheDocument();
     expect(screen.getByText('本机记录已保留，登录后可同步到云端。')).toBeInTheDocument();
-    expect(screen.getByText('登录后读取')).toBeInTheDocument();
+    expect(screen.getByText('待登录')).toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: '登录开启同步' }));
+    expect(onLogin).toHaveBeenCalledTimes(1);
+  });
+
+  it('lets guests open login by clicking the whole sync card', async () => {
+    const user = userEvent.setup();
+    const onLogin = vi.fn();
+    renderPanel({ onLogin, showPrimaryAction: false });
+
+    await user.click(screen.getByTestId('cloud-sync-panel'));
     expect(onLogin).toHaveBeenCalledTimes(1);
   });
 

@@ -164,6 +164,7 @@ export interface TarotReading {
   manualTags?: string[];
   isPublic: boolean;
   authorName: string;
+  authorBio?: string;
   isAnonymous: boolean;
   isForClient?: boolean;
   clientName?: string;

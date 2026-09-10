@@ -42,6 +42,8 @@ export const CloudSyncPanel: React.FC<CloudSyncPanelProps> = ({
   showLoginAction = true,
   showPrimaryAction = true,
 }) => {
+  const isGuest = !session;
+  const isSidebarLoginCard = isGuest && showLoginAction && !showPrimaryAction;
   const statusText = !session
     ? '本机已保存'
     : cloudSyncInfo.status === 'loading'
@@ -59,15 +61,34 @@ export const CloudSyncPanel: React.FC<CloudSyncPanelProps> = ({
       ? 'warning'
       : 'success';
   const cloudReadingsCountText = cloudSyncInfo.cloudReadingsCount === null
-    ? !session ? '登录后读取' : tone === 'warning' ? '待联网' : '正在读取'
+    ? !session ? '待登录' : tone === 'warning' ? '待联网' : '正在读取'
     : `${cloudSyncInfo.cloudReadingsCount} 条`;
 
   return (
-    <section className="space-y-2.5 rounded-[1.35rem] border border-forest-accent/7 bg-white/26 p-3 shadow-none" data-testid="cloud-sync-panel">
+    <section
+      className={`space-y-2.5 rounded-[1.35rem] border border-forest-accent/7 bg-white/26 p-3 shadow-none ${
+        isSidebarLoginCard ? 'cursor-pointer transition-all hover:border-forest-accent/16 hover:bg-white/36' : ''
+      }`}
+      data-testid="cloud-sync-panel"
+      onClick={isSidebarLoginCard ? onLogin : undefined}
+      role={isSidebarLoginCard ? 'button' : undefined}
+      tabIndex={isSidebarLoginCard ? 0 : undefined}
+      onKeyDown={(event) => {
+        if (!isSidebarLoginCard) return;
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
+          onLogin();
+        }
+      }}
+      aria-label={isSidebarLoginCard ? '登录开启同步' : undefined}
+    >
       <div className="flex items-center justify-between">
         <div>
           <p className="text-[10px] font-medium uppercase tracking-widest text-forest-muted">印鉴与同步</p>
           <p className="mt-1 text-sm font-semibold text-forest-ink">{statusText}</p>
+          {!session && (
+            <p className="mt-1 text-[10px] leading-relaxed text-forest-muted">点这里登录，云端记录会自动合并。</p>
+          )}
         </div>
         <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${
           tone === 'success'
@@ -92,9 +113,15 @@ export const CloudSyncPanel: React.FC<CloudSyncPanelProps> = ({
             <p className="font-serif text-lg font-semibold text-forest-accent">{readingCount}</p>
             <p className="text-[9px] font-medium text-forest-muted">本机记录</p>
           </div>
-          <div className="rounded-lg border border-forest-accent/7 bg-white/34 px-2 py-2">
-            <p className="font-serif text-lg font-semibold text-forest-accent">{cloudReadingsCountText}</p>
-            <p className="text-[9px] font-medium text-forest-muted">云端记录</p>
+          <div className={`rounded-lg border px-2 py-2 ${
+            isGuest
+              ? 'border-forest-accent/7 bg-forest-bg/28 text-forest-muted'
+              : 'border-forest-accent/7 bg-white/34'
+          }`}>
+            <p className={`${isGuest ? 'font-sans text-sm' : 'font-serif text-lg'} font-semibold text-forest-accent`}>
+              {cloudReadingsCountText}
+            </p>
+            <p className="text-[9px] font-medium text-forest-muted">{isGuest ? '云端记录' : '云端记录'}</p>
           </div>
         </div>
         <p className="text-[10px] leading-relaxed text-forest-muted">
@@ -120,10 +147,13 @@ export const CloudSyncPanel: React.FC<CloudSyncPanelProps> = ({
         ) : showLoginAction ? (
           <button
             type="button"
-            onClick={onLogin}
-            className="flex min-h-11 w-full items-center justify-center gap-2 rounded-xl border border-forest-accent/8 bg-white/42 text-xs font-medium text-forest-accent transition-colors hover:bg-white/72"
+            onClick={(event) => {
+              event.stopPropagation();
+              onLogin();
+            }}
+            className="flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-forest-accent px-4 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-forest-accent/92"
           >
-            <LogIn size={14} />
+            <LogIn size={16} />
             登录开启同步
           </button>
         ) : null}

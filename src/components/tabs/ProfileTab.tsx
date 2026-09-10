@@ -11,6 +11,7 @@ interface ProfileTabProps {
   email?: string | null;
   isLoggedIn?: boolean;
   isEmailVerified?: boolean;
+  isPublicModerator?: boolean;
   onLogin?: () => void;
   onLogout: () => void;
   onOpenSecurity?: () => void;
@@ -26,6 +27,7 @@ export const ProfileTab: React.FC<ProfileTabProps> = ({
   email,
   isLoggedIn,
   isEmailVerified,
+  isPublicModerator,
   onLogin,
   onLogout,
   onOpenSecurity,
@@ -53,6 +55,7 @@ export const ProfileTab: React.FC<ProfileTabProps> = ({
         email={email}
         isLoggedIn={isLoggedIn}
         isEmailVerified={isEmailVerified}
+        isPublicModerator={isPublicModerator}
       />
     </motion.div>
   );
