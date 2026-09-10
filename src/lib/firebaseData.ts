@@ -451,6 +451,14 @@ export const getPublicReadings = async (): Promise<TarotReading[]> => {
     .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 };
 
+export const getUserModeratorStatus = async (uid: string): Promise<boolean> => {
+  const { doc, getDoc } = await loadFirestore();
+  const firebaseDb = await getFirebaseDb();
+  const snapshot = await getDoc(doc(firebaseDb, 'moderators', uid));
+
+  return snapshot.exists();
+};
+
 export interface PublicModerationSnapshot {
   readings: TarotReading[];
   reports: PublicReadingReport[];

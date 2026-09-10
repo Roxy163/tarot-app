@@ -6,7 +6,7 @@ import { OFFICIAL_SPREADS, PAVILION_PROVERBS } from './constants';
 import { Modal } from './components/Modal';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { checkIfMagicLink, verifyMagicLink, deleteUserAccount } from './lib/firebase';
-import { getCachedUserProfile, getOrCreateUserProfile, hasPendingUserProfileUpdate, updateUserProfile, deleteUserAccount as deleteUserAccountData } from './lib/firebaseData';
+import { getCachedUserProfile, getOrCreateUserProfile, getUserModeratorStatus, hasPendingUserProfileUpdate, updateUserProfile, deleteUserAccount as deleteUserAccountData } from './lib/firebaseData';
 import { isValidPassword } from './lib/utils';
 import { HomeTab } from './components/tabs/HomeTab';
 import { MainLayout } from './components/layouts/MainLayout';
@@ -31,7 +31,6 @@ import { useMobileFocusScroll } from './hooks/useMobileFocusScroll';
 import { requestPwaInstallPrompt } from './hooks/usePwaInstallPrompt';
 import { installCloudflareWebAnalytics, setAnalyticsAuthState, trackEvent } from './lib/analytics';
 import { FeedbackModal } from './components/FeedbackModal';
-import { isOfficialModerator } from './lib/publicModeration';
 
 const loadCardMetadataManager = () => import('./components/CardMetadataManager');
 const loadReadingDetailModal = () => import('./components/ReadingDetailModal');
@@ -216,10 +215,35 @@ function AppContent() {
   useMobileFocusScroll();
 
   const [publicReadingsCache, setPublicReadingsCache] = useState<TarotReading[]>([]);
+  const [isPublicModerator, setIsPublicModerator] = useState(false);
 
   useEffect(() => {
     installCloudflareWebAnalytics();
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadModeratorStatus = async () => {
+      if (!session?.uid) {
+        setIsPublicModerator(false);
+        return;
+      }
+
+      try {
+        const allowed = await getUserModeratorStatus(session.uid);
+        if (!cancelled) setIsPublicModerator(allowed);
+      } catch (error) {
+        console.warn('Failed to load public moderator status:', error);
+        if (!cancelled) setIsPublicModerator(false);
+      }
+    };
+
+    void loadModeratorStatus();
+    return () => {
+      cancelled = true;
+    };
+  }, [session?.uid]);
 
   useEffect(() => {
     if (isAuthLoading) return;
@@ -1569,8 +1593,7 @@ function AppContent() {
               initialPublicReadings={publicReadingsCache}
               onPublicReadingsLoaded={setPublicReadingsCache}
               currentUserId={session?.uid}
-              currentUserEmail={session?.email}
-              isModerator={isOfficialModerator(session?.email)}
+              isModerator={isPublicModerator}
             />
           </Suspense>
         )}

@@ -30,7 +30,6 @@ import { QuietEmptyState, SoftSkeleton } from '../ui/SoftUI';
 import { readJsonArrayWithBackup, writeJsonWithBackup } from '../../lib/safeLocalStorage';
 import { formatReadingDateTime } from '../../lib/dateFormat';
 import { getCardImageUrl } from '../../constants';
-import { isOfficialModerator } from '../../lib/publicModeration';
 import { trackEvent } from '../../lib/analytics';
 import {
   buildPublicCardExampleGroups,
@@ -63,7 +62,6 @@ interface PublicTabProps {
   onPublicReadingsLoaded?: (readings: TarotReading[]) => void;
   initialPublicReadings?: TarotReading[];
   currentUserId?: string;
-  currentUserEmail?: string | null;
   isModerator?: boolean;
 }
 
@@ -164,10 +162,9 @@ export const PublicTab: React.FC<PublicTabProps> = ({
   onPublicReadingsLoaded,
   initialPublicReadings = [],
   currentUserId,
-  currentUserEmail,
   isModerator,
 }) => {
-  const canModerate = isModerator ?? isOfficialModerator(currentUserEmail);
+  const canModerate = Boolean(isModerator);
   const [cloudPublicReadings, setCloudPublicReadings] = useState<TarotReading[]>(() => (
     initialPublicReadings.length > 0
       ? initialPublicReadings

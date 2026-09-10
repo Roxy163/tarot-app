@@ -181,7 +181,7 @@ describe('PublicTab', () => {
         onAuthorClick={vi.fn()}
         onProcessAi={vi.fn()}
         currentUserId="admin-1"
-        currentUserEmail="roxy163@outlook.com"
+        isModerator
       />,
     );
 

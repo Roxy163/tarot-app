@@ -44,8 +44,7 @@ service cloud.firestore {
 
     function isOfficialModerator() {
       return request.auth != null
-        && request.auth.token.email is string
-        && request.auth.token.email in ['roxy163@outlook.com'];
+        && exists(/databases/$(database)/documents/moderators/$(request.auth.uid));
     }
 
     function canReadPublicAnnotation(data) {
@@ -190,6 +189,11 @@ service cloud.firestore {
         && request.auth.uid == userId
         && isValidProfileUpdate(request.resource.data);
       allow delete: if request.auth != null && request.auth.uid == userId;
+    }
+
+    match /moderators/{userId} {
+      allow get: if request.auth != null && request.auth.uid == userId;
+      allow list, create, update, delete: if false;
     }
 
     match /users/{userId}/readings/{readingId} {
