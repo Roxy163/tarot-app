@@ -1,5 +1,16 @@
 import type { User } from 'firebase/auth';
-import type { CardKeywordMemory, DailyFortune, QuizMemoryEntry, SpreadDefinition, TarotCardMetadata, TarotReading, UserProfile } from '../types';
+import type {
+  CardKeywordMemory,
+  DailyFortune,
+  PublicReadingModerationStatus,
+  PublicReadingReport,
+  PublicReadingReportReason,
+  QuizMemoryEntry,
+  SpreadDefinition,
+  TarotCardMetadata,
+  TarotReading,
+  UserProfile,
+} from '../types';
 import { getFirebaseApp } from './firebase';
 import { isFirebaseOfflineError } from './firebaseErrors';
 import { createUserReadingSyncPlan, UserReadingSyncOptions } from './readingCloudSync';
@@ -428,16 +439,82 @@ export const getUserReadings = async (uid: string): Promise<TarotReading[]> => {
 };
 
 export const getPublicReadings = async (): Promise<TarotReading[]> => {
-  const { collection, getDocs } = await loadFirestore();
+  const { collection, getDocs, query, where } = await loadFirestore();
   const firebaseDb = await getFirebaseDb();
 
-  const readingsRef = collection(firebaseDb, 'publicReadings');
+  const readingsRef = query(collection(firebaseDb, 'publicReadings'), where('isPublic', '==', true));
   const snapshot = await getDocs(readingsRef);
 
   return snapshot.docs
     .map(item => ({ id: item.id, userId: 'public', ...item.data() }) as TarotReading)
-    .filter(reading => reading.isPublic)
+    .filter(reading => reading.isPublic && reading.moderationStatus !== 'hidden')
     .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+};
+
+export interface PublicModerationSnapshot {
+  readings: TarotReading[];
+  reports: PublicReadingReport[];
+}
+
+export const getPublicModerationSnapshot = async (): Promise<PublicModerationSnapshot> => {
+  const { collection, getDocs } = await loadFirestore();
+  const firebaseDb = await getFirebaseDb();
+
+  const readingSnapshot = await getDocs(collection(firebaseDb, 'publicReadings'));
+  const reportSnapshots = await Promise.all(
+    readingSnapshot.docs.map(readingDoc => getDocs(collection(readingDoc.ref, 'reports'))),
+  );
+
+  return {
+    readings: readingSnapshot.docs
+      .map(item => ({ id: item.id, userId: 'public', ...item.data() }) as TarotReading)
+      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()),
+    reports: reportSnapshots.flatMap(snapshot => snapshot.docs)
+      .map(item => ({ id: item.id, ...item.data() }) as PublicReadingReport)
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()),
+  };
+};
+
+export const reportPublicReading = async (
+  readingId: string,
+  input: {
+    userId: string;
+    reason: PublicReadingReportReason;
+    note?: string;
+  },
+): Promise<void> => {
+  const { doc, setDoc } = await loadFirestore();
+  const firebaseDb = await getFirebaseDb();
+  const now = new Date().toISOString();
+  const cleanNote = input.note?.trim().slice(0, 300);
+  const reportRef = doc(firebaseDb, 'publicReadings', readingId, 'reports', input.userId);
+
+  await setDoc(reportRef, withoutUndefined({
+    id: input.userId,
+    readingId,
+    userId: input.userId,
+    reason: input.reason,
+    note: cleanNote || undefined,
+    createdAt: now,
+    updatedAt: now,
+  }));
+};
+
+export const updatePublicReadingModeration = async (
+  readingId: string,
+  status: PublicReadingModerationStatus,
+  moderatorId: string,
+): Promise<void> => {
+  const { doc, updateDoc } = await loadFirestore();
+  const firebaseDb = await getFirebaseDb();
+  const publicRef = doc(firebaseDb, 'publicReadings', readingId);
+
+  await updateDoc(publicRef, withoutUndefined({
+    isPublic: status === 'published',
+    moderationStatus: status,
+    moderatedAt: new Date().toISOString(),
+    moderatedBy: moderatorId,
+  }));
 };
 
 const toPublicReadingData = (reading: TarotReading) => withoutUndefined({

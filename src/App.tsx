@@ -19,6 +19,7 @@ import { useSmartTips } from './hooks/useSmartTips';
 import { usePersistentTab } from './hooks/usePersistentTab';
 import { CloudSyncPanel } from './components/CloudSyncPanel';
 import {
+  getUniqueSpreadName,
   getLegacyCustomSpreadNameMap,
   normalizeLegacyCustomSpreads,
   normalizeLegacyReadingSpreadNames,
@@ -30,6 +31,7 @@ import { useMobileFocusScroll } from './hooks/useMobileFocusScroll';
 import { requestPwaInstallPrompt } from './hooks/usePwaInstallPrompt';
 import { installCloudflareWebAnalytics, setAnalyticsAuthState, trackEvent } from './lib/analytics';
 import { FeedbackModal } from './components/FeedbackModal';
+import { isOfficialModerator } from './lib/publicModeration';
 
 const loadCardMetadataManager = () => import('./components/CardMetadataManager');
 const loadReadingDetailModal = () => import('./components/ReadingDetailModal');
@@ -881,6 +883,39 @@ function AppContent() {
     navigateToTab('private');
   };
 
+  const handleCollectPublicSpread = useCallback((spread: SpreadDefinition) => {
+    const hasSameSpread = spreads.some(item => (
+      item.name === spread.name
+      || (
+        item.layout === spread.layout
+        && item.slots.length === spread.slots.length
+        && item.slots.every((slot, index) => slot === spread.slots[index])
+      )
+    ));
+
+    if (hasSameSpread) {
+      setSnackbar({ isOpen: true, message: '这个牌阵已经在你的牌阵库里。' });
+      return;
+    }
+
+    const nextName = spreads.some(item => item.name === spread.name)
+      ? getUniqueSpreadName(spread.name, spreads, OFFICIAL_SPREADS)
+      : spread.name;
+    const nextSpread: SpreadDefinition = {
+      ...spread,
+      name: nextName,
+      slots: spread.slots.filter(slot => slot.trim()),
+      slotPositions: spread.slotPositions || [],
+      rotatedSlots: spread.rotatedSlots || [],
+    };
+
+    setSpreads([...spreads, nextSpread]);
+    trackEvent('public_spread_collected', {
+      slot_count: nextSpread.slots.length,
+    });
+    setSnackbar({ isOpen: true, message: `已将「${nextName}」收进你的牌阵库。` });
+  }, [session?.uid, setSpreads, spreads]);
+
   // Handle author click
   const handleAuthorClick = (author: string) => {
     setSnackbar({ isOpen: true, message: `${author} 的公开案例可在广场继续查看。` });
@@ -1524,11 +1559,18 @@ function AppContent() {
             <PublicTab
               readings={readings}
               cardMetadata={cardMetadata}
+              spreads={spreads}
               onTagClick={handlePublicTagClick}
               onAuthorClick={handleAuthorClick}
               onProcessAi={handleProcessAi}
+              onCollectSpread={handleCollectPublicSpread}
+              onNotice={(message) => setSnackbar({ isOpen: true, message })}
+              onLoginRequest={() => setShowAuthPage(true)}
               initialPublicReadings={publicReadingsCache}
               onPublicReadingsLoaded={setPublicReadingsCache}
+              currentUserId={session?.uid}
+              currentUserEmail={session?.email}
+              isModerator={isOfficialModerator(session?.email)}
             />
           </Suspense>
         )}

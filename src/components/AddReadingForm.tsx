@@ -1736,6 +1736,16 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
               <span className="group-hover:scale-105 transition-transform">启用AI辅助整理</span>
             </label>
           </div>
+          {formData.isPublic && (
+            <div className="mt-3 rounded-2xl border border-forest-accent/8 bg-white/28 px-4 py-3 text-xs leading-relaxed text-forest-muted">
+              <p className="flex items-start gap-2">
+                <Info size={14} className="mt-0.5 shrink-0 text-forest-accent" />
+                <span>
+                  公开后，其他用户会在广场看到这条手记的问题、牌面、解读和标签；匿名分享只隐藏昵称。
+                </span>
+              </p>
+            </div>
+          )}
           <div className="mt-4 rounded-2xl border border-forest-accent/8 bg-white/28 px-4 py-3 text-xs leading-relaxed text-forest-muted">
             <p className="flex items-start gap-2">
               <Info size={14} className="mt-0.5 shrink-0 text-forest-accent" />

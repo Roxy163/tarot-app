@@ -42,6 +42,12 @@ service cloud.firestore {
         && data.cards is list;
     }
 
+    function isOfficialModerator() {
+      return request.auth != null
+        && request.auth.token.email is string
+        && request.auth.token.email in ['roxy163@outlook.com'];
+    }
+
     function canReadPublicAnnotation(data) {
       return data.isPublic == true;
     }
@@ -110,16 +116,69 @@ service cloud.firestore {
           'isAiProcessed',
           'processedByAi',
           'showSlotNumbers',
+          'moderationStatus',
+          'moderatedAt',
+          'moderatedBy',
           'updatedAt'
         ])
         && (!data.keys().hasAny(['id']) || data.id == readingId)
         && data.isPublic == true
+        && (!data.keys().hasAny(['moderationStatus']) || data.moderationStatus in ['published', 'hidden'])
+        && (!data.keys().hasAny(['moderatedAt']) || data.moderatedAt is string)
+        && (!data.keys().hasAny(['moderatedBy']) || data.moderatedBy is string)
         && data.cards is list
         && data.cards.size() > 0;
     }
 
+    function isHiddenPublicReading(data) {
+      return data.keys().hasAny(['moderationStatus'])
+        && data.moderationStatus == 'hidden';
+    }
+
+    function isVisiblePublicReading(data) {
+      return data.isPublic == true && !isHiddenPublicReading(data);
+    }
+
+    function isValidPublicModerationUpdate(data) {
+      return data.diff(resource.data).affectedKeys().hasOnly([
+          'isPublic',
+          'moderationStatus',
+          'moderatedAt',
+          'moderatedBy'
+        ])
+        && data.keys().hasAll(['isPublic', 'moderationStatus'])
+        && data.isPublic is bool
+        && data.moderationStatus in ['published', 'hidden']
+        && (
+          (data.moderationStatus == 'hidden' && data.isPublic == false)
+          || (data.moderationStatus == 'published' && data.isPublic == true)
+        )
+        && (!data.keys().hasAny(['moderatedAt']) || data.moderatedAt is string)
+        && data.moderatedBy == request.auth.uid;
+    }
+
+    function isValidPublicReport(readingId, reportId, data) {
+      return data.keys().hasOnly([
+          'id',
+          'readingId',
+          'userId',
+          'reason',
+          'note',
+          'createdAt',
+          'updatedAt'
+        ])
+        && data.id == reportId
+        && data.readingId == readingId
+        && data.userId == request.auth.uid
+        && data.reason in ['inappropriate', 'privacy', 'spam', 'other']
+        && data.createdAt is string
+        && (!data.keys().hasAny(['updatedAt']) || data.updatedAt is string)
+        && (!data.keys().hasAny(['note']) || data.note is string);
+    }
+
     function ownsPrivateReading(readingId) {
-      return exists(/databases/$(database)/documents/users/$(request.auth.uid)/readings/$(readingId));
+      return request.auth != null
+        && exists(/databases/$(database)/documents/users/$(request.auth.uid)/readings/$(readingId));
     }
 
     match /profiles/{userId} {
@@ -179,15 +238,33 @@ service cloud.firestore {
     }
 
     match /publicReadings/{readingId} {
-      allow read: if true;
+      allow get: if isVisiblePublicReading(resource.data)
+        || ownsPrivateReading(readingId)
+        || isOfficialModerator();
+      allow list: if isOfficialModerator() || resource.data.isPublic == true;
       allow create: if request.auth != null
         && ownsPrivateReading(readingId)
-        && isValidPublicReading(readingId, request.resource.data);
+        && isValidPublicReading(readingId, request.resource.data)
+        && isVisiblePublicReading(request.resource.data);
       allow update: if request.auth != null
         && ownsPrivateReading(readingId)
-        && isValidPublicReading(readingId, request.resource.data);
+        && !isHiddenPublicReading(resource.data)
+        && isValidPublicReading(readingId, request.resource.data)
+        && isVisiblePublicReading(request.resource.data);
+      allow update: if isOfficialModerator()
+        && isValidPublicModerationUpdate(request.resource.data);
       allow delete: if request.auth != null
-        && ownsPrivateReading(readingId);
+        && ownsPrivateReading(readingId)
+        && !isHiddenPublicReading(resource.data);
+
+      match /reports/{reportId} {
+        allow read, delete: if isOfficialModerator();
+        allow create, update: if request.auth != null
+          && reportId == request.auth.uid
+          && isValidPublicReport(readingId, reportId, request.resource.data)
+          && exists(/databases/$(database)/documents/publicReadings/$(readingId))
+          && isVisiblePublicReading(get(/databases/$(database)/documents/publicReadings/$(readingId)).data);
+      }
     }
   }
 }

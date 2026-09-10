@@ -48,6 +48,18 @@ export interface ReadingKeywordCandidate {
 
 export type ReadingAiAnswerMode = 'mentor' | 'consultant';
 export type ReadingStatus = 'complete' | 'draft';
+export type PublicReadingModerationStatus = 'published' | 'hidden';
+export type PublicReadingReportReason = 'inappropriate' | 'privacy' | 'spam' | 'other';
+
+export interface PublicReadingReport {
+  id: string;
+  readingId: string;
+  userId: string;
+  reason: PublicReadingReportReason;
+  note?: string;
+  createdAt: string;
+  updatedAt?: string;
+}
 
 export interface CardKeywordMemoryEntry {
   keyword: string;
@@ -174,6 +186,9 @@ export interface TarotReading {
   skipAi?: boolean;
   showSlotNumbers?: boolean;
   status?: ReadingStatus;
+  moderationStatus?: PublicReadingModerationStatus;
+  moderatedAt?: string;
+  moderatedBy?: string;
   updatedAt?: string;
 }
 
