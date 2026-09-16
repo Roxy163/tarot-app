@@ -5,6 +5,7 @@ coverage/
 backups/
 output/
 .playwright-cli/
+.wrangler/
 tarot-pavilion-dist.zip
 .DS_Store
 *.log
