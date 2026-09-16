@@ -1,12 +1,13 @@
 import { Suspense, lazy, useCallback, useMemo, useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Sparkles, X, User, ChevronRight, LogOut, Database, ShieldCheck, ArrowRight, LogIn, CheckCircle, AlertTriangle, Mail, Home, Download, MessageSquareText } from 'lucide-react';
+import { Sparkles, X, User, ChevronRight, LogOut, Database, ShieldCheck, ArrowRight, LogIn, CheckCircle, AlertTriangle, Mail, Home, Download, MessageSquareText, FileText, Eye, EyeOff } from 'lucide-react';
 import { TarotReading, SpreadDefinition, UserProfile } from './types';
 import { OFFICIAL_SPREADS, PAVILION_PROVERBS } from './constants';
 import { Modal } from './components/Modal';
 import { AuthProvider, useAuth } from './context/AuthContext';
-import { checkIfMagicLink, verifyMagicLink, deleteUserAccount } from './lib/firebase';
+import { checkIfMagicLink, verifyMagicLink, deleteUserAccount, reauthenticateForAccountDeletion } from './lib/firebase';
 import { getCachedUserProfile, getOrCreateUserProfile, getUserModeratorStatus, hasPendingUserProfileUpdate, updateUserProfile, deleteUserAccount as deleteUserAccountData } from './lib/firebaseData';
+import { clearDeletedAccountLocalData } from './lib/accountDeletion';
 import { isValidPassword } from './lib/utils';
 import { HomeTab } from './components/tabs/HomeTab';
 import { MainLayout } from './components/layouts/MainLayout';
@@ -28,9 +29,13 @@ import { getAuthorDisplayName, syncReadingAuthorProfile } from './lib/readingAut
 import { warmTarotDeckImages } from './lib/tarotImagePreload';
 import { useBodyScrollLock } from './hooks/useBodyScrollLock';
 import { useMobileFocusScroll } from './hooks/useMobileFocusScroll';
-import { requestPwaInstallPrompt } from './hooks/usePwaInstallPrompt';
+import { usePwaInstallPrompt } from './hooks/usePwaInstallPrompt';
 import { installCloudflareWebAnalytics, setAnalyticsAuthState, trackEvent } from './lib/analytics';
 import { FeedbackModal } from './components/FeedbackModal';
+import { PwaInstallGuideModal } from './components/PwaInstallGuideModal';
+import { LegalModal } from './components/LegalModal';
+import type { LegalTab } from './components/LegalModal';
+import type { PublicSquareView } from './components/tabs/PublicTab';
 
 const loadCardMetadataManager = () => import('./components/CardMetadataManager');
 const loadReadingDetailModal = () => import('./components/ReadingDetailModal');
@@ -127,16 +132,20 @@ const removeLocalStorageValue = (key: string) => {
 function AppContent() {
   const { session, isLoading: isAuthLoading, isLocalFallback, isEmailVerified, signOut, updatePassword, sendVerificationEmail } = useAuth();
   const { checkAndUnlockAchievements } = useOnboarding();
+  const { canInstall: canAutoInstallPwa, install: installPwa, isStandalone: isPwaStandalone } = usePwaInstallPrompt();
   
   const [activeTab, setActiveTab] = usePersistentTab<AppTab>('tarot_active_tab', 'home', isAppTab);
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [selectedReadingDetail, setSelectedReadingDetail] = useState<TarotReading | null>(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isFeedbackModalOpen, setIsFeedbackModalOpen] = useState(false);
+  const [isInstallGuideOpen, setIsInstallGuideOpen] = useState(false);
+  const [legalModal, setLegalModal] = useState<{ isOpen: boolean; tab: LegalTab }>({ isOpen: false, tab: 'privacy' });
   const [isSecurityModalOpen, setIsSecurityModalOpen] = useState(false);
   const [showAuthPage, setShowAuthPage] = useState(false);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const [hasEnteredApp, setHasEnteredApp] = useState(false);
+  const [publicViewRequest, setPublicViewRequest] = useState<{ view: PublicSquareView; key: number } | null>(null);
   
   // Login Prompts
   const [loginPrompt, setLoginPrompt] = useState<{ isOpen: boolean; title: string; content: string }>({
@@ -156,6 +165,8 @@ function AppContent() {
   
   // Account Delete Confirmation
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [deleteAccountPassword, setDeleteAccountPassword] = useState('');
+  const [isDeletePasswordVisible, setIsDeletePasswordVisible] = useState(false);
   const [isDeletingAccount, setIsDeletingAccount] = useState(false);
   
   // Password Change Modal
@@ -861,12 +872,18 @@ function AppContent() {
 
   // Handle Account Delete
   const handleDeleteAccount = async () => {
-    if (!session?.uid) return;
+    if (!session?.uid || isDeletingAccount) return;
+    const accountUid = session.uid;
+    const accountEmail = session.email;
+    let cloudDeletionStarted = false;
     setIsDeletingAccount(true);
     
     try {
-      await deleteUserAccountData(session.uid);
+      await reauthenticateForAccountDeletion(deleteAccountPassword);
+      cloudDeletionStarted = true;
+      await deleteUserAccountData(accountUid);
       await deleteUserAccount();
+      const localDataCleared = clearDeletedAccountLocalData(accountUid, accountEmail);
       
       setActiveTab('home');
       resetPrivateSessionState(true);
@@ -877,12 +894,31 @@ function AppContent() {
       setLoginPrompt(prev => ({ ...prev, isOpen: false }));
       
       setShowDeleteConfirm(false);
-      setSnackbar({ isOpen: true, message: '账号已注销，感谢您在研习阁的时光。' });
+      setSnackbar({
+        isOpen: true,
+        message: localDataCleared
+          ? '账号及该账号的本机资料已清除。'
+          : '账号已注销，但本机资料未能清除，请在浏览器设置里清除本站数据。',
+      });
     } catch (error: any) {
-      setSnackbar({ isOpen: true, message: `❌ ${error.message || '注销失败，请稍后再试。'}` });
+      setSnackbar({
+        isOpen: true,
+        message: cloudDeletionStarted
+          ? `注销未完成：${error.message || '请稍后重试。'} 本机资料仍在，云端可能已有部分记录被删除。`
+          : (error.message || '验证失败，请稍后重试。'),
+      });
     } finally {
+      setDeleteAccountPassword('');
+      setIsDeletePasswordVisible(false);
       setIsDeletingAccount(false);
     }
+  };
+
+  const closeDeleteConfirm = () => {
+    if (isDeletingAccount) return;
+    setShowDeleteConfirm(false);
+    setDeleteAccountPassword('');
+    setIsDeletePasswordVisible(false);
   };
 
   const handleAuthSignedOut = () => {
@@ -1022,6 +1058,39 @@ function AppContent() {
     openAuthFromSidebar();
   }, [navigateFromSidebar, openAuthFromSidebar, session?.uid]);
 
+  const openLegalModal = useCallback((tab: LegalTab = 'privacy') => {
+    setLegalModal({ isOpen: true, tab });
+  }, []);
+
+  const closeLegalModal = useCallback(() => {
+    setLegalModal(prev => ({ ...prev, isOpen: false }));
+  }, []);
+
+  const openLegalFromSidebar = useCallback((tab: LegalTab) => {
+    openLegalModal(tab);
+    closeSidebar();
+  }, [closeSidebar, openLegalModal]);
+
+  const openInstallGuideFromSidebar = useCallback(() => {
+    trackEvent('pwa_install_requested', { source: 'sidebar' });
+    setIsInstallGuideOpen(true);
+    closeSidebar();
+  }, [closeSidebar]);
+
+  const tryInstallFromGuide = useCallback(async () => {
+    trackEvent('pwa_install_requested', { source: 'install_guide' });
+    const wasPrompted = await installPwa();
+    if (!wasPrompted) {
+      setSnackbar({ isOpen: true, message: '当前浏览器没有自动安装弹窗，请按下面的步骤添加到桌面。' });
+    }
+  }, [installPwa]);
+
+  const openPublicModerationFromSidebar = useCallback(() => {
+    void refreshPublicModeratorStatus();
+    setPublicViewRequest(previous => ({ view: 'moderation', key: (previous?.key ?? 0) + 1 }));
+    navigateFromSidebar('public');
+  }, [navigateFromSidebar, refreshPublicModeratorStatus]);
+
   // Sidebar Content
   const sidebarContent = (
     <div className="flex min-h-full flex-col px-4 py-5">
@@ -1088,24 +1157,22 @@ function AppContent() {
         />
 
         <div className="space-y-1.5 rounded-[1.35rem] border border-forest-accent/7 bg-white/24 p-1.5">
-          <button
-            type="button"
-            onClick={() => {
-              trackEvent('pwa_install_requested', { source: 'sidebar' });
-              requestPwaInstallPrompt({ autoInstall: true, force: true, source: 'sidebar' });
-              closeSidebar();
-            }}
-            className="group flex min-h-11 w-full items-center justify-between rounded-xl px-2.5 text-forest-text transition-all hover:bg-white/54"
-          >
-            <div className="flex items-center gap-3">
-              <Download size={17} className="text-forest-accent" />
-              <div className="text-left">
-                <span className="block text-sm font-medium">添加到手机桌面</span>
-                <span className="text-[10px] text-forest-muted">像 App 一样打开</span>
+          {!isPwaStandalone && (
+            <button
+              type="button"
+              onClick={openInstallGuideFromSidebar}
+              className="group flex min-h-11 w-full items-center justify-between rounded-xl px-2.5 text-forest-text transition-all hover:bg-white/54"
+            >
+              <div className="flex items-center gap-3">
+                <Download size={17} className="text-forest-accent" />
+                <div className="text-left">
+                  <span className="block text-sm font-medium">添加到手机桌面</span>
+                  <span className="text-[10px] text-forest-muted">像 App 一样打开</span>
+                </div>
               </div>
-            </div>
-            <ChevronRight size={14} className="text-forest-muted transition-transform group-hover:translate-x-1" />
-          </button>
+              <ChevronRight size={14} className="text-forest-muted transition-transform group-hover:translate-x-1" />
+            </button>
+          )}
 
           <button
             type="button"
@@ -1124,6 +1191,38 @@ function AppContent() {
             </div>
             <ChevronRight size={14} className="text-forest-muted transition-transform group-hover:translate-x-1" />
           </button>
+
+          <button
+            type="button"
+            onClick={() => openLegalFromSidebar('privacy')}
+            className="group flex min-h-11 w-full items-center justify-between rounded-xl px-2.5 text-forest-text transition-all hover:bg-white/54"
+          >
+            <div className="flex items-center gap-3">
+              <FileText size={17} className="text-forest-accent" />
+              <div className="text-left">
+                <span className="block text-sm font-medium">隐私与条款</span>
+                <span className="text-[10px] text-forest-muted">数据与公开说明</span>
+              </div>
+            </div>
+            <ChevronRight size={14} className="text-forest-muted transition-transform group-hover:translate-x-1" />
+          </button>
+
+          {isPublicModerator && (
+            <button
+              type="button"
+              onClick={openPublicModerationFromSidebar}
+              className="group flex min-h-11 w-full items-center justify-between rounded-xl px-2.5 text-forest-text transition-all hover:bg-white/54"
+            >
+              <div className="flex items-center gap-3">
+                <ShieldCheck size={17} className="text-forest-accent" />
+                <div className="text-left">
+                  <span className="block text-sm font-medium">作者管理</span>
+                  <span className="text-[10px] text-forest-muted">举报与下架</span>
+                </div>
+              </div>
+              <ChevronRight size={14} className="text-forest-muted transition-transform group-hover:translate-x-1" />
+            </button>
+          )}
         </div>
       </div>
 
@@ -1136,17 +1235,24 @@ function AppContent() {
   // Auth Page
   if (showAuthPage) {
     return (
-      <div className="relative bg-forest-bg min-h-screen">
-        <button 
-          onClick={() => setShowAuthPage(false)}
-          className="absolute top-6 left-6 z-50 p-2 bg-white/80 backdrop-blur rounded-full shadow-lg border border-forest-border text-forest-muted hover:text-forest-accent transition-all"
-        >
-          <ChevronRight size={24} className="rotate-180" />
-        </button>
-        <Suspense fallback={<SuspenseFallback />}>
-          <Auth onClose={() => setShowAuthPage(false)} onSignedOut={handleAuthSignedOut} />
-        </Suspense>
-      </div>
+      <>
+        <div className="relative bg-forest-bg min-h-screen">
+          <button
+            onClick={() => setShowAuthPage(false)}
+            className="absolute top-6 left-6 z-50 p-2 bg-white/80 backdrop-blur rounded-full shadow-lg border border-forest-border text-forest-muted hover:text-forest-accent transition-all"
+          >
+            <ChevronRight size={24} className="rotate-180" />
+          </button>
+          <Suspense fallback={<SuspenseFallback />}>
+            <Auth onClose={() => setShowAuthPage(false)} onSignedOut={handleAuthSignedOut} onOpenLegal={openLegalModal} />
+          </Suspense>
+        </div>
+        <LegalModal
+          isOpen={legalModal.isOpen}
+          onClose={closeLegalModal}
+          initialTab={legalModal.tab}
+        />
+      </>
     );
   }
 
@@ -1164,6 +1270,9 @@ function AppContent() {
       <MainLayout
         activeTab={activeTab}
         setActiveTab={(tab: 'home' | 'add' | 'private' | 'public' | 'metadata' | 'profile') => {
+          if (tab === 'public') {
+            setPublicViewRequest(previous => ({ view: 'readings', key: (previous?.key ?? 0) + 1 }));
+          }
           navigateToTab(tab);
         }}
         isSidebarOpen={isSidebarOpen}
@@ -1250,34 +1359,61 @@ function AppContent() {
       {/* Account Delete Confirmation Modal */}
       <Modal
         isOpen={showDeleteConfirm}
-        onClose={() => setShowDeleteConfirm(false)}
+        onClose={closeDeleteConfirm}
         title="确认注销账号"
         icon={<AlertTriangle size={24} className="text-red-500" />}
       >
-        <div className="space-y-6 text-center">
+        <form
+          className="space-y-5 text-center"
+          onSubmit={(event) => {
+            event.preventDefault();
+            void handleDeleteAccount();
+          }}
+        >
           <div className="py-4">
             <p className="text-lg font-bold text-red-600">此操作将永久删除您的账号！</p>
             <p className="text-sm text-forest-muted mt-2 leading-loose">
-              删除后，您的所有研习记录、日运数据将被彻底清除，且无法恢复。<br/>
-              请确认您的决定。
+              删除后，该账号的云端手记、日运记录和本机专属资料将无法恢复。<br/>
+              请填写当前登录密码确认。
             </p>
+          </div>
+          <div className="relative">
+            <input
+              type={isDeletePasswordVisible ? 'text' : 'password'}
+              value={deleteAccountPassword}
+              onChange={(event) => setDeleteAccountPassword(event.target.value)}
+              autoComplete="current-password"
+              aria-label="当前登录密码"
+              placeholder="当前登录密码"
+              className="min-h-11 w-full rounded-xl border border-forest-accent/15 bg-white/70 px-4 pr-12 text-sm text-forest-ink outline-none focus:border-forest-accent/50"
+            />
+            <button
+              type="button"
+              onClick={() => setIsDeletePasswordVisible(value => !value)}
+              className="absolute inset-y-0 right-0 flex min-h-11 min-w-11 items-center justify-center text-forest-muted hover:text-forest-accent"
+              aria-label={isDeletePasswordVisible ? '隐藏密码' : '显示密码'}
+            >
+              {isDeletePasswordVisible ? <EyeOff size={17} /> : <Eye size={17} />}
+            </button>
           </div>
           <div className="flex gap-3">
             <button
-              onClick={() => setShowDeleteConfirm(false)}
-              className="flex-1 py-3 bg-forest-bg text-forest-ink rounded-xl text-sm font-bold hover:bg-forest-accent/10 transition-colors"
+              type="button"
+              onClick={closeDeleteConfirm}
+              disabled={isDeletingAccount}
+              className="min-h-11 flex-1 rounded-xl bg-forest-bg py-3 text-sm font-bold text-forest-ink transition-colors hover:bg-forest-accent/10 disabled:opacity-50"
             >
               取消
             </button>
             <button
-              onClick={handleDeleteAccount}
-              disabled={isDeletingAccount}
-              className="flex-1 py-3 bg-red-500 text-white rounded-xl text-sm font-bold hover:bg-red-600 transition-colors disabled:opacity-50"
+              type="submit"
+              disabled={isDeletingAccount || !deleteAccountPassword}
+              className="min-h-11 flex-1 rounded-xl bg-red-500 py-3 text-sm font-bold text-white transition-colors hover:bg-red-600 disabled:opacity-50"
             >
               {isDeletingAccount ? '处理中...' : '确认注销'}
             </button>
           </div>
-        </div>
+        </form>
       </Modal>
 
       <Modal 
@@ -1377,7 +1513,7 @@ function AppContent() {
                   </div>
                   <div>
                     <p className="text-sm font-bold text-red-600">注销账户</p>
-                    <p className="text-xs text-red-500/70">永久删除账号及所有记录</p>
+                    <p className="text-xs text-red-500/70">永久删除账号及该账号的数据</p>
                   </div>
                 </div>
                 <ChevronRight size={18} className="text-red-400" />
@@ -1470,6 +1606,20 @@ function AppContent() {
         onClose={() => setIsFeedbackModalOpen(false)}
         onSent={(message) => setSnackbar({ isOpen: true, message })}
         userContext={feedbackUserContext}
+      />
+
+      <PwaInstallGuideModal
+        isOpen={isInstallGuideOpen}
+        onClose={() => setIsInstallGuideOpen(false)}
+        canAutoInstall={canAutoInstallPwa}
+        onTryInstall={tryInstallFromGuide}
+        onNotice={(message) => setSnackbar({ isOpen: true, message })}
+      />
+
+      <LegalModal
+        isOpen={legalModal.isOpen}
+        onClose={closeLegalModal}
+        initialTab={legalModal.tab}
       />
 
       {/* Snackbar */}
@@ -1630,6 +1780,8 @@ function AppContent() {
               onPublicReadingsLoaded={setPublicReadingsCache}
               currentUserId={session?.uid}
               isModerator={isPublicModerator}
+              requestedView={publicViewRequest?.view}
+              viewRequestKey={publicViewRequest?.key}
             />
           </Suspense>
         )}

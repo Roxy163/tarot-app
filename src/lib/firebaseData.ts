@@ -313,37 +313,38 @@ export const updateUserProfile = async (uid: string, updated: Partial<UserProfil
 };
 
 export const deleteUserAccount = async (uid: string): Promise<void> => {
-  const { collection, deleteDoc, doc, getDocs } = await loadFirestore();
+  const { collection, deleteDoc, doc, getDocFromServer, getDocs } = await loadFirestore();
   const firebaseDb = await getFirebaseDb();
 
-  await deleteDoc(doc(firebaseDb, 'profiles', uid));
-
   const userReadingsRef = collection(firebaseDb, 'users', uid, 'readings');
-  const readingsSnapshot = await getDocs(userReadingsRef);
-  const deletePromises = readingsSnapshot.docs.flatMap(item => {
-    const reading = item.data() as TarotReading;
-    return [
-      deleteDoc(item.ref),
-      ...(reading.isPublic ? [deletePublicReading(item.id)] : []),
-    ];
-  });
-
   const settingsRef = collection(firebaseDb, 'users', uid, 'settings');
-  const settingsSnapshot = await getDocs(settingsRef);
   const settingsBackupsRef = collection(firebaseDb, 'users', uid, 'settingsBackups');
-  const settingsBackupsSnapshot = await getDocs(settingsBackupsRef);
   const annotationsRef = collection(firebaseDb, 'users', uid, 'cardAnnotations');
-  const annotationsSnapshot = await getDocs(annotationsRef);
   const numerologyRef = collection(firebaseDb, 'users', uid, 'numerologySettings');
-  const numerologySnapshot = await getDocs(numerologyRef);
+  const [readingsSnapshot, settingsSnapshot, settingsBackupsSnapshot, annotationsSnapshot, numerologySnapshot] = await Promise.all([
+    getDocs(userReadingsRef),
+    getDocs(settingsRef),
+    getDocs(settingsBackupsRef),
+    getDocs(annotationsRef),
+    getDocs(numerologyRef),
+  ]);
+
+  for (const reading of readingsSnapshot.docs) {
+    const publicRef = doc(firebaseDb, 'publicReadings', reading.id);
+    if ((await getDocFromServer(publicRef)).exists()) {
+      await deleteDoc(publicRef);
+    }
+  }
 
   await Promise.all([
-    ...deletePromises,
+    ...readingsSnapshot.docs.map(item => deleteDoc(item.ref)),
     ...settingsSnapshot.docs.map(item => deleteDoc(item.ref)),
     ...settingsBackupsSnapshot.docs.map(item => deleteDoc(item.ref)),
     ...annotationsSnapshot.docs.map(item => deleteDoc(item.ref)),
     ...numerologySnapshot.docs.map(item => deleteDoc(item.ref)),
   ]);
+
+  await deleteDoc(doc(firebaseDb, 'profiles', uid));
 };
 
 export const uploadUserAvatar = async (uid: string, avatar: Blob): Promise<string> => {

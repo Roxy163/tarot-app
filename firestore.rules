@@ -244,9 +244,9 @@ service cloud.firestore {
     }
 
     match /publicReadings/{readingId} {
-      allow get: if isVisiblePublicReading(resource.data)
-        || ownsPrivateReading(readingId)
-        || isOfficialModerator();
+      allow get: if ownsPrivateReading(readingId)
+        || isOfficialModerator()
+        || isVisiblePublicReading(resource.data);
       allow list: if isOfficialModerator() || resource.data.isPublic == true;
       allow create: if request.auth != null
         && ownsPrivateReading(readingId)
@@ -260,8 +260,7 @@ service cloud.firestore {
       allow update: if isOfficialModerator()
         && isValidPublicModerationUpdate(request.resource.data);
       allow delete: if request.auth != null
-        && ownsPrivateReading(readingId)
-        && !isHiddenPublicReading(resource.data);
+        && ownsPrivateReading(readingId);
 
       match /reports/{reportId} {
         allow read, delete: if isOfficialModerator();

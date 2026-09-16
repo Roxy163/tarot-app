@@ -447,6 +447,30 @@ export const deleteUserAccount = async (): Promise<void> => {
   await api.deleteUser(user);
 };
 
+export const reauthenticateForAccountDeletion = async (password: string): Promise<void> => {
+  const { auth: firebaseAuth, api } = await ensureFirebaseAuth();
+  const user = firebaseAuth.currentUser;
+
+  if (!user?.email) throw new Error('请先用邮箱登录后再注销账号。');
+  if (!password) throw new Error('请填写当前登录密码。');
+
+  try {
+    const credential = api.EmailAuthProvider.credential(user.email, password);
+    await withAuthOperationTimeout(api.reauthenticateWithCredential(user, credential));
+  } catch (error: any) {
+    if (['auth/invalid-credential', 'auth/wrong-password', 'auth/invalid-login-credentials'].includes(error?.code)) {
+      throw new Error('当前密码不正确，请重试。');
+    }
+    if (error?.code === 'auth/too-many-requests') {
+      throw new Error('验证尝试太频繁，请稍后再试。');
+    }
+    if (error?.code === 'auth/network-request-failed') {
+      throw new Error('验证时网络不可用，请检查网络后再试。');
+    }
+    throw error;
+  }
+};
+
 export const confirmPasswordReset = async (oobCode: string, newPassword: string): Promise<void> => {
   const { auth: firebaseAuth, api } = await ensureFirebaseAuth();
 

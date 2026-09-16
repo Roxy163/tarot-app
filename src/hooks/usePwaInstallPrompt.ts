@@ -14,6 +14,7 @@ const DISMISS_TTL_MS = 14 * 24 * 60 * 60 * 1000;
 interface PromptRequestDetail {
   autoInstall?: boolean;
   force?: boolean;
+  suppressBanner?: boolean;
   source?: string;
 }
 
@@ -72,8 +73,10 @@ export const requestPwaInstallPrompt = (options: PromptRequestDetail = {}) => {
   if (typeof window === 'undefined') return;
 
   try {
-    localStorage.setItem(READY_KEY, String(Date.now()));
-    if (options.force) {
+    if (!options.suppressBanner) {
+      localStorage.setItem(READY_KEY, String(Date.now()));
+    }
+    if (options.force && !options.suppressBanner) {
       localStorage.removeItem(DISMISS_KEY);
     }
   } catch {
@@ -160,9 +163,11 @@ export function usePwaInstallPrompt() {
 
     const handlePromptRequest = (event: Event) => {
       const detail = (event as CustomEvent<PromptRequestDetail>).detail;
-      setPromptRequested(true);
+      if (!detail?.suppressBanner) {
+        setPromptRequested(true);
+      }
       installSourceRef.current = detail?.source || 'unknown';
-      if (detail?.force) {
+      if (detail?.force && !detail?.suppressBanner) {
         setDismissed(false);
       }
       if (detail?.autoInstall && installEventRef.current) {

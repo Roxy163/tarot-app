@@ -1,6 +1,6 @@
 import { act, renderHook } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { usePwaInstallPrompt } from './usePwaInstallPrompt';
+import { requestPwaInstallPrompt, usePwaInstallPrompt } from './usePwaInstallPrompt';
 
 describe('usePwaInstallPrompt', () => {
   afterEach(() => {
@@ -32,5 +32,15 @@ describe('usePwaInstallPrompt', () => {
 
     expect(prompt).toHaveBeenCalledTimes(1);
     expect(result.current.canInstall).toBe(false);
+  });
+
+  it('can request native install without showing the fallback banner', () => {
+    const { result } = renderHook(() => usePwaInstallPrompt());
+
+    act(() => {
+      requestPwaInstallPrompt({ autoInstall: true, suppressBanner: true, source: 'sidebar' });
+    });
+
+    expect(result.current.shouldShow).toBe(false);
   });
 });

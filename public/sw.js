@@ -1,5 +1,7 @@
-const APP_CACHE = 'tarot-pavilion-app-v4';
-const STATIC_CACHE = 'tarot-pavilion-static-v4';
+const CACHE_VERSION = 'dev';
+const APP_CACHE = `tarot-pavilion-app-${CACHE_VERSION}`;
+const STATIC_CACHE = `tarot-pavilion-static-${CACHE_VERSION}`;
+const PRECACHE_ASSETS = /* BUILD_ASSETS */ [];
 const APP_SHELL = [
   '/',
   '/site.webmanifest',
@@ -32,8 +34,10 @@ const shouldBypassCache = (request, url) => (
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
-    caches.open(APP_CACHE)
-      .then((cache) => cache.addAll(APP_SHELL))
+    Promise.all([
+      caches.open(APP_CACHE).then((cache) => cache.addAll(APP_SHELL)),
+      caches.open(STATIC_CACHE).then((cache) => cache.addAll(PRECACHE_ASSETS)),
+    ])
       .then(() => self.skipWaiting())
   );
 });
@@ -80,7 +84,7 @@ const appShellFirst = async (request, event) => {
 
 const staleWhileRevalidate = async (request) => {
   const cache = await caches.open(STATIC_CACHE);
-  const cached = await cache.match(request);
+  const cached = await cache.match(request, { ignoreVary: true });
   const fetched = fetch(request)
     .then((response) => {
       if (response.ok) {
@@ -93,6 +97,19 @@ const staleWhileRevalidate = async (request) => {
   return cached || fetched;
 };
 
+const cacheFirst = async (request) => {
+  const staticCache = await caches.open(STATIC_CACHE);
+  const cached = await staticCache.match(request, { ignoreVary: true })
+    || await (await caches.open(APP_CACHE)).match(request, { ignoreVary: true });
+  if (cached) return cached;
+
+  const response = await fetch(request);
+  if (response.ok) {
+    await staticCache.put(request, response.clone());
+  }
+  return response;
+};
+
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
   if (shouldBypassCache(event.request, url)) return;
@@ -103,7 +120,11 @@ self.addEventListener('fetch', (event) => {
   }
 
   if (isStaticAsset(url)) {
-    event.respondWith(staleWhileRevalidate(event.request));
+    event.respondWith(
+      url.pathname.startsWith('/assets/') || APP_SHELL.includes(url.pathname)
+        ? cacheFirst(event.request)
+        : staleWhileRevalidate(event.request)
+    );
   }
 });
 

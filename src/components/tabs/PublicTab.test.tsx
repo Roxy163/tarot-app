@@ -200,4 +200,63 @@ describe('PublicTab', () => {
     });
     expect(screen.getByRole('button', { name: '恢复公开' })).toBeInTheDocument();
   });
+
+  it('can open the moderation view from an outside request', async () => {
+    const reportedReading = createReading({ question: '侧边栏直达管理' });
+    const report: PublicReadingReport = {
+      id: 'user-3',
+      readingId: reportedReading.id,
+      userId: 'user-3',
+      reason: 'privacy',
+      note: '疑似泄露隐私',
+      createdAt: '2026-07-30T08:12:37.036Z',
+    };
+    vi.mocked(getPublicReadings).mockResolvedValueOnce([reportedReading]);
+    vi.mocked(getPublicModerationSnapshot).mockResolvedValueOnce({
+      readings: [reportedReading],
+      reports: [report],
+    });
+
+    render(
+      <PublicTab
+        readings={[]}
+        cardMetadata={[]}
+        onTagClick={vi.fn()}
+        onAuthorClick={vi.fn()}
+        onProcessAi={vi.fn()}
+        currentUserId="admin-1"
+        isModerator
+        requestedView="moderation"
+        viewRequestKey={1}
+      />,
+    );
+
+    expect(screen.getByRole('tab', { name: /管理/ })).toHaveAttribute('aria-selected', 'true');
+    expect(await screen.findByText('侧边栏直达管理')).toBeInTheDocument();
+    expect(screen.getByText('隐私泄露')).toBeInTheDocument();
+  });
+
+  it('returns to public readings when the ordinary square entry is requested again', async () => {
+    vi.mocked(getPublicReadings).mockResolvedValueOnce([createReading()]);
+    vi.mocked(getPublicModerationSnapshot).mockResolvedValueOnce({ readings: [], reports: [] });
+
+    const props = {
+      readings: [] as TarotReading[],
+      cardMetadata: [],
+      onTagClick: vi.fn(),
+      onAuthorClick: vi.fn(),
+      onProcessAi: vi.fn(),
+      currentUserId: 'admin-1',
+      isModerator: true,
+    };
+    const { rerender } = render(<PublicTab {...props} requestedView="moderation" viewRequestKey={1} />);
+
+    expect(screen.getByRole('tab', { name: /管理/ })).toHaveAttribute('aria-selected', 'true');
+
+    rerender(<PublicTab {...props} requestedView="readings" viewRequestKey={2} />);
+
+    await waitFor(() => {
+      expect(screen.getByRole('tab', { name: /手记/ })).toHaveAttribute('aria-selected', 'true');
+    });
+  });
 });

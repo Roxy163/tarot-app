@@ -46,7 +46,7 @@ import {
 const PUBLIC_READINGS_CACHE_KEY = 'tarot_public_readings_cache_v1';
 const PUBLIC_READING_COLLECTION_KEY = 'tarot_public_reading_collection_v1';
 
-type PublicSquareView = 'readings' | 'cards' | 'spreads' | 'practice' | 'moderation';
+export type PublicSquareView = 'readings' | 'cards' | 'spreads' | 'practice' | 'moderation';
 type ModerationFilter = 'reported' | 'visible' | 'hidden';
 
 interface PublicTabProps {
@@ -63,6 +63,8 @@ interface PublicTabProps {
   initialPublicReadings?: TarotReading[];
   currentUserId?: string;
   isModerator?: boolean;
+  requestedView?: PublicSquareView;
+  viewRequestKey?: number;
 }
 
 const squareViews: Array<{ id: PublicSquareView; label: string; icon: React.ElementType }> = [
@@ -163,6 +165,8 @@ export const PublicTab: React.FC<PublicTabProps> = ({
   initialPublicReadings = [],
   currentUserId,
   isModerator,
+  requestedView,
+  viewRequestKey,
 }) => {
   const canModerate = Boolean(isModerator);
   const [cloudPublicReadings, setCloudPublicReadings] = useState<TarotReading[]>(() => (
@@ -390,6 +394,12 @@ export const PublicTab: React.FC<PublicTabProps> = ({
       setActiveView('readings');
     }
   }, [activeView, canModerate]);
+
+  useEffect(() => {
+    if (!requestedView) return;
+    if (requestedView === 'moderation' && !canModerate) return;
+    setActiveView(requestedView);
+  }, [canModerate, requestedView, viewRequestKey]);
 
   useEffect(() => {
     if (activeView === 'moderation' && canModerate && moderationReadings.length === 0) {

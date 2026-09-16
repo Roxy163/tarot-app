@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
-import { Camera, ExternalLink, FileImage, MessageSquareText, Send, Trash2, UploadCloud, X } from 'lucide-react';
+import { Camera, ExternalLink, FileImage, MessageSquareText, Send, Trash2, UploadCloud } from 'lucide-react';
 import { Modal } from './Modal';
 import {
   clearFeedbackDraft,
@@ -250,15 +250,6 @@ export function FeedbackModal({ isOpen, onClose, onSent, userContext }: Feedback
       icon={<MessageSquareText size={18} />}
     >
       <div className="space-y-3">
-        <button
-          type="button"
-          onClick={onClose}
-          aria-label="关闭反馈"
-          className="absolute right-4 top-4 grid min-h-11 min-w-11 place-items-center rounded-full text-forest-muted transition-colors hover:bg-white/58 hover:text-forest-ink"
-        >
-          <X size={17} />
-        </button>
-
         <div className="rounded-[1.15rem] border border-forest-accent/10 bg-forest-accent/5 p-3">
           <div className="flex items-start gap-3">
             <div className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-white/58 text-forest-accent">

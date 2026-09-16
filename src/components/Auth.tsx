@@ -1,17 +1,19 @@
 import type React from 'react';
 import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Mail, Lock, Send, Sparkles, CloudOff, Home, CheckCircle, X, AlertCircle, Eye, EyeOff } from 'lucide-react';
+import { Mail, Lock, Send, Sparkles, CloudOff, Home, CheckCircle, X, AlertCircle, Eye, EyeOff, FileText, ShieldCheck } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { checkIfMagicLink, confirmPasswordReset } from '../lib/firebase';
 import { normalizeEmailInput } from '../lib/emailInput';
 import { getAuthErrorDisplay } from '../lib/authError';
 import type { AuthErrorDisplay, AuthRecoveryAction } from '../lib/authError';
 import { useBodyScrollLock } from '../hooks/useBodyScrollLock';
+import type { LegalTab } from './LegalModal';
 
 interface AuthProps {
   onClose?: () => void;
   onSignedOut?: () => void;
+  onOpenLegal?: (tab: LegalTab) => void;
 }
 
 interface PasswordInputProps extends Omit<React.InputHTMLAttributes<HTMLInputElement>, 'type'> {
@@ -46,7 +48,7 @@ const PasswordInput: React.FC<PasswordInputProps> = ({
   </div>
 );
 
-export const Auth: React.FC<AuthProps> = ({ onClose, onSignedOut }) => {
+export const Auth: React.FC<AuthProps> = ({ onClose, onSignedOut, onOpenLegal }) => {
   const { session, isEmailVerified, signIn, signUp, signOut, resetPassword, updatePassword, sendVerificationEmail, refreshUser } = useAuth();
   
   const [authMode, setAuthMode] = useState<'login' | 'signup'>('login');
@@ -560,6 +562,27 @@ export const Auth: React.FC<AuthProps> = ({ onClose, onSignedOut }) => {
                       </>
                     )}
                   </button>
+
+                  <div className="rounded-2xl border border-forest-accent/7 bg-white/34 px-3 py-2 text-center text-[10px] leading-relaxed text-forest-muted">
+                    继续使用即表示你已阅读并同意
+                    <button
+                      type="button"
+                      onClick={() => onOpenLegal?.('terms')}
+                      className="mx-1 inline-flex min-h-11 items-center gap-1 font-semibold text-forest-accent hover:underline"
+                    >
+                      <FileText size={11} />
+                      用户协议
+                    </button>
+                    和
+                    <button
+                      type="button"
+                      onClick={() => onOpenLegal?.('privacy')}
+                      className="ml-1 inline-flex min-h-11 items-center gap-1 font-semibold text-forest-accent hover:underline"
+                    >
+                      <ShieldCheck size={11} />
+                      隐私政策
+                    </button>
+                  </div>
 
                   <div className="pt-4 border-t border-forest-accent/5 space-y-3">
                     <div className="flex items-center justify-center gap-2">

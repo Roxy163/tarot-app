@@ -1,5 +1,6 @@
 import React from 'react';
 import { motion, AnimatePresence } from 'motion/react';
+import { X } from 'lucide-react';
 import { useBodyScrollLock } from '../hooks/useBodyScrollLock';
 import { MysticWatermark } from './MysticWatermark';
 
@@ -35,7 +36,16 @@ export const Modal: React.FC<ModalProps> = ({ isOpen, onClose, title, children, 
             <div className="relative max-h-[calc(100dvh-1.5rem)] space-y-3.5 overflow-y-auto p-4 sm:p-5">
               <div className="flex items-center gap-3">
                 {icon && <div className="rounded-xl bg-forest-accent/7 p-2 text-forest-accent/90 ring-1 ring-forest-accent/7">{icon}</div>}
-                <h3 className="font-serif text-lg font-semibold text-forest-ink sm:text-xl">{title}</h3>
+                <h3 className="min-w-0 flex-1 font-serif text-lg font-semibold text-forest-ink sm:text-xl">{title}</h3>
+                <button
+                  type="button"
+                  onClick={onClose}
+                  className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-forest-muted transition-colors hover:bg-forest-accent/8 hover:text-forest-accent"
+                  aria-label={`关闭${title}`}
+                  title="关闭"
+                >
+                  <X size={17} />
+                </button>
               </div>
               <div className="text-sm text-forest-muted leading-relaxed">
                 {children}

@@ -75,4 +75,18 @@ describe('Auth', () => {
     expect(screen.getByRole('heading', { name: '找回密码' })).toBeInTheDocument();
     expect(screen.getAllByDisplayValue('roxy@example.com')).toHaveLength(2);
   });
+
+  it('exposes privacy and terms links from the login form', async () => {
+    const user = userEvent.setup();
+    const onOpenLegal = vi.fn();
+    setupAuth();
+
+    render(<Auth onOpenLegal={onOpenLegal} />);
+
+    await user.click(screen.getByRole('button', { name: /用户协议/ }));
+    expect(onOpenLegal).toHaveBeenCalledWith('terms');
+
+    await user.click(screen.getByRole('button', { name: /隐私政策/ }));
+    expect(onOpenLegal).toHaveBeenCalledWith('privacy');
+  });
 });

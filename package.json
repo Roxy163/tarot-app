@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite --port=3000 --host=0.0.0.0",
     "build": "vite build",
+    "postbuild": "node scripts/prepare-pwa-cache.mjs",
     "preview": "vite preview",
     "build:card-images": "node scripts/generate-card-image-formats.mjs",
     "clean": "rm -rf dist",
