@@ -115,6 +115,13 @@ GOOGLE_APPLICATION_CREDENTIALS="$HOME/.config/tarot-pavilion/firebase-deployer.j
 - 手动发布后，仍要保持仓库里的 `firestore.rules` 是最新版本。
 - 后续再用 CLI 部署时，CLI 会用仓库文件覆盖控制台当前内容。
 
+## CLI 授权卡住时的代理与 REST 备选
+
+- 先确认本机代理端口能访问 `https://oauth2.googleapis.com/token`。2026-09-16 直接连接超时，但经本机代理可连接。
+- `NODE_USE_ENV_PROXY=1` 能让 Node 的 `fetch` 走 `HTTP_PROXY` / `HTTPS_PROXY`；但 Firebase CLI 使用自己的授权链路，仍可能停在取令牌。不要仅因 Node 连通就反复重试 CLI。
+- 可用仓库外服务账号向 Google OAuth 换取短期令牌，再按 [Firebase Rules REST API](https://firebase.google.com/docs/rules/manage-deploy#use_the_rest_api) 执行：先读取线上 `cloud.firestore` release 和规则源码，与上一个 Git 版本比对；无意外差异才创建 ruleset、用 `updateMask=rulesetName` 更新 release，并回读确认内容一致。
+- 不要打印令牌或私钥，不要把服务账号文件写进仓库。规则发布后可能需要数分钟传播；在确认前不要做真实账号注销测试。
+
 ## 当前需要的 Rules 能力
 
 截至 2026-07-18，前端会用到这些用户私有数据：
@@ -147,6 +154,7 @@ YYYY-MM-DD：使用 <登录方式> 部署 firestore.rules 到 tarot-pavilion，�
 
 ```text
 2026-07-18：使用 Firebase Console 手动发布 firestore.rules 到 tarot-pavilion，结果：成功，备注：终端访问 oauth2.googleapis.com 超时，CLI/服务账号部署暂不可用；控制台粘贴前需确认第一行为 rules_version = '2';。
+2026-09-16：使用仓库外服务账号，经本机代理调用 Firebase Rules REST API 发布 firestore.rules 到 tarot-pavilion，结果：成功。发布前线上规则与上一版 Git 文件一致；发布后回读 cloud.firestore release 与规则源码，SHA-256 前 12 位为 62b88a74045b。Firebase CLI 在获取授权令牌时仍会卡住，不能仅凭 Node 网络连通就认定 CLI 可用。
 ```
 
 ## 参考
