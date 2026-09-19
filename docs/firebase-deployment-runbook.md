@@ -167,6 +167,7 @@ YYYY-MM-DD：使用 <登录方式> 部署 firestore.rules 到 tarot-pavilion，�
 2026-07-18：使用 Firebase Console 手动发布 firestore.rules 到 tarot-pavilion，结果：成功，备注：终端访问 oauth2.googleapis.com 超时，CLI/服务账号部署暂不可用；控制台粘贴前需确认第一行为 rules_version = '2';。
 2026-09-16：使用仓库外服务账号，经本机代理调用 Firebase Rules REST API 发布 firestore.rules 到 tarot-pavilion，结果：成功。发布前线上规则与上一版 Git 文件一致；发布后回读 cloud.firestore release 与规则源码，SHA-256 前 12 位为 62b88a74045b。Firebase CLI 在获取授权令牌时仍会卡住，不能仅凭 Node 网络连通就认定 CLI 可用。
 2026-09-17：使用 `scripts/deploy-firestore-rules-rest.mjs` 经本机代理发布到 `tarot-pavilion`，结果：成功。线上 release 指向 ruleset `ab637c93-b964-448a-b9dc-b3d1f9a441c0`，回读 SHA-256 前 12 位为 `0633bc26f055`；临时真实账号验收确认 `settings/cardAnnotations` 本人读写成功、跨账号读取返回 403，随后测试文档与账号均已删除。
+2026-09-19：同一脚本发布点赞配套规则成功；发布前用 `FIRESTORE_EXPECTED_CURRENT_HASH=0633bc26f055` 防止覆盖意外规则变更。新 ruleset `25982a54-59ba-4c45-9cda-9fd3da285c0e`，回读 SHA-256 前 12 位 `07410f78bfb7`。真实云端 8 项点赞/撤销/计数/跨账号权限检查通过，临时账号与其点赞已清理。随后发布 Cloudflare Pages `774e3234`。
 ```
 
 ## 参考

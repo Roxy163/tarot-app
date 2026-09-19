@@ -1,4 +1,4 @@
-# 广场与开屏体验验收（2026-09-19，本地未部署）
+# 广场与开屏体验验收（2026-09-19，已部署）
 
 ## 改动
 
@@ -18,10 +18,10 @@
 - 将登录模块故意延迟 7 秒：显示普通加载及延迟说明后，约 2.6 秒进入可操作应用（包含页面启动时间），无需点击；单元测试另验证正常登录无最短等待、已知账号保持隔离、迟到登录恢复。
 - 截图在 `output/playwright/`：`startup-loading-mobile.png`、`startup-slow-mobile.png`、`square-multiple-mobile.png`、`square-multiple-desktop.png`、`square-real-case-detail.png`、`square-long-detail-bottom.png`。多案例截图是验收样例，并非线上分享数量。
 
-## 发布约束
+## 发布与真实云端验收
 
-本轮没有部署网站，也没有发布数据库规则。生产仍是项目记忆中的 `93f6d03cedbe`。
+2026-09-19 已提交应用代码（`f9fb7d1`），先发布 Firestore 规则，再发布 Cloudflare Pages 正式站点。正式地址为 `https://tarot-pavilion.pages.dev/`，本次部署地址为 `https://774e3234.tarot-pavilion.pages.dev/`，生产 PWA 版本为 `13d4552279d8`。两个地址均返回 200，入口资源、服务工作线程与 manifest 均与本地构建一致。
 
-点赞新增 `publicReadingReactions/{readingId}`（仅总数）及 `users/{uid}/publicLikes/{readingId}`（仅本人可读）。正式发布时须先发布本次 `firestore.rules`，再发布网站，并验证真实云端点赞/撤销。账号注销也会先清理该账号的点赞，不能将新网站与旧规则混合发布。
+点赞新增 `publicReadingReactions/{readingId}`（仅总数）及 `users/{uid}/publicLikes/{readingId}`（仅本人可读）。现行规则为 `25982a54-59ba-4c45-9cda-9fd3da285c0e`，回读 SHA-256 前 12 位 `07410f78bfb7`。发布前已核对旧规则哈希 `0633bc26f055`，没有覆盖外部意外改动。账号注销也会先清理该账号的点赞，不能将新网站与旧规则混合发布。
 
-目前点赞安全性和并发是在模拟器验证；未向生产写入测试点赞。规则发布前，本地预览连接现有云端时可能提示点赞保存失败，这是服务器拒绝新路径，不代表本机测试已经完成线上验收。
+`scripts/verify-public-likes-cloud.mjs` 在真实云端完成 8 项检查：游客写入拒绝、单独伪造计数拒绝、本人点赞读写成功、重复状态幂等、跨账号读取和删除拒绝、第二人计数增加 1、撤销后恢复原计数。临时账号和各自点赞记录均已清理；未创建公开测试案例，未修改用户手记正文。
