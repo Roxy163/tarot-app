@@ -73,6 +73,8 @@ describe('reading review export', () => {
   it('exports csv and markdown with line breaks preserved', () => {
     const reading = createReading({
       id: 'export-1',
+      cardInterpretations: ['先保持开放。', '不要用力过猛。'],
+      cardQuestions: ['新的机会从哪里出现？', '怎样区分坚持和逞强？'],
       aiAnswer: 'AI建议先观察。\n再行动。',
       aiAnswerMode: 'mentor',
     });
@@ -83,6 +85,10 @@ describe('reading review export', () => {
     expect(csv).toContain('"状态"');
     expect(csv).toContain('"完整"');
     expect(csv).toContain('"AI参照"');
+    expect(csv).toContain('"逐牌解读"');
+    expect(csv).toContain('"牌面疑问"');
+    expect(csv).toContain('"起点：先保持开放。\n阻碍：不要用力过猛。"');
+    expect(csv).toContain('"起点：新的机会从哪里出现？\n阻碍：怎样区分坚持和逞强？"');
     expect(csv).toContain('"AI建议先观察。\n再行动。"');
     expect(csv).toContain('"晚上回看，确实对应到一次新尝试。\n但需要慢一点。"');
     expect(csv).toContain('"起点：愚者（正位）\n阻碍：战车（逆位）"');
@@ -90,8 +96,29 @@ describe('reading review export', () => {
     expect(markdown).toContain('## 2026/07/03｜我该如何看待这件事？');
     expect(markdown).toContain('- 状态：完整');
     expect(markdown).toContain('### AI参照');
+    expect(markdown).toContain('### 逐牌注疏');
+    expect(markdown).toContain('- 起点：先保持开放。');
+    expect(markdown).toContain('- 阻碍：不要用力过猛。');
+    expect(markdown).toContain('### 牌面疑问');
+    expect(markdown).toContain('- 起点：新的机会从哪里出现？');
     expect(markdown).toContain('AI建议先观察。');
     expect(markdown).toContain('晚上回看，确实对应到一次新尝试。');
+  });
+
+  it('prevents user-authored csv cells from becoming spreadsheet formulas', () => {
+    const csv = exportReadingsToCsv([createReading({
+      question: '=HYPERLINK("https://example.test")',
+      cards: [
+        { name: '愚者', isReversed: false, label: '=起点' },
+        { name: '战车', isReversed: true, label: '阻碍' },
+      ],
+      cardInterpretations: ['+SUM(1,1)', '-2+3'],
+      cardQuestions: ['@IMPORTXML("https://example.test")'],
+    })]);
+
+    expect(csv).toContain('"\'=HYPERLINK(""https://example.test"")"');
+    expect(csv).toContain('"\'=起点：+SUM(1,1)');
+    expect(csv).not.toContain('\n"=HYPERLINK');
   });
 
   it('builds pdf lines with owner name and review summary', () => {

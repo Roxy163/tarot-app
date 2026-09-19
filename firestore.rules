@@ -52,7 +52,7 @@ service cloud.firestore {
     }
 
     function isKnownUserSetting(settingId) {
-      return settingId in ['spreads', 'cardMetadata', 'cardKeywordMemory', 'quizMemory', 'dailyFortunes'];
+      return settingId in ['spreads', 'cardMetadata', 'cardKeywordMemory', 'quizMemory', 'dailyFortunes', 'cardAnnotations'];
     }
 
     function isValidUserSetting(settingId, data) {
@@ -241,6 +241,41 @@ service cloud.firestore {
         && request.auth.uid == userId
         && isValidNumerologySetting(request.resource.data);
       allow delete: if request.auth != null && request.auth.uid == userId;
+    }
+
+    function hasVisiblePublicReading(readingId) {
+      return exists(/databases/$(database)/documents/publicReadings/$(readingId))
+        && isVisiblePublicReading(get(/databases/$(database)/documents/publicReadings/$(readingId)).data);
+    }
+
+    function publicLikeCount(readingId) {
+      return exists(/databases/$(database)/documents/publicReadingReactions/$(readingId))
+        ? get(/databases/$(database)/documents/publicReadingReactions/$(readingId)).data.count : 0;
+    }
+
+    function validLikeCountChange(readingId, data) {
+      let mine = /databases/$(database)/documents/users/$(request.auth.uid)/publicLikes/$(readingId);
+      return data.keys().hasOnly(['count']) && data.count is int && data.count >= 0
+        && ((!exists(mine) && existsAfter(mine) && hasVisiblePublicReading(readingId)
+             && data.count == publicLikeCount(readingId) + 1)
+          || (exists(mine) && !existsAfter(mine) && data.count == publicLikeCount(readingId) - 1));
+    }
+
+    // Public totals contain no user identities; each person's like record remains private.
+    match /publicReadingReactions/{readingId} {
+      allow get: if hasVisiblePublicReading(readingId)
+        || (request.auth != null && exists(/databases/$(database)/documents/users/$(request.auth.uid)/publicLikes/$(readingId)));
+      allow create, update: if request.auth != null && validLikeCountChange(readingId, request.resource.data);
+    }
+
+    match /users/{userId}/publicLikes/{readingId} {
+      allow read: if request.auth != null && request.auth.uid == userId;
+      allow create: if request.auth != null && request.auth.uid == userId
+        && request.resource.data.keys().hasOnly(['active']) && request.resource.data.active == true
+        && hasVisiblePublicReading(readingId)
+        && getAfter(/databases/$(database)/documents/publicReadingReactions/$(readingId)).data.count == publicLikeCount(readingId) + 1;
+      allow delete: if request.auth != null && request.auth.uid == userId
+        && getAfter(/databases/$(database)/documents/publicReadingReactions/$(readingId)).data.count == publicLikeCount(readingId) - 1;
     }
 
     match /publicReadings/{readingId} {

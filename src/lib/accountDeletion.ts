@@ -1,3 +1,5 @@
+import { clearAccountDrafts } from '../hooks/useLocalDraft';
+
 const USER_STORAGE_PREFIXES = [
   'tarot_readings',
   'tarot_spreads',
@@ -8,12 +10,15 @@ const USER_STORAGE_PREFIXES = [
   'tarot_cached_profile',
   'tarot_pending_profile_update',
   'tarot_last_cloud_sync_at',
+  'tarot_user_annotations',
+  'tarot_editing_reading',
 ];
 
 const STORAGE_SUFFIXES = ['', '__backup', '__latest', '__backup_at', '__latest_at'];
 
 export const clearDeletedAccountLocalData = (uid: string, email?: string | null): boolean => {
   try {
+    clearAccountDrafts(uid);
     for (const prefix of USER_STORAGE_PREFIXES) {
       const key = `${prefix}_${uid}`;
       for (const suffix of STORAGE_SUFFIXES) {

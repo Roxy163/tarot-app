@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { X } from 'lucide-react';
 import { useBodyScrollLock } from '../hooks/useBodyScrollLock';
 import { MysticWatermark } from './MysticWatermark';
+import { useModalFocus } from '../hooks/useModalFocus';
 
 interface ModalProps {
   isOpen: boolean;
@@ -14,6 +15,9 @@ interface ModalProps {
 
 export const Modal: React.FC<ModalProps> = ({ isOpen, onClose, title, children, icon }) => {
   useBodyScrollLock(isOpen);
+  const titleId = React.useId();
+  const dialogRef = React.useRef<HTMLDivElement>(null);
+  useModalFocus(isOpen, dialogRef, onClose);
 
   return (
     <AnimatePresence>
@@ -28,6 +32,11 @@ export const Modal: React.FC<ModalProps> = ({ isOpen, onClose, title, children, 
           />
           <motion.div
             initial={{ opacity: 0, scale: 0.9, y: 20 }}
+            ref={dialogRef}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby={titleId}
+            tabIndex={-1}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.9, y: 20 }}
             className="relative max-h-[calc(100dvh-1.5rem)] w-full max-w-md overflow-hidden rounded-[1.45rem] border border-forest-accent/7 bg-white/76 shadow-[0_18px_56px_-46px_rgba(62,58,54,0.56)] backdrop-blur-md"
@@ -36,7 +45,7 @@ export const Modal: React.FC<ModalProps> = ({ isOpen, onClose, title, children, 
             <div className="relative max-h-[calc(100dvh-1.5rem)] space-y-3.5 overflow-y-auto p-4 sm:p-5">
               <div className="flex items-center gap-3">
                 {icon && <div className="rounded-xl bg-forest-accent/7 p-2 text-forest-accent/90 ring-1 ring-forest-accent/7">{icon}</div>}
-                <h3 className="min-w-0 flex-1 font-serif text-lg font-semibold text-forest-ink sm:text-xl">{title}</h3>
+                <h3 id={titleId} className="min-w-0 flex-1 font-serif text-lg font-bold text-forest-ink sm:text-xl">{title}</h3>
                 <button
                   type="button"
                   onClick={onClose}

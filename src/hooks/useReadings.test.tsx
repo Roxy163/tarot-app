@@ -65,6 +65,26 @@ describe('useReadings cloud sync', () => {
     localStorage.clear();
   });
 
+  it('does not confirm or add a reading when its primary local save fails', async () => {
+    const { result } = renderHook(() => useReadings(null, false));
+    await act(async () => { await Promise.resolve(); });
+    const before = result.current.readings;
+    const setItem = Storage.prototype.setItem;
+    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(function(key, value) {
+      if (key === 'tarot_guest_data') throw new Error('storage-full');
+      setItem.call(this, key, value);
+    });
+    const notice = vi.fn();
+    let saved: unknown;
+    await act(async () => {
+      saved = await result.current.handleAddReading({ question: '保存失败的手记', cards: [{ name: '愚者', isReversed: false }] }, undefined, notice);
+    });
+    expect(saved).toBeNull();
+    expect(result.current.readings).toEqual(before);
+    expect(notice).toHaveBeenCalledWith(expect.stringContaining('保存失败'));
+    expect(notice).not.toHaveBeenCalledWith(expect.stringContaining('已添入'));
+  });
+
   it('does not rewrite settings to cloud immediately after an unchanged signed-in load', async () => {
     const { result } = renderHook(() => useReadings({ uid: 'user-1', email: 'user@example.com' }, false));
 

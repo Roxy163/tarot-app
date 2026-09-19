@@ -115,6 +115,8 @@ export interface CardAnnotation {
   reversedMeaning: string;
   keywords: string[];
   personalNotes: string;
+  personalMeaning?: string;
+  deletedAt?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -200,6 +202,11 @@ export interface FreePosition {
   scale?: number;
 }
 
+export interface PublicReadingLikeState {
+  liked: boolean;
+  count?: number;
+}
+
 export interface SpreadDefinition {
   name: string;
   layout: string;
@@ -255,6 +262,28 @@ export interface ReadingFormData {
   slotLabels: string[];
   slotPositions: string[];
   rotatedSlots: number[];
+}
+
+export type ReadingEditorFields = Omit<ReadingFormData, 'interpretation' | 'cards' | 'cardInterpretations' | 'cardQuestions' | 'slotLabels' | 'slotPositions' | 'rotatedSlots'> & {
+  singleCard: string;
+  combination: string;
+  numerologyInfluence?: string;
+  astrologyInfluence?: string;
+  houseInfluence?: string;
+  elementInfluence?: string;
+};
+
+export interface ReadingEditorDraft {
+  formData: ReadingEditorFields;
+  cardSlots: ReadingSlotData[];
+  cardInterpretations: string[];
+  cardQuestions: string[];
+  history: ReadingSlotData[][];
+  activeSlotIndex: number;
+  readingDetailSlotIndex: number;
+  gridCols: number;
+  gridRows: number;
+  isEditingSession: boolean;
 }
 
 export interface DailyFortune {

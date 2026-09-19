@@ -1,3 +1,4 @@
+import { scrollFocusedFieldIntoView } from '../lib/mobileFocus';
 import React from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import { ChevronDown, Layers, Plus, Trash2, Calendar, Tag } from 'lucide-react';
@@ -77,14 +78,6 @@ export const BasicInfoSection: React.FC<BasicInfoSectionProps> = ({
   const selectClientMode = () => {
     if (!isForClient) onToggleClientMode();
   };
-  const scrollFocusedFieldIntoView = (event: React.FocusEvent<HTMLElement>) => {
-    if (typeof window === 'undefined' || window.innerWidth >= 768) return;
-    const target = event.currentTarget;
-
-    window.setTimeout(() => {
-      target.scrollIntoView({ block: 'center', inline: 'nearest', behavior: 'smooth' });
-    }, 120);
-  };
   const shouldShowTagSuggestions = isTagSuggestionOpen && tagSuggestions.length > 0;
 
   return (
@@ -99,13 +92,13 @@ export const BasicInfoSection: React.FC<BasicInfoSectionProps> = ({
             <div
               role="group"
               aria-label="记录对象"
-              className="grid h-11 w-[132px] grid-cols-2 rounded-full border border-forest-accent/8 bg-white/42 p-1 shadow-[0_8px_20px_rgba(124,169,130,0.08)] sm:h-10 sm:w-[126px]"
+              className="grid w-[132px] grid-cols-2 rounded-full border border-forest-accent/8 bg-white/42 p-1 shadow-[0_8px_20px_rgba(124,169,130,0.08)]"
             >
               <button
                 type="button"
                 onClick={selectSelfMode}
                 aria-pressed={!isForClient}
-                className={`flex h-full items-center justify-center rounded-full px-2 text-[11px] font-semibold transition-all sm:text-xs ${
+                className={`flex min-h-11 items-center justify-center rounded-full px-2 text-xs font-semibold transition-all ${
                   !isForClient
                     ? 'bg-forest-accent/90 text-white shadow-sm'
                     : 'text-forest-muted hover:bg-white/55 hover:text-forest-accent'
@@ -117,7 +110,7 @@ export const BasicInfoSection: React.FC<BasicInfoSectionProps> = ({
                 type="button"
                 onClick={selectClientMode}
                 aria-pressed={isForClient}
-                className={`flex h-full items-center justify-center rounded-full px-2 text-[11px] font-semibold transition-all sm:text-xs ${
+                className={`flex min-h-11 items-center justify-center rounded-full px-2 text-xs font-semibold transition-all ${
                   isForClient
                     ? 'bg-forest-accent/90 text-white shadow-sm'
                     : 'text-forest-muted hover:bg-white/55 hover:text-forest-accent'
@@ -135,8 +128,9 @@ export const BasicInfoSection: React.FC<BasicInfoSectionProps> = ({
           <div>
             <input
               data-required-field="question"
+              aria-label="占卜问题"
               aria-invalid={highlightedRequiredField === 'question'}
-              className={`min-h-11 w-full rounded-xl border px-3 py-2 text-sm text-forest-ink transition-all placeholder:text-forest-muted/50 focus:ring-2 sm:px-4 sm:py-2.5 sm:text-base ${
+              className={`min-h-11 w-full rounded-xl border px-3 py-2 text-base text-forest-ink transition-all placeholder:text-forest-muted/50 focus:ring-2 sm:px-4 sm:py-2.5 ${
                 highlightedRequiredField === 'question'
                   ? 'border-forest-pink/35 bg-forest-pink/6 ring-2 ring-forest-pink/10 focus:ring-forest-pink/15'
                   : 'border-forest-accent/8 bg-white/42 focus:ring-forest-accent/15'
@@ -157,7 +151,7 @@ export const BasicInfoSection: React.FC<BasicInfoSectionProps> = ({
             <input
               aria-label="占卜日期"
               type="date" 
-              className="min-h-11 w-full rounded-xl border border-forest-accent/8 bg-white/42 py-2 pl-9 pr-2 text-sm text-forest-ink transition-all focus:ring-2 focus:ring-forest-accent/15 sm:py-2.5 sm:pl-10 sm:pr-4 sm:text-base"
+              className="min-h-11 w-full min-w-0 rounded-xl border border-forest-accent/8 bg-white/42 py-2 pl-9 pr-2 text-base text-forest-ink transition-all focus:ring-2 focus:ring-forest-accent/15 sm:py-2.5 sm:pl-10 sm:pr-4"
               value={date} 
               onFocus={scrollFocusedFieldIntoView}
               onChange={e => onUpdateDate(e.target.value)} 
@@ -182,7 +176,7 @@ export const BasicInfoSection: React.FC<BasicInfoSectionProps> = ({
                 <Tag size={16} />
               </div>
               <input
-                className="min-h-11 w-full bg-transparent py-2 pl-9 pr-2 text-sm text-forest-ink outline-none transition-all placeholder:text-forest-muted/50 sm:py-2.5 sm:pl-10 sm:pr-4 sm:text-base"
+                className="min-h-11 w-full bg-transparent py-2 pl-9 pr-2 text-base text-forest-ink outline-none transition-all placeholder:text-forest-muted/50 sm:py-2.5 sm:pl-10 sm:pr-4"
                 placeholder="添加标签..."
                 aria-label="标签"
                 aria-autocomplete="list"

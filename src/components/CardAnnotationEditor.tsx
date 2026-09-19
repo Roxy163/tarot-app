@@ -1,5 +1,6 @@
 import type React from 'react';
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useRef, useId } from 'react';
+import { useModalFocus } from '../hooks/useModalFocus';
 import { motion, AnimatePresence } from 'motion/react';
 import { X, Search, Save, RotateCcw, Star, Moon, Sun, Sparkles, ArrowLeft } from 'lucide-react';
 import { TAROT_CARDS, getCardImageUrl } from '../constants';
@@ -9,6 +10,7 @@ import { cardAnnotationService } from '../services/cardAnnotationService';
 import { useBodyScrollLock } from '../hooks/useBodyScrollLock';
 import { TarotCardImage } from './TarotCardImage';
 import { AutoResizeTextarea } from './ui/AutoResizeTextarea';
+import { readLocalDraft, useLocalDraft } from '../hooks/useLocalDraft';
 
 interface CardAnnotationEditorProps {
   isOpen: boolean;
@@ -34,6 +36,8 @@ const getAnnotationForm = (cardId: string) => {
     personalNotes: merged.personalNotes,
   };
 };
+const getDraftKey = (cardId: string) => `tarot_annotation_draft_${cardAnnotationService.getScope()}_${cardId}`;
+const getEditableForm = (cardId: string) => readLocalDraft<ReturnType<typeof getAnnotationForm>>(getDraftKey(cardId)) || getAnnotationForm(cardId);
 
 export const CardAnnotationEditor: React.FC<CardAnnotationEditorProps> = ({
   isOpen,
@@ -47,7 +51,7 @@ export const CardAnnotationEditor: React.FC<CardAnnotationEditorProps> = ({
   const [filter, setFilter] = useState<FilterType>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [refreshTick, setRefreshTick] = useState(0);
-  const [editForm, setEditForm] = useState({
+  const [editForm, setEditForm] = useState(() => initialCardId ? getEditableForm(initialCardId) : ({
     numerology: '',
     planet: '',
     zodiac: '',
@@ -57,12 +61,26 @@ export const CardAnnotationEditor: React.FC<CardAnnotationEditorProps> = ({
     reversedMeaning: '',
     keywords: '',
     personalNotes: '',
-  });
+  }));
 
   const [isSaving, setIsSaving] = useState(false);
+  const [savedForm, setSavedForm] = useState(() => initialCardId ? getAnnotationForm(initialCardId) : editForm);
   const [showUnsavedWarning, setShowUnsavedWarning] = useState(false);
   const [showSaveSuccess, setShowSaveSuccess] = useState(false);
   const [saveSuccessMessage, setSaveSuccessMessage] = useState('');
+  const [saveError, setSaveError] = useState('');
+  const hasUnsavedChanges = () => !!selectedCardId && JSON.stringify(editForm) !== JSON.stringify(savedForm);
+  const draft = useLocalDraft(getDraftKey(selectedCardId || 'none'), editForm, isOpen && hasUnsavedChanges());
+  const requestClose = () => {
+    if (!draft.durable && selectedCardId && hasUnsavedChanges()) {
+      setSaveError('暂存失败，请先复制内容或释放存储空间后保存。');
+      return;
+    }
+    onClose();
+  };
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const titleId = useId();
+  useModalFocus(isOpen, dialogRef, requestClose);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -73,7 +91,8 @@ export const CardAnnotationEditor: React.FC<CardAnnotationEditorProps> = ({
     }
 
     setSelectedCardId(initialCardId);
-    setEditForm(getAnnotationForm(initialCardId));
+    setSavedForm(getAnnotationForm(initialCardId));
+    setEditForm(getEditableForm(initialCardId));
   }, [initialCardId, isOpen]);
 
   const modifiedCardIds = useMemo(() => {
@@ -101,27 +120,22 @@ export const CardAnnotationEditor: React.FC<CardAnnotationEditorProps> = ({
   }, [filter, searchQuery, modifiedCardIds]);
 
   const handleCardSelect = (cardId: string) => {
-    if (selectedCardId && hasUnsavedChanges()) {
+    if (selectedCardId && hasUnsavedChanges() && !draft.durable) {
       setShowUnsavedWarning(true);
       return;
     }
 
     setSelectedCardId(cardId);
-    setEditForm(getAnnotationForm(cardId));
-  };
-
-  const hasUnsavedChanges = () => {
-    if (!selectedCardId) return false;
-    
-    const originalForm = getAnnotationForm(selectedCardId);
-
-    return JSON.stringify(editForm) !== JSON.stringify(originalForm);
+    setSavedForm(getAnnotationForm(cardId));
+    setEditForm(getEditableForm(cardId));
+    setSaveError('');
   };
 
   const handleSave = async () => {
     if (!selectedCardId) return;
 
     setIsSaving(true);
+    setSaveError('');
     
     try {
       const card = TAROT_CARDS.find(c => c.id === selectedCardId);
@@ -138,6 +152,8 @@ export const CardAnnotationEditor: React.FC<CardAnnotationEditorProps> = ({
         keywords: editForm.keywords.split(/[、,，]/).filter(k => k.trim()),
         personalNotes: editForm.personalNotes,
       });
+      draft.clear();
+      setSavedForm(getAnnotationForm(selectedCardId));
 
       setSaveSuccessMessage(`《${cardName}》的注解已保存`);
       setShowSaveSuccess(true);
@@ -148,6 +164,9 @@ export const CardAnnotationEditor: React.FC<CardAnnotationEditorProps> = ({
       setTimeout(() => {
         setShowSaveSuccess(false);
       }, 2000);
+    } catch {
+      setSaveError('保存失败，内容仍在此页，请释放存储空间后重试。');
+      setShowSaveSuccess(false);
     } finally {
       setIsSaving(false);
     }
@@ -155,11 +174,14 @@ export const CardAnnotationEditor: React.FC<CardAnnotationEditorProps> = ({
 
   const handleReset = () => {
     if (!selectedCardId) return;
+    try {
     
     const card = TAROT_CARDS.find(c => c.id === selectedCardId);
     const cardName = card?.name || selectedCardId;
     
     cardAnnotationService.resetAnnotationToOfficial(selectedCardId);
+    draft.clear();
+    setSavedForm(getAnnotationForm(selectedCardId));
     setEditForm(getAnnotationForm(selectedCardId));
     setRefreshTick(prev => prev + 1);
     onAnnotationsUpdated?.();
@@ -170,6 +192,7 @@ export const CardAnnotationEditor: React.FC<CardAnnotationEditorProps> = ({
     setTimeout(() => {
       setShowSaveSuccess(false);
     }, 2000);
+    } catch { setSaveError('恢复失败，原注解已保留，请稍后重试。'); }
   };
 
   if (!isOpen) return null;
@@ -189,19 +212,24 @@ export const CardAnnotationEditor: React.FC<CardAnnotationEditorProps> = ({
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
       className="fixed inset-0 z-[520] bg-black/50 backdrop-blur-sm overscroll-contain"
-      onClick={(e) => e.target === e.currentTarget && onClose()}
+      onClick={(e) => e.target === e.currentTarget && requestClose()}
     >
       <motion.div
         initial={{ scale: 0.95, opacity: 0 }}
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        tabIndex={-1}
         animate={{ scale: 1, opacity: 1 }}
         exit={{ scale: 0.95, opacity: 0 }}
         className="absolute inset-2 flex max-h-[calc(100vh-1rem)] flex-col overflow-hidden rounded-2xl bg-forest-bg shadow-2xl sm:inset-4 sm:max-h-[calc(100vh-2rem)] md:inset-8 md:max-h-[calc(100vh-4rem)]"
       >
         {/* Header */}
         <div className="flex items-center justify-between border-b border-forest-accent/12 p-3 sm:p-4">
-          <h2 className="font-serif text-lg font-bold text-forest-ink sm:text-xl">编辑牌义</h2>
+          <h2 id={titleId} className="font-serif text-lg font-bold text-forest-ink sm:text-xl">编辑牌义</h2>
           <button
-            onClick={onClose}
+            onClick={requestClose}
             className="min-h-11 min-w-11 p-2 hover:bg-forest-accent/10 rounded-lg transition-colors flex items-center justify-center"
             aria-label="关闭编辑牌义"
           >
@@ -346,7 +374,10 @@ export const CardAnnotationEditor: React.FC<CardAnnotationEditorProps> = ({
                 <div className="p-4 border-b border-forest-accent/20 bg-gradient-to-r from-forest-accent/5 to-forest-pink/5 shrink-0">
                   <button
                     type="button"
-                    onClick={() => setSelectedCardId(null)}
+                    onClick={() => {
+                      if (!draft.durable && hasUnsavedChanges()) { setSaveError('暂存失败，请先保存或复制当前内容。'); return; }
+                      setSelectedCardId(null);
+                    }}
                     className="md:hidden min-h-11 mb-3 -ml-2 px-3 rounded-xl text-sm font-bold text-forest-accent hover:bg-forest-accent/10 transition-colors flex items-center gap-2"
                   >
                     <ArrowLeft size={16} />
@@ -501,6 +532,7 @@ export const CardAnnotationEditor: React.FC<CardAnnotationEditorProps> = ({
                   {/* Action Buttons */}
                   <div className="shrink-0 border-t border-forest-accent/15 bg-forest-bg/95 p-4 pb-[calc(1rem+env(safe-area-inset-bottom,0px))] shadow-[0_-12px_28px_-24px_rgba(44,54,44,0.45)]">
                   {/* Success Message */}
+                  <p className="mb-2 text-xs text-forest-muted" role="status">{saveError || (draft.durable ? '修改会自动暂存；保存后纳入牌义注疏。' : '暂存失败，请保留页面并重试。')}</p>
                   <AnimatePresence>
                     {showSaveSuccess && (
                       <motion.div

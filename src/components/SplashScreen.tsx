@@ -88,6 +88,10 @@ export const SplashScreen: React.FC<SplashScreenProps> = ({ onEnter }) => {
             开启研习
           </motion.button>
 
+          <p className="mt-4 text-xs leading-relaxed text-forest-muted">
+            无需注册即可使用 · 记录先保存在本机
+          </p>
+
           <p className="absolute left-1/2 top-full mt-5 w-[min(84vw,32rem)] -translate-x-1/2 text-center text-[11px] leading-relaxed tracking-[0.12em] text-[#8B857D]/80">
             不教塔罗，只陪你成为自己的塔罗师。
           </p>

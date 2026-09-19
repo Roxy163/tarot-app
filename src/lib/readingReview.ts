@@ -106,8 +106,23 @@ const getCardLines = (reading: TarotReading) => (
   })
 );
 
+const getPerCardTextLines = (reading: TarotReading, values?: string[]) => (
+  (values || []).flatMap((value, index) => {
+    const text = value?.trim();
+    if (!text) return [];
+
+    const card = reading.cards[index];
+    const label = card?.label || card?.position || reading.slotLabels?.[index] || `第${index + 1}张`;
+    return [`${label}：${text}`];
+  })
+);
+
+const protectSpreadsheetFormula = (text: string) => (
+  /^[=+\-@\t\r]/.test(text.trimStart()) ? `'${text}` : text
+);
+
 const escapeCsv = (value: string | number | boolean | undefined) => {
-  const text = String(value ?? '');
+  const text = protectSpreadsheetFormula(String(value ?? ''));
   return `"${text.replace(/"/g, '""')}"`;
 };
 
@@ -121,6 +136,8 @@ export const exportReadingsToCsv = (readings: TarotReading[]) => {
     '牌阵',
     '卡牌',
     '关键词',
+    '逐牌解读',
+    '牌面疑问',
     '单牌解读',
     '组合解读',
     '总结',
@@ -140,6 +157,8 @@ export const exportReadingsToCsv = (readings: TarotReading[]) => {
     reading.spread,
     getCardLines(reading).join('\n'),
     reading.keywords.join('、'),
+    getPerCardTextLines(reading, reading.cardInterpretations).join('\n'),
+    getPerCardTextLines(reading, reading.cardQuestions).join('\n'),
     reading.interpretation?.singleCard || '',
     reading.interpretation?.combination || '',
     reading.interpretation?.summary || '',
@@ -171,6 +190,9 @@ export const exportReadingsToMarkdown = (
   ];
 
   sorted.forEach(reading => {
+    const perCardInterpretations = getPerCardTextLines(reading, reading.cardInterpretations);
+    const perCardQuestions = getPerCardTextLines(reading, reading.cardQuestions);
+
     lines.push(
       `## ${formatDate(getReadingDate(reading))}｜${safeText(reading.question, '未命名问题')}`,
       '',
@@ -182,6 +204,14 @@ export const exportReadingsToMarkdown = (
       '',
       '### 卡牌',
       ...getCardLines(reading).map(line => `- ${line}`),
+      '',
+      '### 逐牌注疏',
+      ...perCardInterpretations.map(line => `- ${line}`),
+      ...(perCardInterpretations.length === 0 ? ['未填写'] : []),
+      '',
+      '### 牌面疑问',
+      ...perCardQuestions.map(line => `- ${line}`),
+      ...(perCardQuestions.length === 0 ? ['未填写'] : []),
       '',
       '### 解读',
       `单牌：${safeText(reading.interpretation?.singleCard)}`,

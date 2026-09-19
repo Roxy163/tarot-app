@@ -1,8 +1,12 @@
+import { scrollFocusedFieldIntoView } from '../lib/mobileFocus';
 import React, { useState, useEffect, FormEvent, useRef, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import { Sparkles, Layers, User, MessageSquare, BookOpen, Settings, Save, Hash, Orbit, Home, Wind, Info, Copy, X } from 'lucide-react';
-import { CardKeywordMemory, SpreadDefinition, TarotCardMetadata, ReadingSlotData, TarotReading, ReadingFormData } from '../types';
+import { CardKeywordMemory, SpreadDefinition, TarotCardMetadata, ReadingSlotData, TarotReading, ReadingFormData, ReadingEditorDraft, ReadingEditorFields } from '../types';
+import { readLocalDraft, useLocalDraft } from '../hooks/useLocalDraft';
+import { useModalFocus } from '../hooks/useModalFocus';
+import { toLocalReadingDate } from '../lib/readingDate';
 import { LAYOUT_TEMPLATES, TAROT_CARDS, OFFICIAL_SPREADS } from '../constants';
 import { CardPicker } from './CardPicker';
 import { FreeLayoutSaveMode, SpreadDesigner } from './SpreadDesigner';
@@ -48,7 +52,7 @@ import { ReadingAiPromptMode, buildReadingAiPrompt, getGentleAiPromptNotice } fr
 import { applyTagSuggestionToInput, buildReadingTagSuggestions } from '../lib/readingTagSuggestions';
 
 interface AddReadingFormProps {
-  onSubmit: (data: Partial<ReadingFormData>) => void;
+  onSubmit: (data: Partial<ReadingFormData>) => void | boolean | Promise<void | boolean>;
   isLoading: boolean;
   isLoggedIn: boolean;
   userId?: string;
@@ -102,6 +106,8 @@ const SpreadSaveConflictDialog: React.FC<SpreadSaveConflictDialogProps> = ({
   const titleId = React.useId();
   const isOpen = Boolean(conflict);
   useBodyScrollLock(isOpen);
+  const dialogRef = useRef<HTMLDivElement>(null);
+  useModalFocus(isOpen, dialogRef, onClose);
 
   const dialog = (
     <AnimatePresence>
@@ -121,6 +127,8 @@ const SpreadSaveConflictDialog: React.FC<SpreadSaveConflictDialogProps> = ({
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 16, scale: 0.98 }}
             role="dialog"
+            ref={dialogRef}
+            tabIndex={-1}
             aria-modal="true"
             aria-labelledby={titleId}
             className="relative my-auto max-h-[calc(100dvh-2rem)] w-full max-w-sm space-y-3.5 overflow-y-auto rounded-3xl border border-forest-border bg-white p-5 shadow-2xl"
@@ -136,7 +144,7 @@ const SpreadSaveConflictDialog: React.FC<SpreadSaveConflictDialogProps> = ({
                 type="button"
                 aria-label="关闭"
                 onClick={onClose}
-                className="flex h-9 w-9 items-center justify-center rounded-xl text-forest-muted transition-colors hover:bg-forest-accent/5 hover:text-forest-accent"
+                className="flex h-11 w-11 items-center justify-center rounded-xl text-forest-muted transition-colors hover:bg-forest-accent/5 hover:text-forest-accent"
               >
                 <X size={18} />
               </button>
@@ -208,10 +216,21 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
   onCancel 
 }) => {
   const defaultSpreadDefinition = spreads[0] || OFFICIAL_SPREADS[0];
+  const draftKey = `tarot_reading_draft_${userId || 'guest'}_${initialData?.id || 'new'}`;
+  const [restoredDraft] = useState(() => {
+    const draft = readLocalDraft<ReadingEditorDraft>(draftKey);
+    return draft?.formData && Array.isArray(draft.cardSlots) ? draft : null;
+  });
+  const restoredInitialEffects = useRef(new Set<string>());
+  const skipRestoredEffect = (name: string) => {
+    if (!(restoredDraft || initialData?.cards?.length) || restoredInitialEffects.current.has(name)) return false;
+    restoredInitialEffects.current.add(name);
+    return true;
+  };
   const initialSpreadDefinition = initialData?.spread
     ? spreads.find(spread => spread.name === initialData.spread)
     : defaultSpreadDefinition;
-  const [formData, setFormData] = useState({
+  const [formData, setFormData] = useState<ReadingEditorFields>(() => restoredDraft?.formData || ({
     question: initialData?.question || '',
     spread: initialData?.spread || defaultSpreadDefinition.name,
     layoutType: initialData?.layoutType || initialSpreadDefinition?.layout || 'horizontal',
@@ -233,18 +252,19 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
     aiAnswerUpdatedAt: initialData?.aiAnswerUpdatedAt,
     choicePathA: initialData?.choicePathA || '',
     choicePathB: initialData?.choicePathB || '',
-    readingDate: initialData?.readingDate ? new Date(initialData.readingDate).toISOString().slice(0, 16) : new Date().toISOString().slice(0, 16),
+    readingDate: toLocalReadingDate(initialData?.readingDate),
     isTimePrecise: false,
     category: initialData?.category || initialData?.manualTags?.join('、') || '',
     skipAi: initialData?.skipAi !== undefined 
       ? initialData.skipAi 
       : (localStorage.getItem('tarot_ai_preference') === 'process' ? false : true)
-  });
+  }));
 
-  const [cardInterpretations, setCardInterpretations] = useState<string[]>(initialData?.cardInterpretations || []);
-  const [cardQuestions, setCardQuestions] = useState<string[]>(initialData?.cardQuestions || []);
+  const [cardInterpretations, setCardInterpretations] = useState<string[]>(restoredDraft?.cardInterpretations || initialData?.cardInterpretations || []);
+  const [cardQuestions, setCardQuestions] = useState<string[]>(restoredDraft?.cardQuestions || initialData?.cardQuestions || []);
   const [editingCorrespondence, setEditingCorrespondence] = useState<{ index: number; card: ReadingSlotData; metadata: TarotCardMetadata } | null>(null);
   const [cardSlots, setCardSlots] = useState<ReadingSlotData[]>(() => {
+    if (restoredDraft) return restoredDraft.cardSlots;
     if (initialData?.cards) {
       const restoredSlots = initialData.cards.map((c: ReadingSlotData, i: number) => ({
         ...c,
@@ -256,7 +276,7 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
     }
     return [{ name: '', isReversed: false }];
   });
-  const [history, setHistory] = useState<ReadingSlotData[][]>([]);
+  const [history, setHistory] = useState<ReadingSlotData[][]>(restoredDraft?.history || []);
   const [showSpreadManager, setShowSpreadManager] = useState(false);
   const [showPicker, setShowPicker] = useState(false);
   const [newSpreadName, setNewSpreadName] = useState('');
@@ -276,14 +296,19 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
   const [activeInfluenceKey, setActiveInfluenceKey] = useState<InfluenceFieldKey | null>(() => (
     localStorage.getItem('tarot_influence_sections_open') === 'true' ? 'numerologyInfluence' : null
   ));
-  const [activeSlotIndex, setActiveSlotIndex] = useState<number>(0);
+  const [activeSlotIndex, setActiveSlotIndex] = useState<number>(restoredDraft?.activeSlotIndex || 0);
   const [readingDetailSlotIndex, setReadingDetailSlotIndex] = useState<number>(() => {
+    if (restoredDraft) return restoredDraft.readingDetailSlotIndex;
     const firstFilledIndex = initialData?.cards?.findIndex(card => isCardSlotFilled(card)) ?? -1;
     return firstFilledIndex >= 0 ? firstFilledIndex : 0;
   });
-  const [isEditingSession, setIsEditingSession] = useState(false);
-  const [gridCols, setGridCols] = useState(5);
-  const [gridRows, setGridRows] = useState(5);
+  const [isEditingSession, setIsEditingSession] = useState(restoredDraft?.isEditingSession || false);
+  const savedSpreadDefinition = useRef((restoredDraft || initialData?.cards?.length) ? {
+    name: restoredDraft?.formData.spread || initialData?.spread,
+    signature: JSON.stringify(spreads.find(spread => spread.name === (restoredDraft?.formData.spread || initialData?.spread))),
+  } : null);
+  const [gridCols, setGridCols] = useState(restoredDraft?.gridCols || 5);
+  const [gridRows, setGridRows] = useState(restoredDraft?.gridRows || 5);
   const [freeLayoutSaveMode, setFreeLayoutSaveMode] = useState<FreeLayoutSaveMode>('original');
   const [showUpdatePrompt, setShowUpdatePrompt] = useState<{ name: string, oldSlots: string[] } | null>(null);
   const [pendingRestoreOfficialSpreadName, setPendingRestoreOfficialSpreadName] = useState('');
@@ -294,6 +319,13 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
   const [pendingDeleteSpreadNames, setPendingDeleteSpreadNames] = useState<string[]>([]);
   const readingDetailRef = useRef<HTMLDivElement | null>(null);
   const spreadManagerDraftBackupRef = useRef<SpreadManagerDraftBackup | null>(null);
+  const initialFields = useRef(JSON.stringify(formData));
+  const draftStarted = useRef(Boolean(restoredDraft || initialData?.id));
+  if (JSON.stringify(formData) !== initialFields.current || cardSlots.some(slot => slot.name) || isEditingSession) draftStarted.current = true;
+  const draft = useLocalDraft<ReadingEditorDraft>(draftKey, {
+    formData, cardSlots, cardInterpretations, cardQuestions, history,
+    activeSlotIndex, readingDetailSlotIndex, gridCols, gridRows, isEditingSession,
+  }, draftStarted.current);
 
   const {
     isLongPressActive,
@@ -396,14 +428,6 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
   const activeInfluenceField = influenceFields.find(field => field.key === activeInfluenceKey);
   const hasInfluenceValues = influenceFields.some(field => formData[field.key]?.trim());
   const shouldShowInfluenceTools = expandInfluenceByDefault || activeInfluenceKey !== null || hasInfluenceValues;
-  const scrollFocusedFieldIntoView = (event: React.FocusEvent<HTMLElement>) => {
-    if (typeof window === 'undefined' || window.innerWidth >= 768) return;
-    const target = event.currentTarget;
-
-    window.setTimeout(() => {
-      target.scrollIntoView({ block: 'center', inline: 'nearest', behavior: 'smooth' });
-    }, 120);
-  };
   const scrollReadingDetailIntoView = () => {
     if (typeof window === 'undefined' || window.innerWidth >= 768) return;
     const detailTop = readingDetailRef.current?.getBoundingClientRect().top;
@@ -454,6 +478,7 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
   };
 
   useEffect(() => {
+    if (skipRestoredEffect('daily')) return;
     if (isDailyMode && !initialData) {
       setFormData(prev => ({
         ...prev,
@@ -471,6 +496,7 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
 
   // Track spread changes to prompt for re-ordering
   useEffect(() => {
+    if (skipRestoredEffect('labels')) return;
     const currentSpreadDef = spreads.find(s => s.name === formData.spread);
     if (!currentSpreadDef) return;
 
@@ -487,8 +513,12 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
 
   // Sync card slots when spread changes
   useEffect(() => {
+    if (skipRestoredEffect('slots')) return;
     const spreadDef = spreads.find(s => s.name === formData.spread);
     if (!spreadDef) return;
+    if (savedSpreadDefinition.current?.name === formData.spread && savedSpreadDefinition.current.signature === JSON.stringify(spreadDef)) return;
+    savedSpreadDefinition.current = null;
+    if (isEditingSession) return;
 
     setFormData(prev => ({ ...prev, layoutType: spreadDef.layout }));
     setGridCols(spreadDef.gridCols || 5);
@@ -876,7 +906,7 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
       : getReadingDraftRequiredFieldIssue({ formData, cardSlots })
   );
 
-  const submitReading = (mode: ReadingSubmitMode) => {
+  const submitReading = async (mode: ReadingSubmitMode) => {
     const requiredIssue = getSubmitIssueForMode(mode);
     if (requiredIssue) {
       setSubmitIssue(requiredIssue);
@@ -891,6 +921,7 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
       cardInterpretations,
       cardQuestions,
       mode,
+      originalReadingDate: initialData?.readingDate,
     });
 
     if (result.ok === false) {
@@ -901,7 +932,12 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
 
     setSubmitNotice('');
     setSubmitIssue(null);
-    onSubmit(result.payload);
+    try {
+      if (await onSubmit(result.payload) !== false) draft.clear();
+      else setSubmitNotice('本机保存失败，内容仍保留在此页，请重试。');
+    } catch {
+      setSubmitNotice('保存失败，内容仍保留在此页，请重试。');
+    }
   };
 
   const handleSubmit = (e: FormEvent) => {
@@ -1039,6 +1075,9 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
 
   return (
     <form onSubmit={handleSubmit} className="space-y-2.5 rounded-[1.45rem] border border-forest-accent/8 bg-white/46 p-2.5 pb-3 shadow-[0_14px_46px_-40px_rgba(62,58,54,0.45)] backdrop-blur-[2px] sm:space-y-4 sm:rounded-[1.7rem] sm:p-5">
+      <p className="text-xs text-forest-muted" role="status">
+        {draft.durable ? (restoredDraft ? '已恢复上次未完成的手记，修改会自动暂存。' : '输入会自动暂存，可稍后继续。') : '本机暂存失败，请保留页面并释放存储空间后重试。'}
+      </p>
       {editingCorrespondence && (
         <CardCorrespondenceEditor 
           card={editingCorrespondence.card}
@@ -1128,7 +1167,10 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
         isForClient={formData.isForClient}
         onToggleClientMode={() => setFormData({...formData, isForClient: !formData.isForClient})}
         initialData={initialData}
-        onCancel={onCancel}
+        onCancel={() => {
+          draft.clear();
+          onCancel?.();
+        }}
         tagSuggestions={tagSuggestions}
         onSelectTagSuggestion={handleSelectTagSuggestion}
         highlightedRequiredField={
@@ -1284,14 +1326,6 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
                 setIsEditingSession(true);
               }}
               onSetDesignActiveSlot={setDesignActiveSlot}
-              onRemoveSlot={(index) => {
-                if (cardSlots.length > 1) {
-                  const newSlots = cardSlots.filter((_, i) => i !== index);
-                  updateCardSlotsWithHistory(newSlots);
-                  setDesignActiveSlot(Math.max(0, newSlots.length - 1));
-                  setIsEditingSession(true);
-                }
-              }}
               onUpdateSlots={(slots) => {
                 updateCardSlotsWithHistory(slots);
                 setIsEditingSession(true);
@@ -1397,7 +1431,8 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
           <AutoResizeTextarea
             minRows={2}
             maxRows={8}
-            className="w-full rounded-xl border border-forest-accent/8 bg-white/48 px-3 py-2.5 text-sm leading-relaxed focus:ring-2 focus:ring-forest-accent/15"
+            className="w-full rounded-xl border border-forest-accent/8 bg-white/48 px-3 py-2.5 text-base leading-relaxed focus:ring-2 focus:ring-forest-accent/15 sm:text-sm"
+            onFocus={scrollFocusedFieldIntoView}
             placeholder="牌与牌之间的整体关联感悟..." 
             value={formData.combination} 
             onChange={e => setFormData({...formData, combination: e.target.value})} 
@@ -1412,7 +1447,8 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
             <input
               data-required-field="clientName"
               aria-invalid={submitIssue?.field === 'clientName'}
-              className={`w-full rounded-xl border px-4 py-2 text-sm transition-all focus:ring-2 ${
+              aria-label="客户姓名"
+              className={`min-h-11 w-full rounded-xl border px-4 py-2 text-base transition-all focus:ring-2 sm:text-sm ${
                 submitIssue?.field === 'clientName'
                   ? 'border-forest-pink/35 bg-forest-pink/6 ring-2 ring-forest-pink/10 focus:ring-forest-pink/15'
                   : 'border-forest-accent/8 bg-white/48 focus:ring-forest-accent/15'
@@ -1425,7 +1461,7 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
           </div>
           <div className="space-y-1.5">
 	            <label className="flex items-center gap-2 px-1 text-sm font-medium text-forest-accent"><MessageSquare size={14} /> 客户反馈</label>
-            <input className="w-full px-4 py-2 bg-white/48 border border-forest-accent/8 rounded-xl focus:ring-2 focus:ring-forest-accent/15 text-sm" placeholder="客户的真实反馈..." value={formData.clientFeedback} onFocus={scrollFocusedFieldIntoView} onChange={e => setFormData({...formData, clientFeedback: e.target.value})} />
+            <input aria-label="客户反馈" className="min-h-11 w-full px-4 py-2 bg-white/48 border border-forest-accent/8 rounded-xl focus:ring-2 focus:ring-forest-accent/15 text-base sm:text-sm" placeholder="客户的真实反馈..." value={formData.clientFeedback} onFocus={scrollFocusedFieldIntoView} onChange={e => setFormData({...formData, clientFeedback: e.target.value})} />
           </div>
         </div>
       )}
@@ -1440,7 +1476,8 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
           <AutoResizeTextarea
             minRows={2}
             maxRows={10}
-            className="w-full rounded-xl border border-forest-accent/8 bg-white/48 px-3 py-2.5 text-sm leading-relaxed focus:ring-2 focus:ring-forest-accent/15"
+            aria-label="手记复盘"
+            className="w-full rounded-xl border border-forest-accent/8 bg-white/48 px-3 py-2.5 text-base leading-relaxed focus:ring-2 focus:ring-forest-accent/15 sm:text-sm"
             placeholder="记录你对这次占卜的自我评价或后续验证..."
             value={formData.userFeedback}
             onFocus={scrollFocusedFieldIntoView}

@@ -1,6 +1,6 @@
 import { Suspense, lazy, useCallback, useMemo, useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Sparkles, X, User, ChevronRight, LogOut, Database, ShieldCheck, ArrowRight, LogIn, CheckCircle, AlertTriangle, Mail, Home, Download, MessageSquareText, FileText, Eye, EyeOff } from 'lucide-react';
+import { X, User, ChevronRight, LogOut, Database, ShieldCheck, ArrowRight, LogIn, CheckCircle, AlertTriangle, Mail, Home, Download, MessageSquareText, FileText, Eye, EyeOff } from 'lucide-react';
 import { TarotReading, SpreadDefinition, UserProfile } from './types';
 import { OFFICIAL_SPREADS, PAVILION_PROVERBS } from './constants';
 import { Modal } from './components/Modal';
@@ -12,6 +12,7 @@ import { isValidPassword } from './lib/utils';
 import { HomeTab } from './components/tabs/HomeTab';
 import { MainLayout } from './components/layouts/MainLayout';
 import { SplashScreen } from './components/SplashScreen';
+import { StartupScreen } from './components/StartupScreen';
 import { useReadings } from './hooks/useReadings';
 import { useDailyFortune } from './hooks/useDailyFortune';
 import { useOnboarding } from './context/OnboardingContext';
@@ -36,6 +37,9 @@ import { PwaInstallGuideModal } from './components/PwaInstallGuideModal';
 import { LegalModal } from './components/LegalModal';
 import type { LegalTab } from './components/LegalModal';
 import type { PublicSquareView } from './components/tabs/PublicTab';
+import { LOCAL_SAVE_ERROR } from './lib/safeLocalStorage';
+import { clearLocalDraft } from './hooks/useLocalDraft';
+import { useAnnotationSync } from './hooks/useAnnotationSync';
 
 const loadCardMetadataManager = () => import('./components/CardMetadataManager');
 const loadReadingDetailModal = () => import('./components/ReadingDetailModal');
@@ -62,31 +66,6 @@ const SuspenseFallback = () => (
       <div className="h-16 animate-pulse rounded-2xl bg-white/24" />
     </div>
     <p className="text-center text-[11px] font-medium text-forest-muted">正在展开内容…</p>
-  </div>
-);
-
-const AuthRestoringScreen = () => (
-  <div className="min-h-[100dvh] bg-forest-bg flex items-center justify-center px-6 text-center">
-    <motion.div
-      initial={{ opacity: 0, y: 8 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.28, ease: 'easeOut' }}
-      className="flex w-full max-w-xs flex-col items-center gap-4 rounded-[1.6rem] border border-forest-accent/8 bg-white/42 px-5 py-6 shadow-sm"
-      role="status"
-      aria-live="polite"
-    >
-      <div className="grid h-14 w-14 place-items-center rounded-[1.4rem] border border-forest-accent/8 bg-white/58 shadow-sm">
-        <Sparkles size={24} className="text-forest-accent" />
-      </div>
-      <div className="space-y-1">
-        <p className="font-serif text-2xl font-bold text-forest-ink">塔罗研习阁</p>
-        <p className="text-sm font-medium text-forest-muted">正在恢复账号状态…</p>
-      </div>
-      <div className="grid w-full gap-2">
-        <div className="h-2.5 animate-pulse rounded-full bg-forest-accent/8" />
-        <div className="mx-auto h-2.5 w-2/3 animate-pulse rounded-full bg-forest-accent/6" />
-      </div>
-    </motion.div>
   </div>
 );
 
@@ -132,7 +111,7 @@ const removeLocalStorageValue = (key: string) => {
 function AppContent() {
   const { session, isLoading: isAuthLoading, isLocalFallback, isEmailVerified, signOut, updatePassword, sendVerificationEmail } = useAuth();
   const { checkAndUnlockAchievements } = useOnboarding();
-  const { canInstall: canAutoInstallPwa, install: installPwa, isStandalone: isPwaStandalone } = usePwaInstallPrompt();
+  const { canInstall: canAutoInstallPwa, install: installPwa, reminderPreference, setReminderPreference } = usePwaInstallPrompt();
   
   const [activeTab, setActiveTab] = usePersistentTab<AppTab>('tarot_active_tab', 'home', isAppTab);
   const [profile, setProfile] = useState<UserProfile | null>(null);
@@ -144,7 +123,10 @@ function AppContent() {
   const [isSecurityModalOpen, setIsSecurityModalOpen] = useState(false);
   const [showAuthPage, setShowAuthPage] = useState(false);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
-  const [hasEnteredApp, setHasEnteredApp] = useState(false);
+  const [hasEnteredApp, setHasEnteredApp] = useState(() => {
+    try { return localStorage.getItem('tarot_has_entered_app') === 'true'; }
+    catch { return false; }
+  });
   const [publicViewRequest, setPublicViewRequest] = useState<{ view: PublicSquareView; key: number } | null>(null);
   
   // Login Prompts
@@ -216,12 +198,42 @@ function AppContent() {
     handleEditReading,
     toggleTag,
     isCloudSyncPaused,
-    cloudSyncInfo,
-    handleManualCloudSync,
+    cloudSyncInfo: readingsCloudSyncInfo,
+    handleManualCloudSync: syncReadings,
     syncNotice,
     clearSyncNotice,
   } = useReadings(session, isAuthLoading, isLocalFallback);
+  const annotationSync = useAnnotationSync(session?.uid, isAuthLoading, isLocalFallback);
+  const cloudSyncInfo = {
+    ...readingsCloudSyncInfo,
+    ...(session && annotationSync.status === 'error' ? { status: 'error' as const, lastError: annotationSync.error } : {}),
+    ...(session && readingsCloudSyncInfo.status === 'synced' && ['loading', 'syncing'].includes(annotationSync.status) ? { status: 'syncing' as const } : {}),
+  };
+  const handleManualCloudSync = async () => {
+    const [, annotationsSaved] = await Promise.all([syncReadings(), annotationSync.sync()]);
+    if (session && !annotationsSaved) {
+      clearSyncNotice();
+      setSnackbar({ isOpen: true, message: '牌义注疏尚未同步，本机内容已保留，请稍后重试。' });
+    }
+  };
   const dailyFortune = useDailyFortune(session, isAuthLoading, isLocalFallback);
+  useEffect(() => {
+    let lastNotice = 0;
+    const onFailure = () => {
+      if (Date.now() - lastNotice < 5000) return;
+      lastNotice = Date.now();
+      setSnackbar({ isOpen: true, message: '本机存储写入失败，请保留当前页面，释放存储空间后重试。' });
+    };
+    window.addEventListener(LOCAL_SAVE_ERROR, onFailure);
+    return () => window.removeEventListener(LOCAL_SAVE_ERROR, onFailure);
+  }, []);
+
+  useEffect(() => {
+    if (isAuthLoading || activeTab !== 'add' || editingReading) return;
+    const id = getLocalStorageValue(`tarot_editing_reading_${session?.uid || 'guest'}`);
+    const reading = readings.find(item => item.id === id && !item.isExample);
+    if (reading) setEditingReading(reading);
+  }, [isAuthLoading, activeTab, editingReading, readings, session?.uid]);
   useBodyScrollLock(isProcessing);
   useMobileFocusScroll();
 
@@ -365,7 +377,7 @@ function AppContent() {
     localFallbackNoticeShownRef.current = true;
     setSnackbar({
       isOpen: true,
-      message: '云端暂时连不上，可能没开 VPN；已进入本地模式，记录会先保存在本机。',
+      message: '已先进入本机模式，可以继续记录，连接恢复后会继续同步。',
     });
   }, [hasEnteredApp, isLocalFallback]);
 
@@ -536,6 +548,7 @@ function AppContent() {
   }, [handleManualCloudSync, session]);
 
   const handleEnterApp = useCallback(() => {
+    try { localStorage.setItem('tarot_has_entered_app', 'true'); } catch { /* Entry must work without browser storage. */ }
     trackEvent('splash_enter');
     setActiveTab('home');
     setHasEnteredApp(true);
@@ -943,6 +956,9 @@ function AppContent() {
     const savedReading = await handleAddReading(newReading, profile, (msg: string) => {
       setSnackbar({ isOpen: true, message: msg });
     });
+    if (!savedReading) return false;
+    clearLocalDraft(`tarot_reading_draft_${session?.uid || 'guest'}_${editingReading?.id || 'new'}`);
+    removeLocalStorageValue(`tarot_editing_reading_${session?.uid || 'guest'}`);
 
     if (savedReading?.id) {
       if (highlightTimerRef.current !== null) {
@@ -960,10 +976,12 @@ function AppContent() {
     setSearchTags([]);
     setSelectedReadingDetail(null);
     navigateToTab('private');
+    return true;
   };
 
   // Handle edit reading navigation
   const handleEditReadingNavigate = (reading: TarotReading) => {
+    setLocalStorageValue(`tarot_editing_reading_${session?.uid || 'guest'}`, reading.id);
     setSelectedReadingDetail(null);
     handleEditReading(reading);
     navigateToTab('add');
@@ -1157,7 +1175,6 @@ function AppContent() {
         />
 
         <div className="space-y-1.5 rounded-[1.35rem] border border-forest-accent/7 bg-white/24 p-1.5">
-          {!isPwaStandalone && (
             <button
               type="button"
               onClick={openInstallGuideFromSidebar}
@@ -1166,13 +1183,12 @@ function AppContent() {
               <div className="flex items-center gap-3">
                 <Download size={17} className="text-forest-accent" />
                 <div className="text-left">
-                  <span className="block text-sm font-medium">添加到手机桌面</span>
-                  <span className="text-[10px] text-forest-muted">像 App 一样打开</span>
+                  <span className="block text-sm font-medium">添加到桌面</span>
+                  <span className="text-[10px] text-forest-muted">{reminderPreference === 'auto' ? '安装方法 · 提醒设置' : '安装方法 · 提醒已关闭'}</span>
                 </div>
               </div>
               <ChevronRight size={14} className="text-forest-muted transition-transform group-hover:translate-x-1" />
             </button>
-          )}
 
           <button
             type="button"
@@ -1260,8 +1276,8 @@ function AppContent() {
     return <SplashScreen onEnter={handleEnterApp} />;
   }
 
-  if (isAuthLoading) {
-    return <AuthRestoringScreen />;
+  if (isAuthLoading || !annotationSync.ready) {
+    return <StartupScreen />;
   }
 
   return (
@@ -1281,6 +1297,7 @@ function AppContent() {
           else closeSidebar();
         }}
         sidebarContent={sidebarContent}
+        onOpenInstallGuide={() => setIsInstallGuideOpen(true)}
       >
       <AnimatePresence>
         {showCloudLoadingNotice && (
@@ -1612,6 +1629,8 @@ function AppContent() {
         isOpen={isInstallGuideOpen}
         onClose={() => setIsInstallGuideOpen(false)}
         canAutoInstall={canAutoInstallPwa}
+        reminderPreference={reminderPreference}
+        onReminderPreferenceChange={setReminderPreference}
         onTryInstall={tryInstallFromGuide}
         onNotice={(message) => setSnackbar({ isOpen: true, message })}
       />
@@ -1789,6 +1808,7 @@ function AppContent() {
         {activeTab === 'add' && (
           <Suspense fallback={<SuspenseFallback />}>
             <AddTab
+              key={`${session?.uid || 'guest'}:${editingReading?.id || 'new'}`}
               onSubmit={handleAddReadingWithSnackbar}
               isLoading={isProcessing}
               isLoggedIn={!!session}
@@ -1802,6 +1822,7 @@ function AppContent() {
               initialData={editingReading}
               onCancel={() => {
                 const wasEditing = !!editingReading;
+                removeLocalStorageValue(`tarot_editing_reading_${session?.uid || 'guest'}`);
                 setEditingReading(null);
                 navigateToTab(wasEditing ? 'private' : 'home');
               }}

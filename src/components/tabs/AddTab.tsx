@@ -4,7 +4,7 @@ import { CardKeywordMemory, TarotReading, SpreadDefinition, TarotCardMetadata } 
 import { AddReadingForm } from '../AddReadingForm';
 
 interface AddTabProps {
-  onSubmit: (reading: any) => void;
+  onSubmit: (reading: any) => void | boolean | Promise<void | boolean>;
   isLoading: boolean;
   isLoggedIn: boolean;
   userId?: string;

@@ -1,8 +1,8 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { PublicTab } from './PublicTab';
-import { getPublicModerationSnapshot, getPublicReadings, reportPublicReading, updatePublicReadingModeration } from '../../lib/firebaseData';
+import { getPublicModerationSnapshot, getPublicReadings, reportPublicReading, updatePublicReadingModeration, getPublicReadingLike, setPublicReadingLike } from '../../lib/firebaseData';
 import type { PublicReadingReport, TarotReading } from '../../types';
 
 vi.mock('../../lib/firebaseData', () => ({
@@ -10,6 +10,8 @@ vi.mock('../../lib/firebaseData', () => ({
   getPublicModerationSnapshot: vi.fn(),
   reportPublicReading: vi.fn(),
   updatePublicReadingModeration: vi.fn(),
+  getPublicReadingLike: vi.fn(),
+  setPublicReadingLike: vi.fn(),
 }));
 
 const createReading = (overrides: Partial<TarotReading> = {}): TarotReading => ({
@@ -34,6 +36,108 @@ describe('PublicTab', () => {
     vi.mocked(getPublicModerationSnapshot).mockReset();
     vi.mocked(reportPublicReading).mockReset();
     vi.mocked(updatePublicReadingModeration).mockReset();
+    vi.mocked(getPublicReadingLike).mockReset().mockResolvedValue({ count: 0, liked: false });
+    vi.mocked(setPublicReadingLike).mockReset();
+  });
+
+  it.each([false, true])('opens the full public reading with moderator=%s without private fields or editing', async (isModerator) => {
+    vi.mocked(getPublicReadings).mockResolvedValueOnce([createReading({
+      question: '可以打开的长案例',
+      interpretation: { singleCard: '牌面的原始观察', combination: '完整综合解读\n第二段保留换行', summary: '完整总结' },
+      cardInterpretations: ['完整逐牌解读'], cardQuestions: ['公开牌面疑问'],
+      isForClient: true, clientName: '私人客户姓名', clientFeedback: '私人客户反馈',
+      userFeedback: '私人复盘', aiAnswer: '私人 AI 记录',
+      isAnonymous: true, authorName: '不该出现的真名',
+    })]);
+    render(<PublicTab readings={[]} cardMetadata={[]} onTagClick={vi.fn()} onAuthorClick={vi.fn()} onProcessAi={vi.fn()} isModerator={isModerator} currentUserId="viewer" />);
+    await userEvent.click(await screen.findByRole('button', { name: '查看手记：可以打开的长案例' }));
+    const dialog = screen.getByRole('dialog', { name: '可以打开的长案例' });
+    expect(within(dialog).getByText(/完整综合解读/)).toHaveTextContent('第二段保留换行');
+    expect(within(dialog).getByText('完整逐牌解读')).toBeInTheDocument();
+    expect(within(dialog).getByText('完整总结')).toBeInTheDocument();
+    expect(within(dialog).getByText(/公开牌面疑问/)).toBeInTheDocument();
+    for (const text of ['私人客户姓名', '私人客户反馈', '私人复盘', '私人 AI 记录', '不该出现的真名']) expect(within(dialog).queryByText(text, { exact: false })).not.toBeInTheDocument();
+    expect(within(dialog).queryByRole('button', { name: '编辑' })).not.toBeInTheDocument();
+    await userEvent.keyboard('{Escape}');
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '查看手记：可以打开的长案例' })).toHaveFocus();
+  });
+
+  it('opens card examples directly and keeps filtering behind its entry', async () => {
+    vi.mocked(getPublicReadings).mockResolvedValueOnce([createReading({ manualTags: ['日运'], cardInterpretations: ['详细牌例内容'] })]);
+    render(<PublicTab readings={[]} cardMetadata={[]} onTagClick={vi.fn()} onAuthorClick={vi.fn()} onProcessAi={vi.fn()} />);
+    await screen.findByText('缓存公开记录');
+    expect(screen.queryByRole('button', { name: '全部标签' })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: '收藏研习' }));
+    await userEvent.click(screen.getByRole('button', { name: '筛选手记' }));
+    const filter = screen.getByRole('dialog', { name: '筛选手记' });
+    await userEvent.click(within(filter).getByRole('button', { name: '收藏' }));
+    await userEvent.click(within(filter).getByRole('button', { name: '查看结果' }));
+    expect(screen.getByText('缓存公开记录')).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('tab', { name: '牌例' }));
+    await userEvent.click(screen.getByText('详细牌例内容'));
+    expect(screen.getByRole('dialog', { name: '缓存公开记录' })).toBeInTheDocument();
+  });
+
+  it('persists likes and supports cancelling without opening the reading', async () => {
+    vi.mocked(getPublicReadings).mockResolvedValueOnce([createReading()]);
+    vi.mocked(getPublicReadingLike).mockResolvedValue({ count: 3, liked: false });
+    vi.mocked(setPublicReadingLike).mockResolvedValueOnce({ count: 4, liked: true });
+    render(<PublicTab readings={[]} cardMetadata={[]} onTagClick={vi.fn()} onAuthorClick={vi.fn()} onProcessAi={vi.fn()} currentUserId="viewer" />);
+    await userEvent.click(await screen.findByRole('button', { name: '点赞' }));
+    expect(await screen.findByRole('button', { name: '取消点赞' })).toHaveAttribute('aria-pressed', 'true');
+    expect(setPublicReadingLike).toHaveBeenCalledWith('public-reading-1', 'viewer', true);
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    vi.mocked(getPublicReadingLike).mockResolvedValue({ count: 4, liked: true });
+    vi.mocked(setPublicReadingLike).mockResolvedValueOnce({ count: 3, liked: false });
+    await userEvent.click(screen.getByRole('button', { name: '取消点赞' }));
+    expect(await screen.findByRole('button', { name: '点赞' })).toHaveAttribute('aria-pressed', 'false');
+    expect(setPublicReadingLike).toHaveBeenLastCalledWith('public-reading-1', 'viewer', false);
+  });
+
+  it('does not show a successful like when saving fails', async () => {
+    const notice = vi.fn();
+    vi.mocked(getPublicReadings).mockResolvedValueOnce([createReading()]);
+    vi.mocked(setPublicReadingLike).mockRejectedValueOnce(new Error('offline'));
+    render(<PublicTab readings={[]} cardMetadata={[]} onTagClick={vi.fn()} onAuthorClick={vi.fn()} onProcessAi={vi.fn()} currentUserId="viewer" onNotice={notice} />);
+    await userEvent.click(await screen.findByRole('button', { name: '点赞' }));
+    await waitFor(() => expect(notice).toHaveBeenCalledWith('点赞暂时未能保存，请稍后再试。'));
+    expect(screen.getByRole('button', { name: '点赞' })).toHaveAttribute('aria-pressed', 'false');
+  });
+
+  it('asks guests to log in before writing a like', async () => {
+    const login = vi.fn();
+    vi.mocked(getPublicReadings).mockResolvedValueOnce([createReading()]);
+    render(<PublicTab readings={[]} cardMetadata={[]} onTagClick={vi.fn()} onAuthorClick={vi.fn()} onProcessAi={vi.fn()} onLoginRequest={login} />);
+    await userEvent.click(await screen.findByRole('button', { name: '点赞' }));
+    expect(login).toHaveBeenCalledTimes(1);
+    expect(setPublicReadingLike).not.toHaveBeenCalled();
+  });
+
+  it('keeps the bookmark unchanged when local storage is full', async () => {
+    const notice = vi.fn();
+    vi.mocked(getPublicReadings).mockResolvedValueOnce([createReading()]);
+    render(<PublicTab readings={[]} cardMetadata={[]} onTagClick={vi.fn()} onAuthorClick={vi.fn()} onProcessAi={vi.fn()} onNotice={notice} />);
+    const bookmark = await screen.findByRole('button', { name: '收藏研习' });
+    const original = Storage.prototype.setItem;
+    const storage = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(function (key, value) {
+      if (key === 'tarot_public_reading_collection_v1') throw new Error('quota exceeded');
+      return original.call(this, key, value);
+    });
+    try {
+      await userEvent.click(bookmark);
+      expect(bookmark).toHaveAttribute('aria-pressed', 'false');
+      expect(notice).toHaveBeenCalledWith('收藏未能保存在本机，请稍后再试。');
+      expect(localStorage.getItem('tarot_public_reading_collection_v1')).toBeNull();
+    } finally { storage.mockRestore(); }
+  });
+
+  it('does not mix built-in practice examples into real public shares', async () => {
+    vi.mocked(getPublicReadings).mockResolvedValueOnce([createReading(), createReading({ id: 'cloud-example', question: '云端练习示例', isExample: true })]);
+    render(<PublicTab readings={[createReading({ id: 'local-example', question: '本机练习示例', isExample: true })]} cardMetadata={[]} onTagClick={vi.fn()} onAuthorClick={vi.fn()} onProcessAi={vi.fn()} />);
+    await screen.findByRole('button', { name: '查看手记：缓存公开记录' });
+    expect(screen.queryByText('本机练习示例')).not.toBeInTheDocument();
+    expect(screen.queryByText('云端练习示例')).not.toBeInTheDocument();
   });
 
   it('keeps cached public readings visible when cloud loading fails', async () => {
@@ -143,6 +247,7 @@ describe('PublicTab', () => {
 
     expect(screen.queryByText('普通账号')).not.toBeInTheDocument();
 
+    await userEvent.click(await screen.findByRole('button', { name: '更多案例操作' }));
     await userEvent.click(await screen.findByRole('button', { name: '举报' }));
     await userEvent.click(screen.getByRole('button', { name: '隐私泄露' }));
     await userEvent.type(screen.getByPlaceholderText('哪里不合适？一句话就够。'), '里面有联系方式');
@@ -187,8 +292,8 @@ describe('PublicTab', () => {
       />,
     );
 
-    expect(screen.getByText('作者账号')).toBeInTheDocument();
-    await userEvent.click(screen.getByRole('tab', { name: /管理/ }));
+    expect(screen.queryByText('作者账号')).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: '管理' }));
 
     expect(await screen.findByText('需要处理的公开手记')).toBeInTheDocument();
     expect(screen.getByText('广告骚扰')).toBeInTheDocument();
@@ -231,7 +336,7 @@ describe('PublicTab', () => {
       />,
     );
 
-    expect(screen.getByRole('tab', { name: /管理/ })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByRole('button', { name: '管理' })).toHaveAttribute('aria-pressed', 'true');
     expect(await screen.findByText('侧边栏直达管理')).toBeInTheDocument();
     expect(screen.getByText('隐私泄露')).toBeInTheDocument();
   });
@@ -251,7 +356,7 @@ describe('PublicTab', () => {
     };
     const { rerender } = render(<PublicTab {...props} requestedView="moderation" viewRequestKey={1} />);
 
-    expect(screen.getByRole('tab', { name: /管理/ })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByRole('button', { name: '管理' })).toHaveAttribute('aria-pressed', 'true');
 
     rerender(<PublicTab {...props} requestedView="readings" viewRequestKey={2} />);
 

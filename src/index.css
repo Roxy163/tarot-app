@@ -256,3 +256,8 @@
   opacity: 0.055;
   pointer-events: none;
 }
+
+/* Keep the edge affordance out of dialogs and their focus order. */
+body:has([aria-modal="true"]:not(#sidebar-menu)) :is([data-sidebar-handle], [data-sidebar-edge]) {
+  visibility: hidden;
+}

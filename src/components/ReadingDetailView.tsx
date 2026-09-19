@@ -1,3 +1,4 @@
+import { scrollFocusedFieldIntoView } from '../lib/mobileFocus';
 import React from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { HelpCircle, RotateCcw, Plus, FileText } from 'lucide-react';
@@ -63,14 +64,6 @@ export const ReadingDetailView: React.FC<ReadingDetailViewProps> = ({
     cardCorrespondence.planet || cardCorrespondence.zodiac,
   ].filter(Boolean).join(' / ');
   const cardKeywordHint = (officialAnnotation?.keywords || currentMetadata?.keywords || []).slice(0, 2).join(' / ');
-  const scrollFocusedFieldIntoView = (event: React.FocusEvent<HTMLElement>) => {
-    if (typeof window === 'undefined' || window.innerWidth >= 768) return;
-    const target = event.currentTarget;
-
-    window.setTimeout(() => {
-      target.scrollIntoView({ block: 'center', inline: 'nearest', behavior: 'smooth' });
-    }, 120);
-  };
 
   const updateActiveInterpretation = (value: string) => {
     const newInterps = [...cardInterpretations];
@@ -142,7 +135,7 @@ export const ReadingDetailView: React.FC<ReadingDetailViewProps> = ({
                 <button
                   type="button"
                   onClick={(e) => onToggleReverse(activeSlotIndex, e)}
-                  className="flex min-h-10 items-center justify-center gap-1.5 rounded-xl bg-forest-accent px-2.5 py-2 text-[11px] font-bold text-white shadow-sm transition-all hover:bg-forest-accent/90 active:scale-95 sm:min-h-11 sm:px-3 sm:text-xs"
+                  className="flex min-h-11 items-center justify-center gap-1.5 rounded-xl bg-forest-accent px-2.5 py-2 text-[11px] font-bold text-white shadow-sm transition-all hover:bg-forest-accent/90 active:scale-95 sm:px-3 sm:text-xs"
                   aria-label={`切换为${currentSlot.isReversed ? '正位' : '逆位'}`}
                 >
                   <RotateCcw size={14} />
@@ -151,7 +144,7 @@ export const ReadingDetailView: React.FC<ReadingDetailViewProps> = ({
                 <button
                   type="button"
                   onClick={() => onSetShowPicker(true)}
-                  className="flex min-h-10 items-center justify-center gap-1.5 rounded-xl border border-forest-accent/20 bg-white px-2.5 py-2 text-[11px] font-bold text-forest-accent shadow-sm transition-all hover:bg-forest-accent/5 active:scale-95 sm:min-h-11 sm:px-3 sm:text-xs"
+                  className="flex min-h-11 items-center justify-center gap-1.5 rounded-xl border border-forest-accent/20 bg-white px-2.5 py-2 text-[11px] font-bold text-forest-accent shadow-sm transition-all hover:bg-forest-accent/5 active:scale-95 sm:px-3 sm:text-xs"
                   aria-label="重新选牌"
                 >
                   <Plus size={14} />
@@ -189,7 +182,7 @@ export const ReadingDetailView: React.FC<ReadingDetailViewProps> = ({
                       key={i}
                       type="button"
                       onClick={() => onSetActiveSlotIndex(i)}
-                      className={`flex min-h-10 items-center gap-1.5 rounded-lg px-3 py-1.5 text-[10px] font-bold whitespace-nowrap transition-all ${activeSlotIndex === i ? 'bg-forest-accent text-white shadow-sm' : 'text-forest-muted hover:bg-white hover:text-forest-accent'}`}
+                      className={`flex min-h-11 items-center gap-1.5 rounded-lg px-3 py-1.5 text-[10px] font-bold whitespace-nowrap transition-all ${activeSlotIndex === i ? 'bg-forest-accent text-white shadow-sm' : 'text-forest-muted hover:bg-white hover:text-forest-accent'}`}
                     >
                       <span className="opacity-60">{i + 1}.</span>
                       {slot.label || `位置 ${i + 1}`}
@@ -210,7 +203,8 @@ export const ReadingDetailView: React.FC<ReadingDetailViewProps> = ({
                 aria-invalid={hasInterpretationError}
                 minRows={1.5}
                 maxRows={9}
-                className={`w-full rounded-xl border px-3 py-2.5 text-sm shadow-inner transition-all focus:ring-2 sm:px-4 sm:py-3 ${
+                aria-label={`灵见注疏：${currentSlotLabel}`}
+                className={`w-full rounded-xl border px-3 py-2.5 text-base leading-relaxed shadow-inner transition-all focus:ring-2 sm:px-4 sm:py-3 sm:text-sm ${
                   hasInterpretationError
                     ? 'border-forest-pink/35 bg-forest-pink/6 ring-2 ring-forest-pink/10 focus:ring-forest-pink/15'
                     : 'border-forest-accent/10 bg-white focus:ring-forest-accent/20'
@@ -235,7 +229,7 @@ export const ReadingDetailView: React.FC<ReadingDetailViewProps> = ({
               <AutoResizeTextarea
                 minRows={1.5}
                 maxRows={6}
-                className="w-full rounded-xl border border-forest-accent/8 bg-white/55 px-3 py-2 text-xs leading-relaxed text-forest-ink transition-all placeholder:text-forest-muted/70 focus:ring-2 focus:ring-forest-accent/15 sm:text-sm"
+                className="w-full rounded-xl border border-forest-accent/8 bg-white/55 px-3 py-2 text-base leading-relaxed text-forest-ink transition-all placeholder:text-forest-muted/70 focus:ring-2 focus:ring-forest-accent/15 sm:text-sm"
                 aria-label={`牌面疑问：${currentSlotLabel}`}
                 placeholder={`哪里还没想通？先写给“${currentSlotLabel}”留着。`}
                 value={cardQuestions[activeSlotIndex] || ''}

@@ -14,6 +14,10 @@ import {
 import { getCardImageUrl } from '../constants';
 import type { QuizMemoryAttempt, QuizMemoryEntry, TarotCardMetadata, TarotReading } from '../types';
 import { cardAnnotationService } from '../services/cardAnnotationService';
+import { useAnnotationRevision } from '../hooks/useAnnotationSync';
+import { toLocalReadingDate } from '../lib/readingDate';
+import { useModalFocus } from '../hooks/useModalFocus';
+import { useBodyScrollLock } from '../hooks/useBodyScrollLock';
 import {
   buildQuizTrainingCards,
   createQuizQuestion,
@@ -121,8 +125,8 @@ const formatQuizTime = (value?: string) => {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return '刚刚';
 
-  const today = new Date().toISOString().slice(0, 10);
-  const day = date.toISOString().slice(0, 10);
+  const today = toLocalReadingDate();
+  const day = toLocalReadingDate(date);
   const time = date.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', hour12: false });
   if (day === today) return `今天 ${time}`;
   return date.toLocaleDateString('zh-CN', { month: '2-digit', day: '2-digit' });
@@ -148,32 +152,18 @@ export const StudyPavilionModules: React.FC<StudyPavilionModulesProps> = ({
   const [recentQuizAttempts, setRecentQuizAttempts] = useState<RecentQuizAttempt[]>([]);
   const lastCorrectOptionIndexRef = useRef<number | null>(null);
   const correctOptionSlotCountsRef = useRef([0, 0, 0, 0]);
+  const archiveDialogRef = useRef<HTMLDivElement>(null);
+  useBodyScrollLock(showArchive);
+  useModalFocus(showArchive, archiveDialogRef, () => setShowArchive(false));
 
   useEffect(() => {
-    if (!showArchive) {
-      setShowArchiveSettings(false);
-      return undefined;
-    }
-
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        setShowArchive(false);
-      }
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-    return () => {
-      document.body.style.overflow = previousOverflow;
-      window.removeEventListener('keydown', handleKeyDown);
-    };
+    if (!showArchive) setShowArchiveSettings(false);
   }, [showArchive]);
 
+  const annotationRevision = useAnnotationRevision();
   const quizCards = useMemo(
     () => buildQuizTrainingCards(cardMetadata, cardAnnotationService.getAllMergedAnnotations()),
-    [annotationRefreshKey, cardMetadata],
+    [annotationRefreshKey, cardMetadata, annotationRevision],
   );
 
   const cardsById = useMemo(
@@ -192,7 +182,7 @@ export const StudyPavilionModules: React.FC<StudyPavilionModulesProps> = ({
     [quizMemory, quizCards],
   );
   const todayQuizCount = useMemo(() => {
-    const today = new Date().toISOString().slice(0, 10);
+    const today = toLocalReadingDate();
     return quizMemory.filter(entry => entry.lastPracticedAt?.startsWith(today)).length;
   }, [quizMemory]);
   const totalPracticeCount = useMemo(
@@ -426,6 +416,7 @@ export const StudyPavilionModules: React.FC<StudyPavilionModulesProps> = ({
 
   const handleSaveKeywords = () => {
     if (!questionCard || !keywordInput.trim()) return;
+    try {
 
     const merged = cardAnnotationService.getMergedAnnotation(questionCard.id);
     const nextKeywords = mergeKeywordInput(merged.keywords, keywordInput);
@@ -438,6 +429,7 @@ export const StudyPavilionModules: React.FC<StudyPavilionModulesProps> = ({
     setKeywordInput('');
     setKeywordStatus(addedCount > 0 ? '已存入牌义注疏。' : '这些关键词已经在注疏里了。');
     trackEvent('quiz_keywords_saved', { added_count: Math.max(addedCount, 0) });
+    } catch { setKeywordStatus('本机保存失败，关键词已保留，请重试。'); }
   };
 
   const renderQuizHeaderActions = () => {
@@ -554,38 +546,13 @@ export const StudyPavilionModules: React.FC<StudyPavilionModulesProps> = ({
         </button>
       </div>
 
-      <div className="relative mt-1.5 flex items-center gap-2">
-          <div
-            role="group"
-            aria-label="小考题型"
-            className="inline-flex h-11 w-fit max-w-full shrink-0 rounded-full border border-forest-accent/8 bg-white/34 p-0.5"
-          >
-            {QUIZ_MODE_OPTIONS.map(option => (
-              <button
-                key={option.value}
-                type="button"
-                onClick={() => updateQuizMode(option.value)}
-                aria-pressed={quizMode === option.value}
-                className={`flex h-full min-w-[4.8rem] items-center justify-center whitespace-nowrap rounded-full px-2.5 text-xs font-medium transition-all active:scale-[0.98] ${
-                  quizMode === option.value
-                    ? 'bg-forest-accent/90 text-white shadow-sm'
-                    : 'text-forest-muted hover:bg-white/58 hover:text-forest-accent'
-                }`}
-              >
-                {option.label}
-              </button>
-            ))}
-          </div>
-          <p className="hidden min-w-0 truncate text-[10px] text-forest-muted min-[430px]:block">
-            {hasActiveFilters ? activeFilterLabels.join(' · ') : '默认全牌库'}
-          </p>
-      </div>
-
       {typeof document !== 'undefined' && createPortal(
         <AnimatePresence initial={false}>
         {showArchive && (
           <motion.div
             role="dialog"
+            ref={archiveDialogRef}
+            tabIndex={-1}
             aria-modal="true"
             aria-labelledby="quiz-archive-title"
             initial={{ opacity: 0 }}
@@ -791,6 +758,15 @@ export const StudyPavilionModules: React.FC<StudyPavilionModulesProps> = ({
                     className="overflow-hidden border-t border-forest-accent/6"
                   >
                     <div className="grid gap-1.5 p-2">
+                      <div role="group" aria-label="小考题型" className="flex gap-2">
+                        {QUIZ_MODE_OPTIONS.map(option => (
+                          <button key={option.value} type="button" aria-pressed={quizMode === option.value}
+                            onClick={() => updateQuizMode(option.value)}
+                            className={`min-h-11 flex-1 rounded-xl px-3 text-sm ${quizMode === option.value ? 'bg-forest-accent text-white' : 'bg-white/50 text-forest-muted'}`}>
+                            {option.label}
+                          </button>
+                        ))}
+                      </div>
                       {hasActiveFilters && (
                         <div className="flex justify-end">
                           <button

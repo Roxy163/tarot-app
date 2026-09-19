@@ -111,7 +111,7 @@ export const CloudSyncPanel: React.FC<CloudSyncPanelProps> = ({
         <div className="grid grid-cols-2 gap-2 text-center">
           <div className="rounded-lg border border-forest-accent/7 bg-white/34 px-2 py-2">
             <p className="font-serif text-lg font-semibold text-forest-accent">{readingCount}</p>
-            <p className="text-[9px] font-medium text-forest-muted">本机记录</p>
+            <p className="text-[9px] font-medium text-forest-muted">本机手记</p>
           </div>
           <div className={`rounded-lg border px-2 py-2 ${
             isGuest
@@ -121,7 +121,7 @@ export const CloudSyncPanel: React.FC<CloudSyncPanelProps> = ({
             <p className={`${isGuest ? 'font-sans text-sm' : 'font-serif text-lg'} font-semibold text-forest-accent`}>
               {cloudReadingsCountText}
             </p>
-            <p className="text-[9px] font-medium text-forest-muted">{isGuest ? '云端记录' : '云端记录'}</p>
+            <p className="text-[9px] font-medium text-forest-muted">云端手记</p>
           </div>
         </div>
         <p className="text-[10px] leading-relaxed text-forest-muted">

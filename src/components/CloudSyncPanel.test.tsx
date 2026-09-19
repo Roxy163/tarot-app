@@ -73,8 +73,8 @@ describe('CloudSyncPanel', () => {
     });
 
     expect(screen.getByText('云端已同步')).toBeInTheDocument();
-    expect(screen.getByText('本机记录')).toBeInTheDocument();
-    expect(screen.getByText('云端记录')).toBeInTheDocument();
+    expect(screen.getByText('本机手记')).toBeInTheDocument();
+    expect(screen.getByText('云端手记')).toBeInTheDocument();
     expect(screen.getByText('5 条')).toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: '重新同步' }));

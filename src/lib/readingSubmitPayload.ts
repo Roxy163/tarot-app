@@ -1,4 +1,5 @@
-import { ReadingFormData, ReadingSlotData, ReadingStatus } from '../types';
+import { ReadingFormData, ReadingSlotData, ReadingStatus, ReadingEditorFields } from '../types';
+import { serializeReadingDate } from './readingDate';
 
 export const EMPTY_READING_NOTICE = '还差一点：请至少录入一张牌。';
 export const REQUIRED_QUESTION_NOTICE = '还差一点：先写下这次想问的问题。';
@@ -32,14 +33,7 @@ export const parseReadingManualTags = (value?: string | string[]) => {
   ));
 };
 
-export type ReadingFormState = Omit<ReadingFormData, 'interpretation' | 'cards' | 'cardInterpretations' | 'cardQuestions' | 'slotLabels' | 'slotPositions' | 'rotatedSlots'> & {
-  singleCard: string;
-  combination: string;
-  numerologyInfluence?: string;
-  astrologyInfluence?: string;
-  houseInfluence?: string;
-  elementInfluence?: string;
-};
+export type ReadingFormState = ReadingEditorFields;
 
 export type ReadingSubmitPayloadResult =
   | { ok: true; payload: Partial<ReadingFormData> }
@@ -149,12 +143,14 @@ export const buildReadingSubmitPayload = ({
   cardInterpretations,
   cardQuestions = [],
   mode = 'auto',
+  originalReadingDate,
 }: {
   formData: ReadingFormState;
   cardSlots: ReadingSlotData[];
   cardInterpretations: string[];
   cardQuestions?: string[];
   mode?: ReadingSubmitMode;
+  originalReadingDate?: string;
 }): ReadingSubmitPayloadResult => {
   const {
     singleCard,
@@ -194,13 +190,17 @@ export const buildReadingSubmitPayload = ({
   const submittedAiAnswer = aiAnswer?.trim() || '';
   const submittedAiAnswerMode = aiAnswerMode === 'consultant' ? 'consultant' : 'mentor';
 
+  let submittedDate: string;
+  try { submittedDate = serializeReadingDate(readingDate, originalReadingDate); }
+  catch { return { ok: false, notice: '请选择有效的占卜日期。' }; }
+
   return {
     ok: true,
     payload: {
       ...rest,
       isPublic: isAnonymousShare ? true : Boolean(rest.isPublic),
       isAnonymous: isAnonymousShare,
-      readingDate: new Date(readingDate).toISOString(),
+      readingDate: submittedDate,
       interpretation: {
         singleCard: finalSingleCard,
         combination: finalCombination,

@@ -8,19 +8,25 @@ import { TarotCardImage } from './TarotCardImage';
 import { MysticWatermark } from './MysticWatermark';
 import { formatReadingDateTime } from '../lib/dateFormat';
 import { isReadingIncomplete } from '../lib/readingCompletion';
+import { useModalFocus } from '../hooks/useModalFocus';
 
 interface ReadingDetailModalProps {
   reading: TarotReading | null;
   onClose: () => void;
-  onEdit: (reading: TarotReading) => void;
+  onEdit?: (reading: TarotReading) => void;
+  isPublicView?: boolean;
 }
 
 export const ReadingDetailModal: React.FC<ReadingDetailModalProps> = ({
   reading,
   onClose,
   onEdit,
+  isPublicView = false,
 }) => {
   useBodyScrollLock(Boolean(reading));
+  const dialogRef = React.useRef<HTMLDivElement>(null);
+  const titleId = React.useId();
+  useModalFocus(Boolean(reading), dialogRef, onClose);
 
   if (!reading) return null;
 
@@ -30,8 +36,8 @@ export const ReadingDetailModal: React.FC<ReadingDetailModalProps> = ({
     reading.interpretation?.singleCard?.trim() ||
     ''
   );
-  const feedbackText = reading.userFeedback?.trim();
-  const aiReferenceText = reading.aiAnswer?.trim();
+  const feedbackText = !isPublicView && reading.userFeedback?.trim();
+  const aiReferenceText = !isPublicView && reading.aiAnswer?.trim();
   const aiReferenceModeLabel = reading.aiAnswerMode === 'consultant' ? '咨询解牌' : '导师复盘';
   const clientDisplayName = reading.clientName?.trim() || '未命名客户';
   const displayDate = formatReadingDateTime(reading.readingDate || reading.date);
@@ -82,12 +88,17 @@ export const ReadingDetailModal: React.FC<ReadingDetailModalProps> = ({
         />
         <motion.div
           initial={{ opacity: 0, y: 18, scale: 0.98 }}
+          ref={dialogRef}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby={titleId}
+          tabIndex={-1}
           animate={{ opacity: 1, y: 0, scale: 1 }}
           exit={{ opacity: 0, y: 18, scale: 0.98 }}
-          className="relative w-full max-w-5xl max-h-[92vh] overflow-hidden rounded-[1.5rem] border border-forest-accent/7 bg-white/76 shadow-[0_22px_70px_-56px_rgba(62,58,54,0.66)] backdrop-blur-md"
+          className="relative flex max-h-[92dvh] w-full max-w-5xl flex-col overflow-hidden rounded-[1.5rem] border border-forest-accent/7 bg-white/76 shadow-[0_22px_70px_-56px_rgba(62,58,54,0.66)] backdrop-blur-md"
         >
           <MysticWatermark variant="book" className="-right-8 -top-10 h-44 w-44 text-forest-accent opacity-[0.035]" />
-          <div className="sticky top-0 z-10 flex items-start justify-between gap-3 border-b border-forest-accent/7 bg-white/64 px-3.5 py-3 backdrop-blur-md sm:px-5">
+          <div className="sticky top-0 z-10 flex shrink-0 items-start justify-between gap-3 border-b border-forest-accent/7 bg-white/64 px-3.5 py-3 backdrop-blur-md sm:px-5">
             <div className="min-w-0 space-y-1">
               <div className="flex flex-wrap items-center gap-2">
                 <span className="inline-flex items-center gap-1 rounded-full bg-forest-accent/8 px-2 py-0.5 text-[10px] font-semibold text-forest-accent">
@@ -111,32 +122,33 @@ export const ReadingDetailModal: React.FC<ReadingDetailModalProps> = ({
                     AI参照
                   </span>
                 )}
-                {reading.isForClient && (
+                {!isPublicView && reading.isForClient && (
                   <span className="rounded-full bg-amber-100/75 px-2 py-0.5 text-[10px] font-semibold text-amber-700">
                     客户记录
                   </span>
                 )}
               </div>
-              <h2 className="line-clamp-2 text-base font-semibold text-forest-ink sm:text-xl">{reading.question}</h2>
+              <h2 id={isPublicView ? undefined : titleId} className="line-clamp-2 font-serif text-base font-bold text-forest-ink sm:text-xl">{isPublicView ? '公开手记' : reading.question}</h2>
               <p className="text-xs text-forest-muted">
                 {displayDate} · {reading.spread} · {cardCountLabel}
-                {reading.isForClient ? ` · 客户：${clientDisplayName}` : ' · 给自己记录'}
+                {isPublicView ? ` · ${reading.isAnonymous ? '匿名研习者' : (reading.authorName || '研习者')}` : reading.isForClient ? ` · 客户：${clientDisplayName}` : ' · 给自己记录'}
               </p>
             </div>
             <div className="flex items-center gap-1 shrink-0">
-              <button
+              {onEdit && !isPublicView && <button
                 type="button"
                 onClick={() => onEdit(reading)}
-                className="flex min-h-10 items-center gap-1.5 rounded-xl bg-forest-accent/88 px-3 text-xs font-medium text-white transition-colors hover:bg-forest-accent"
+                className="flex min-h-11 items-center gap-1.5 rounded-xl bg-forest-accent/88 px-3 text-xs font-medium text-white transition-colors hover:bg-forest-accent"
                 title="切换到编辑模式"
               >
                 <PencilLine size={14} />
                 编辑
-              </button>
+              </button>}
               <button
                 type="button"
                 onClick={onClose}
-                className="flex h-10 w-10 items-center justify-center rounded-xl border border-forest-accent/7 bg-white/30 text-forest-muted transition-colors hover:bg-white/56 hover:text-forest-accent"
+                aria-label="关闭手记详情"
+                className="flex h-11 w-11 items-center justify-center rounded-xl border border-forest-accent/7 bg-white/30 text-forest-muted transition-colors hover:bg-white/56 hover:text-forest-accent"
                 title="关闭"
               >
                 <X size={18} />
@@ -144,8 +156,11 @@ export const ReadingDetailModal: React.FC<ReadingDetailModalProps> = ({
             </div>
           </div>
 
-          <div className="max-h-[calc(92vh-76px)] space-y-3.5 overflow-y-auto overscroll-contain p-3 sm:p-4">
-            {reading.isForClient && (
+          <div className="min-h-0 flex-1 space-y-3.5 overflow-y-auto overscroll-contain p-3 sm:p-4">
+            {isPublicView && (
+              <h2 id={titleId} className="whitespace-pre-wrap break-words px-1 font-serif text-lg font-bold leading-relaxed text-forest-ink">{reading.question}</h2>
+            )}
+            {!isPublicView && reading.isForClient && (
               <section className="space-y-2 rounded-2xl border border-amber-100/60 bg-amber-50/48 p-3.5">
                 <h3 className="text-xs font-medium uppercase tracking-wider text-amber-700">客户档案</h3>
                 <p className="text-sm text-forest-ink">
@@ -159,7 +174,7 @@ export const ReadingDetailModal: React.FC<ReadingDetailModalProps> = ({
               </section>
             )}
 
-              <section className="rounded-[1.25rem] border border-forest-accent/7 bg-white/24 p-3">
+            {!isPublicView && <section className="rounded-[1.25rem] border border-forest-accent/7 bg-white/24 p-3">
               <div className="mb-3 flex items-center justify-between gap-3">
                 <div>
                   <p className="text-[10px] font-medium uppercase tracking-[0.18em] text-forest-accent">学习闭环</p>
@@ -184,7 +199,7 @@ export const ReadingDetailModal: React.FC<ReadingDetailModalProps> = ({
                   </div>
                 ))}
               </div>
-            </section>
+            </section>}
 
             {overviewText && (
               <section className="space-y-2 rounded-2xl border border-forest-accent/7 bg-white/24 p-3.5">
@@ -246,6 +261,13 @@ export const ReadingDetailModal: React.FC<ReadingDetailModalProps> = ({
                 })}
               </div>
             </section>
+
+            {cardRows.length > 1 && reading.interpretation?.singleCard?.trim() && reading.interpretation.singleCard.trim() !== overviewText && (
+              <section className="space-y-2 rounded-2xl border border-forest-accent/7 bg-white/24 p-3.5">
+                <h3 className="text-xs font-medium text-forest-accent">牌面解读</h3>
+                <p className="whitespace-pre-wrap text-sm leading-relaxed text-forest-ink">{reading.interpretation.singleCard}</p>
+              </section>
+            )}
 
             {reading.interpretation?.summary?.trim() && reading.interpretation.summary.trim() !== overviewText && (
               <section className="space-y-2 rounded-2xl border border-forest-accent/7 bg-white/24 p-3.5">

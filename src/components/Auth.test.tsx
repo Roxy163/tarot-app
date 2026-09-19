@@ -44,7 +44,8 @@ describe('Auth', () => {
       signIn: vi.fn().mockRejectedValue({ code: 'auth/network-request-failed' }),
     });
 
-    render(<Auth />);
+    const onClose = vi.fn();
+    render(<Auth onClose={onClose} />);
 
     await user.type(screen.getByPlaceholderText('example@email.com'), 'roxy@example.com');
     await user.type(screen.getByPlaceholderText('至少6位字符'), 'secret123');
@@ -53,8 +54,10 @@ describe('Auth', () => {
     expect(await screen.findByRole('alert')).toBeInTheDocument();
     expect(screen.getByText('网络没有连上认证服务')).toBeInTheDocument();
     expect(screen.getByText('账号和本机记录都不会因此清空。', { exact: false })).toBeInTheDocument();
-    expect(screen.getByText('如果手机端失败、电脑端正常，优先检查手机浏览器的网络代理。')).toBeInTheDocument();
+    expect(screen.getByText('可以先返回研习阁，在本机记录，无需等待登录。')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '网络好了再试' })).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: '先不登录，开始记录' }));
+    expect(onClose).toHaveBeenCalledOnce();
   });
 
   it('opens password reset from wrong password recovery action', async () => {

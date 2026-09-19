@@ -75,8 +75,7 @@ describe('StudyPavilionModules', () => {
     render(<Harness />);
 
     const quizCard = screen.getByTestId('card-quiz-card');
-    expect(within(quizCard).getByRole('button', { name: /看牌对应/ })).toBeInTheDocument();
-    expect(within(quizCard).getByRole('button', { name: /文字找牌/ })).toBeInTheDocument();
+    expect(within(quizCard).queryByRole('button', { name: /文字找牌/ })).not.toBeInTheDocument();
     expect(within(quizCard).queryByText('专项设置')).not.toBeInTheDocument();
 
     await user.click(within(quizCard).getByTestId('quiz-option-answer-水'));
@@ -139,14 +138,18 @@ describe('StudyPavilionModules', () => {
     expect(within(archiveDialog).getAllByText('愚者').length).toBeGreaterThan(0);
   });
 
-  it('switches text-to-card questions from the lightweight mode switch', async () => {
+  it('keeps text-to-card mode in the archive settings', async () => {
     const user = userEvent.setup();
     render(<Harness />);
 
     const quizCard = screen.getByTestId('card-quiz-card');
     expect(within(quizCard).queryByText('这段含义，更接近哪张牌？')).not.toBeInTheDocument();
 
-    await user.click(within(quizCard).getByRole('button', { name: /文字找牌/ }));
+    await user.click(within(quizCard).getByRole('button', { name: '档案' }));
+    const dialog = screen.getByRole('dialog', { name: /小考档案/ });
+    await user.click(within(dialog).getByRole('button', { name: /专项设置/ }));
+    await user.click(within(dialog).getByRole('button', { name: '文字找牌' }));
+    await user.click(within(dialog).getByRole('button', { name: '关闭小考档案' }));
 
     expect(await within(quizCard).findByText('读含义，找牌面')).toBeInTheDocument();
     expect(within(quizCard).getByText('这段含义，更接近哪张牌？')).toBeInTheDocument();

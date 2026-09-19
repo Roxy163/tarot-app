@@ -1,3 +1,4 @@
+import { downloadBlobFile, downloadTextFile } from '../../lib/downloadFile';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { motion } from 'motion/react';
 import {
@@ -42,6 +43,8 @@ import {
 import { isReadingIncomplete } from '../../lib/readingCompletion';
 import { trackEvent } from '../../lib/analytics';
 import type { ReadingArchiveIndexFilter } from '../../lib/readingArchiveIndex';
+import { useModalFocus } from '../../hooks/useModalFocus';
+import { useBodyScrollLock } from '../../hooks/useBodyScrollLock';
 
 const getReadingSortTime = (reading: TarotReading) => (
   new Date(reading.updatedAt || reading.readingDate || reading.date || 0).getTime()
@@ -109,6 +112,7 @@ export const PrivateTab: React.FC<PrivateTabProps> = ({
   const [selectedReadingIds, setSelectedReadingIds] = useState<string[]>([]);
   const filterMenuRef = useRef<HTMLDivElement | null>(null);
   const exportMenuRef = useRef<HTMLDivElement | null>(null);
+  const indexDialogRef = useRef<HTMLElement>(null);
   const longPressTimerRef = useRef<number | null>(null);
   const hasRealReadings = useMemo(() => readings.some(reading => !reading.isExample), [readings]);
   const archiveIndex = useMemo(() => buildReadingArchiveIndex(readings), [readings]);
@@ -198,6 +202,8 @@ export const PrivateTab: React.FC<PrivateTabProps> = ({
   const closeFilterMenu = useCallback(() => setIsReviewFilterOpen(false), []);
   const closeExportMenu = useCallback(() => setIsExportMenuOpen(false), []);
   const closeIndexPanel = useCallback(() => setIsIndexOpen(false), []);
+  useModalFocus(isIndexOpen, indexDialogRef, closeIndexPanel);
+  useBodyScrollLock(isIndexOpen);
   useClickOutside(filterMenuRef, closeFilterMenu, isReviewFilterOpen);
   useClickOutside(exportMenuRef, closeExportMenu, isExportMenuOpen);
 
@@ -217,33 +223,6 @@ export const PrivateTab: React.FC<PrivateTabProps> = ({
   const getReviewFileBaseName = () => (
     `${getSafeFileNamePart(ownerName)}-典籍复盘-${new Date().toISOString().split('T')[0]}`
   );
-
-  const downloadTextFile = (filename: string, content: string, type: string) => {
-    if (typeof URL === 'undefined' || typeof URL.createObjectURL !== 'function') return;
-
-    const blob = new Blob([content], { type });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = filename;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
-  };
-
-  const downloadBlobFile = (filename: string, blob: Blob) => {
-    if (typeof URL === 'undefined' || typeof URL.createObjectURL !== 'function') return;
-
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = filename;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
-  };
 
   const handleExportPdf = () => {
     if (!canExport) return;
@@ -442,20 +421,22 @@ export const PrivateTab: React.FC<PrivateTabProps> = ({
         </div>
       </div>
 
-      <div className="flex flex-nowrap items-center gap-1.5 sm:gap-2">
-        <div className="relative group min-w-0 flex-1 basis-0">
+      <div className="flex flex-wrap items-center gap-1.5 sm:flex-nowrap sm:gap-2">
+        <div className="relative group min-w-0 basis-full sm:flex-1 sm:basis-0">
           <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-forest-muted group-focus-within:text-forest-accent transition-colors sm:left-4" size={16} />
           <input 
             type="text" 
             placeholder="搜索记录..."
-            className="h-11 w-full rounded-full border border-forest-accent/8 bg-white/46 pl-9 pr-8 text-[13px] transition-all placeholder:text-forest-muted/55 focus:outline-none focus:ring-2 focus:ring-forest-accent/15 sm:h-auto sm:py-3 sm:pl-11 sm:pr-10 sm:text-sm"
+            aria-label="搜索记录"
+            className="h-11 w-full rounded-full border border-forest-accent/8 bg-white/46 pl-9 pr-11 text-base transition-all placeholder:text-forest-muted/55 focus:outline-none focus:ring-2 focus:ring-forest-accent/15 sm:h-auto sm:py-3 sm:pl-11 sm:text-sm"
             value={searchQuery} 
             onChange={(e) => setSearchQuery(e.target.value)} 
           />
           {searchQuery && (
             <button 
               onClick={() => setSearchQuery('')}
-              className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 text-forest-muted hover:text-forest-accent transition-colors sm:right-3"
+              aria-label="清空搜索"
+              className="absolute right-0.5 top-1/2 flex h-11 w-11 -translate-y-1/2 items-center justify-center text-forest-muted hover:text-forest-accent transition-colors"
             >
               <X size={14} />
             </button>
@@ -477,7 +458,7 @@ export const PrivateTab: React.FC<PrivateTabProps> = ({
                 onClick={() => setReadingViewMode(option.id)}
                 aria-pressed={active}
                 aria-label={option.label}
-                className={`flex h-11 min-w-10 items-center justify-center gap-1 rounded-full px-1.5 text-xs font-medium transition-all sm:min-w-0 sm:px-2.5 ${
+                className={`flex h-11 min-w-11 items-center justify-center gap-1 rounded-full px-1.5 text-xs font-medium transition-all sm:min-w-0 sm:px-2.5 ${
                   active
                     ? 'bg-forest-accent/88 text-white'
                     : 'text-forest-muted hover:bg-white/50 hover:text-forest-accent'
@@ -499,19 +480,21 @@ export const PrivateTab: React.FC<PrivateTabProps> = ({
           }}
           aria-label="典籍索引"
           aria-expanded={isIndexOpen}
-          className={`flex h-11 shrink-0 items-center gap-1 rounded-full border px-2 text-xs font-medium transition-all sm:gap-1.5 sm:px-3 ${
+          className={`flex h-11 min-w-11 shrink-0 items-center justify-center gap-1 rounded-full border px-2 text-xs font-medium transition-all sm:gap-1.5 sm:px-3 ${
             isIndexOpen || activeIndexFilter
               ? 'border-forest-accent/35 bg-forest-accent/88 text-white'
               : 'border-forest-accent/8 bg-white/42 text-forest-muted hover:border-forest-accent/20 hover:text-forest-accent'
           }`}
         >
           <Archive size={13} />
-          <span className="hidden min-[375px]:inline">索引</span>
+          <span>索引</span>
         </button>
 
         <div ref={filterMenuRef} className="relative shrink-0">
           <button
             type="button"
+            aria-label="筛选"
+            aria-expanded={isReviewFilterOpen}
             onClick={() => setIsReviewFilterOpen(prev => !prev)}
             className={`flex h-11 items-center gap-1 rounded-full border px-2 text-xs font-medium transition-all sm:gap-1.5 sm:px-4 ${
               reviewFilter === 'all' && audienceFilter === 'all' && !clientFilter
@@ -521,7 +504,7 @@ export const PrivateTab: React.FC<PrivateTabProps> = ({
             }`}
           >
             <Filter size={13} />
-            <span className="hidden min-[375px]:inline">筛选</span>
+            <span>筛选</span>
             <span className="hidden sm:inline">
               {activeReviewFilter.label}{audienceFilter !== 'all' ? ` · ${activeAudienceFilter.label}` : ''}
               {searchTags.length > 0 ? ` · 标签${searchTags.length}` : ''}
@@ -544,7 +527,7 @@ export const PrivateTab: React.FC<PrivateTabProps> = ({
                           key={option.id}
                           type="button"
                           onClick={() => setReviewFilter(option.id)}
-                          className={`flex min-h-10 items-center gap-1.5 rounded-full px-3 text-xs font-medium transition-colors ${
+                          className={`flex min-h-11 items-center gap-1.5 rounded-full px-3 text-xs font-medium transition-colors ${
                             active
                               ? 'bg-forest-accent/88 text-white'
                               : 'bg-white/40 text-forest-accent hover:bg-white/62'
@@ -573,7 +556,7 @@ export const PrivateTab: React.FC<PrivateTabProps> = ({
                             setAudienceFilter(option.id);
                             if (option.id !== 'client') setClientFilter('');
                           }}
-                          className={`flex min-h-10 items-center gap-1.5 rounded-full px-3 text-xs font-medium transition-colors ${
+                          className={`flex min-h-11 items-center gap-1.5 rounded-full px-3 text-xs font-medium transition-colors ${
                             active
                               ? 'bg-forest-accent/88 text-white'
                               : 'bg-white/40 text-forest-accent hover:bg-white/62'
@@ -607,7 +590,7 @@ export const PrivateTab: React.FC<PrivateTabProps> = ({
                             type="button"
                             onClick={() => onToggleTag(tag)}
                             aria-label={active ? `移除标签：${tag}` : `按标签复盘：${tag}`}
-                            className={`flex min-h-9 items-center gap-1.5 rounded-full border px-3 text-[10px] font-medium transition-all ${
+                            className={`flex min-h-11 items-center gap-1.5 rounded-full border px-3 text-[10px] font-medium transition-all ${
                               active
                                 ? 'border-forest-accent/35 bg-forest-accent/88 text-white'
                                 : 'border-forest-accent/8 bg-white/40 text-forest-muted hover:text-forest-accent'
@@ -635,7 +618,7 @@ export const PrivateTab: React.FC<PrivateTabProps> = ({
                             setAudienceFilter('client');
                             setClientFilter(name === clientFilter ? '' : name);
                           }}
-                          className={`min-h-9 shrink-0 rounded-full border px-3 text-[10px] font-medium transition-all ${
+                          className={`min-h-11 shrink-0 rounded-full border px-3 text-[10px] font-medium transition-all ${
                             clientFilter === name
                               ? 'border-forest-accent/35 bg-forest-accent/88 text-white'
                               : 'border-forest-accent/8 bg-white/40 text-forest-muted hover:text-forest-accent'
@@ -652,7 +635,7 @@ export const PrivateTab: React.FC<PrivateTabProps> = ({
                   <button
                     type="button"
                     onClick={() => setIsReviewFilterOpen(false)}
-                    className="min-h-9 rounded-full bg-white/42 px-4 text-xs font-medium text-forest-accent hover:bg-white/64"
+                    className="min-h-11 rounded-full bg-white/42 px-4 text-xs font-medium text-forest-accent hover:bg-white/64"
                   >
                     收起筛选
                   </button>
@@ -666,7 +649,7 @@ export const PrivateTab: React.FC<PrivateTabProps> = ({
           <button
             type="button"
             onClick={enterSelectionMode}
-            className="hidden h-11 shrink-0 items-center gap-1 rounded-full border border-forest-accent/8 bg-white/42 px-3 text-xs font-medium text-forest-muted transition-all hover:border-forest-accent/20 hover:text-forest-accent sm:flex"
+            className="flex h-11 shrink-0 items-center gap-1 rounded-full border border-forest-accent/8 bg-white/42 px-3 text-xs font-medium text-forest-muted transition-all hover:border-forest-accent/20 hover:text-forest-accent"
           >
             <CheckCircle2 size={13} />
             多选
@@ -678,12 +661,13 @@ export const PrivateTab: React.FC<PrivateTabProps> = ({
           <button
             type="button"
             onClick={() => setIsExportMenuOpen(prev => !prev)}
+            aria-label={`导出${selectedReadings.length || ''}`}
             disabled={!canExport}
             className="flex h-11 min-w-11 items-center justify-center gap-1 rounded-full border border-forest-accent/8 bg-white/42 px-2 text-xs font-medium text-forest-muted transition-all hover:text-forest-accent disabled:cursor-not-allowed disabled:opacity-50 sm:gap-1.5 sm:px-3"
             aria-expanded={isExportMenuOpen}
           >
             <Download size={13} />
-            <span className="hidden sm:inline">导出</span>
+            <span>导出</span>
             {selectedReadings.length > 0 && <span>{selectedReadings.length}</span>}
             <ChevronDown size={13} className={`transition-transform ${isExportMenuOpen ? 'rotate-180' : ''}`} />
           </button>
@@ -692,7 +676,7 @@ export const PrivateTab: React.FC<PrivateTabProps> = ({
             <button
               type="button"
               onClick={handleExportPdf}
-              className="flex min-h-10 w-full items-center gap-2 rounded-xl px-3 text-left text-xs font-medium text-forest-muted hover:bg-forest-accent/5 hover:text-forest-accent"
+              className="flex min-h-11 w-full items-center gap-2 rounded-xl px-3 text-left text-xs font-medium text-forest-muted hover:bg-forest-accent/5 hover:text-forest-accent"
             >
               <Download size={14} />
               导出PDF
@@ -700,7 +684,7 @@ export const PrivateTab: React.FC<PrivateTabProps> = ({
             <button
               type="button"
               onClick={handleExportCsv}
-              className="flex min-h-10 w-full items-center gap-2 rounded-xl px-3 text-left text-xs font-medium text-forest-muted hover:bg-forest-accent/5 hover:text-forest-accent"
+              className="flex min-h-11 w-full items-center gap-2 rounded-xl px-3 text-left text-xs font-medium text-forest-muted hover:bg-forest-accent/5 hover:text-forest-accent"
             >
               <Table2 size={14} />
               导出表格
@@ -708,7 +692,7 @@ export const PrivateTab: React.FC<PrivateTabProps> = ({
             <button
               type="button"
               onClick={handleExportMarkdown}
-              className="flex min-h-10 w-full items-center gap-2 rounded-xl px-3 text-left text-xs font-medium text-forest-muted hover:bg-forest-accent/5 hover:text-forest-accent"
+              className="flex min-h-11 w-full items-center gap-2 rounded-xl px-3 text-left text-xs font-medium text-forest-muted hover:bg-forest-accent/5 hover:text-forest-accent"
             >
               <FileText size={14} />
               Markdown 手札
@@ -728,7 +712,10 @@ export const PrivateTab: React.FC<PrivateTabProps> = ({
             onClick={closeIndexPanel}
           />
           <motion.aside
+            ref={indexDialogRef}
+            tabIndex={-1}
             role="dialog"
+            aria-modal="true"
             aria-label="典籍索引"
             initial={{ opacity: 0, y: 18, x: 0 }}
             animate={{ opacity: 1, y: 0, x: 0 }}
@@ -743,7 +730,7 @@ export const PrivateTab: React.FC<PrivateTabProps> = ({
               <button
                 type="button"
                 onClick={closeIndexPanel}
-                className="flex min-h-10 min-w-10 items-center justify-center rounded-full text-forest-muted transition-colors hover:bg-forest-accent/6 hover:text-forest-accent"
+                className="flex min-h-11 min-w-11 items-center justify-center rounded-full text-forest-muted transition-colors hover:bg-forest-accent/6 hover:text-forest-accent"
                 aria-label="收起典籍索引"
               >
                 <X size={16} />
@@ -762,7 +749,7 @@ export const PrivateTab: React.FC<PrivateTabProps> = ({
                       type="button"
                       onClick={() => setArchiveIndexTab(tab.id)}
                       aria-label={tab.label}
-                      className={`flex min-h-10 items-center justify-center gap-1 rounded-full px-2 text-[11px] font-medium transition-all ${
+                      className={`flex min-h-11 items-center justify-center gap-1 rounded-full px-2 text-[11px] font-medium transition-all ${
                         active
                           ? 'bg-forest-accent/88 text-white'
                           : 'text-forest-muted hover:bg-white/60 hover:text-forest-accent'
@@ -914,13 +901,14 @@ export const PrivateTab: React.FC<PrivateTabProps> = ({
                           if (event.key === 'Enter') applyQuestionIndexFilter(indexQuestionQuery);
                         }}
                         placeholder="输入问题关键词..."
-                        className="h-10 min-w-0 flex-1 bg-transparent text-sm text-forest-ink placeholder:text-forest-muted/55 focus:outline-none"
+                        aria-label="问题关键词"
+                        className="h-11 min-w-0 flex-1 bg-transparent text-base text-forest-ink placeholder:text-forest-muted/55 focus:outline-none sm:text-sm"
                       />
                       <button
                         type="button"
                         onClick={() => applyQuestionIndexFilter(indexQuestionQuery)}
                         disabled={!indexQuestionQuery.trim()}
-                        className="min-h-10 rounded-full bg-forest-accent/88 px-3 text-xs font-medium text-white transition-all hover:bg-forest-accent disabled:cursor-not-allowed disabled:opacity-45"
+                        className="min-h-11 rounded-full bg-forest-accent/88 px-3 text-xs font-medium text-white transition-all hover:bg-forest-accent disabled:cursor-not-allowed disabled:opacity-45"
                       >
                         查看
                       </button>
@@ -1010,7 +998,7 @@ export const PrivateTab: React.FC<PrivateTabProps> = ({
           <button
             type="button"
             onClick={toggleSelectAll}
-            className="min-h-8 rounded-full bg-forest-accent/8 px-3 text-forest-accent hover:bg-forest-accent/12"
+            className="min-h-11 rounded-full bg-forest-accent/8 px-3 text-forest-accent hover:bg-forest-accent/12"
           >
             {allSelectableSelected ? '取消全选' : '全选当前'}
           </button>
@@ -1018,7 +1006,7 @@ export const PrivateTab: React.FC<PrivateTabProps> = ({
             <button
               type="button"
               onClick={() => setSelectedReadingIds([])}
-              className="min-h-8 rounded-full bg-white/42 px-3 text-forest-muted hover:text-forest-accent"
+              className="min-h-11 rounded-full bg-white/42 px-3 text-forest-muted hover:text-forest-accent"
             >
               清空选择
             </button>
@@ -1027,7 +1015,7 @@ export const PrivateTab: React.FC<PrivateTabProps> = ({
             <button
               type="button"
               onClick={() => setIsDeleteSelectedConfirmOpen(true)}
-              className="flex min-h-8 items-center gap-1 rounded-full bg-red-50/80 px-3 text-red-500 hover:bg-red-50"
+              className="flex min-h-11 items-center gap-1 rounded-full bg-red-50/80 px-3 text-red-500 hover:bg-red-50"
             >
               <Trash2 size={12} />
               删除所选
@@ -1036,7 +1024,7 @@ export const PrivateTab: React.FC<PrivateTabProps> = ({
           <button
             type="button"
             onClick={exitSelectionMode}
-            className="min-h-8 rounded-full bg-white/42 px-3 text-forest-muted hover:text-forest-accent"
+            className="min-h-11 rounded-full bg-white/42 px-3 text-forest-muted hover:text-forest-accent"
           >
             完成
           </button>
@@ -1052,7 +1040,7 @@ export const PrivateTab: React.FC<PrivateTabProps> = ({
           action={(
             <button
               onClick={() => { onNavigate('add'); handleClearFilters(); }}
-              className="min-h-10 rounded-full bg-forest-accent/88 px-5 text-xs font-medium text-white transition-all hover:bg-forest-accent"
+              className="min-h-11 rounded-full bg-forest-accent/88 px-5 text-xs font-medium text-white transition-all hover:bg-forest-accent"
             >
               写第一条手记
             </button>

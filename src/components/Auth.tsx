@@ -33,13 +33,13 @@ const PasswordInput: React.FC<PasswordInputProps> = ({
     <input
       {...props}
       type={showPassword ? 'text' : 'password'}
-      className={`w-full rounded-xl border border-forest-accent/10 bg-forest-bg/30 py-3.5 pl-10 pr-12 text-sm outline-none transition-all focus:ring-2 focus:ring-forest-accent/20 ${className}`}
+      className={`w-full rounded-xl border border-forest-accent/10 bg-forest-bg/30 py-3.5 pl-10 pr-12 text-base sm:text-sm outline-none transition-all focus:ring-2 focus:ring-forest-accent/20 ${className}`}
     />
     <Lock className="absolute left-3 top-1/2 -translate-y-1/2 text-forest-muted" size={16} />
     <button
       type="button"
       onClick={onToggle}
-      className="absolute right-1 top-1/2 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-lg text-forest-muted hover:bg-forest-accent/10 hover:text-forest-accent"
+      className="absolute right-1 top-1/2 flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-lg text-forest-muted hover:bg-forest-accent/10 hover:text-forest-accent"
       aria-label={showPassword ? `隐藏${fieldLabel}` : `显示${fieldLabel}`}
       title={showPassword ? `隐藏${fieldLabel}` : `显示${fieldLabel}`}
     >
@@ -179,8 +179,9 @@ export const Auth: React.FC<AuthProps> = ({ onClose, onSignedOut, onOpenLegal })
     setIsNewSignup(true);
 
     try {
-      await signUp(normalizedEmail, password);
-      setVerificationMessage(`验证邮件已发送至 ${normalizedEmail}，请查收并完成验证。`);
+      const verificationSent = await signUp(normalizedEmail, password);
+      setVerificationMessage(verificationSent === false ? '' : `验证邮件已发送至 ${normalizedEmail}，请查收并完成验证。`);
+      setVerificationError(verificationSent === false ? '账号已创建，暂未确认验证邮件是否发出。请先查收邮箱，也可以返回研习阁在本机记录。' : '');
       setIsNewSignup(true);
       setPassword('');
       setVisiblePasswordField(null);
@@ -365,8 +366,18 @@ export const Auth: React.FC<AuthProps> = ({ onClose, onSignedOut, onOpenLegal })
                   {authMode === 'signup' ? '注册塔罗研习阁' : '登录塔罗研习阁'}
                 </h1>
                 <p className="mt-1 text-xs text-forest-muted">
-                  {authMode === 'signup' ? '创建账号，开启云端同步' : '登录后继续你的研习记录'}
+                  {authMode === 'signup' ? '需要跨设备同步时，再创建账号' : '登录以同步和找回云端记录'}
                 </p>
+                {!session && onClose && (
+                  <button
+                    type="button"
+                    onClick={onClose}
+                    className="mt-3 inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-forest-accent/8 px-4 text-sm font-medium text-forest-accent hover:bg-forest-accent/15"
+                  >
+                    <Home size={16} />
+                    先不登录，开始记录
+                  </button>
+                )}
               </div>
 
               {!!session ? (
@@ -478,7 +489,7 @@ export const Auth: React.FC<AuthProps> = ({ onClose, onSignedOut, onOpenLegal })
                         required
                         disabled={loading}
                         onFocus={scrollFocusedFieldIntoView}
-                        className="w-full pl-10 pr-4 py-3.5 bg-forest-bg/30 border border-forest-accent/10 rounded-xl focus:ring-2 focus:ring-forest-accent/20 transition-all outline-none text-sm"
+                        className="w-full pl-10 pr-4 py-3.5 bg-forest-bg/30 border border-forest-accent/10 rounded-xl focus:ring-2 focus:ring-forest-accent/20 transition-all outline-none text-base sm:text-sm"
                         placeholder="example@email.com"
                         value={email}
                         onChange={(e) => {
@@ -592,7 +603,7 @@ export const Auth: React.FC<AuthProps> = ({ onClose, onSignedOut, onOpenLegal })
                       <button
                         type="button"
                         onClick={() => switchAuthMode(authMode === 'signup' ? 'login' : 'signup')}
-                        className="text-xs font-bold text-forest-accent hover:underline transition-colors"
+                        className="min-h-11 px-2 text-xs font-bold text-forest-accent hover:underline transition-colors"
                       >
                         {authMode === 'signup' ? '返回登录' : '注册新号'}
                       </button>
@@ -603,7 +614,7 @@ export const Auth: React.FC<AuthProps> = ({ onClose, onSignedOut, onOpenLegal })
                         <button
                           type="button"
                           onClick={() => setShowResetPassword(true)}
-                          className="text-xs text-forest-muted hover:text-forest-accent transition-colors flex items-center gap-1"
+                          className="min-h-11 px-2 text-xs text-forest-muted hover:text-forest-accent transition-colors flex items-center gap-1"
                         >
                           <AlertCircle size={10} />
                           忘记密码？
@@ -622,14 +633,14 @@ export const Auth: React.FC<AuthProps> = ({ onClose, onSignedOut, onOpenLegal })
                   </span>
                   <span className="flex items-center gap-1">
                     <Lock size={12} />
-                    安全存储
+                    本机优先保存
                   </span>
                 </div>
                 <p className="text-center text-[10px] text-forest-muted mt-3">
-                  🔐 你的数据，只属于你。所有记录安全保存在云端。
+                  本机记录保存在当前浏览器；登录并完成邮箱验证后可同步到云端。
                 </p>
                 <p className="text-[10px] text-forest-muted text-center opacity-60">
-                  塔罗研习阁 · Firebase 安全认证
+                  清理浏览器或更换设备前，请确认同步完成或导出备份。
                 </p>
               </div>
             </div>

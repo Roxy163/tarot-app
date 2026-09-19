@@ -302,7 +302,7 @@ describe('PrivateTab', () => {
     expect(screen.getByRole('button', { name: '导出表格' })).toBeEnabled();
   });
 
-  it('enters selection mode from the desktop multi-select button', async () => {
+  it('enters selection mode from the multi-select button', async () => {
     const user = userEvent.setup();
     renderPrivateTab([
       createReading({ id: 'first-reading', question: '第一条记录' }),
@@ -320,7 +320,7 @@ describe('PrivateTab', () => {
     expect(screen.getByRole('button', { name: '导出2' })).toBeEnabled();
   });
 
-  it('supports single delete in normal mode and batch delete in selection mode', async () => {
+  it('keeps delete out of normal browsing and supports confirmed deletion of one or several selected records', async () => {
     const user = userEvent.setup();
     const onDelete = vi.fn();
     renderPrivateTab([
@@ -328,9 +328,13 @@ describe('PrivateTab', () => {
       createReading({ id: 'second-reading', question: '第二条记录' }),
     ], { onDelete });
 
-    await user.click(screen.getAllByRole('button', { name: '删除手记' })[0]);
-    expect(screen.getByRole('dialog', { name: '删除手记' })).toBeInTheDocument();
-    await user.click(within(screen.getByRole('dialog', { name: '删除手记' })).getByRole('button', { name: '删除' }));
+    expect(screen.queryByRole('button', { name: '删除手记' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '删除所选' })).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: '多选' }));
+    await user.click(screen.getByRole('button', { name: '选择记录：第一条记录' }));
+    await user.click(screen.getByRole('button', { name: '删除所选' }));
+    expect(onDelete).not.toHaveBeenCalled();
+    await user.click(within(screen.getByRole('dialog', { name: '删除所选手记' })).getByRole('button', { name: '删除' }));
 
     expect(onDelete).toHaveBeenCalledTimes(1);
     expect(onDelete).toHaveBeenCalledWith('first-reading');

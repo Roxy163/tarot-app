@@ -195,7 +195,6 @@ interface FreeLayoutEditorProps {
   cardSlots: ReadingSlotData[];
   designActiveSlot: number;
   onSetDesignActiveSlot: (idx: number) => void;
-  onRemoveSlot: (idx: number) => void;
   onSwapSlotIndex?: (oldIdx: number, newIdx: number) => void;
   onUpdateSlots: (slots: ReadingSlotData[]) => void;
 }
@@ -204,7 +203,6 @@ export const FreeLayoutEditor: React.FC<FreeLayoutEditorProps> = ({
   cardSlots,
   designActiveSlot,
   onSetDesignActiveSlot,
-  onRemoveSlot,
   onSwapSlotIndex,
   onUpdateSlots
 }) => {
@@ -671,24 +669,6 @@ export const FreeLayoutEditor: React.FC<FreeLayoutEditorProps> = ({
     }
   }, [boundCanvasPosition, cardSlots, clearPendingExpiry, onSetDesignActiveSlot, onUpdateSlots, pendingSlot]);
 
-  const handleRotate = useCallback((idx: number, delta: number) => {
-    const newSlots = [...cardSlots];
-    newSlots[idx] = {
-      ...newSlots[idx],
-      rotation: ((newSlots[idx].rotation || 0) + delta) % 360
-    };
-    onUpdateSlots(newSlots);
-  }, [cardSlots, onUpdateSlots]);
-
-  const handleScale = useCallback((idx: number, delta: number) => {
-    const newSlots = [...cardSlots];
-    newSlots[idx] = {
-      ...newSlots[idx],
-      scale: Math.max(0.5, Math.min(2, (newSlots[idx].scale || 1) + delta))
-    };
-    onUpdateSlots(newSlots);
-  }, [cardSlots, onUpdateSlots]);
-
   const handleClearAll = useCallback(() => {
     if (cardSlots.length > 0) setShowClearConfirm(true);
   }, [cardSlots.length]);
@@ -706,7 +686,6 @@ export const FreeLayoutEditor: React.FC<FreeLayoutEditorProps> = ({
   const axisLineWidth = Math.max(1, 1 / canvasScale);
   const selectedSlotSet = new Set(selectedSlotIndexes);
   const isMultiSelecting = selectedSlotIndexes.length > 1;
-  const canMirrorGroup = Boolean(activeSlot) && cardSlots.length > 1;
 
   const handleSelectSlot = useCallback((idx: number, additive = false, preserveSelection = false) => {
     if (preserveSelection && selectedSlotIndexes.includes(idx)) {
@@ -728,70 +707,6 @@ export const FreeLayoutEditor: React.FC<FreeLayoutEditorProps> = ({
     setPendingSlot(null);
     setAlignmentGuides([]);
   }, [onSetDesignActiveSlot, selectedSlotIndexes]);
-
-  const createEmptyCopiedSlot = useCallback((slot: ReadingSlotData, nextPosition: DragPosition, labelIndex = cardSlots.length): ReadingSlotData => ({
-    ...slot,
-    name: '',
-    isReversed: false,
-    label: `位置${labelIndex + 1}`,
-    position: '',
-    x: nextPosition.x,
-    y: nextPosition.y,
-  }), [cardSlots.length]);
-
-  const addCopiedSlot = useCallback((slot: ReadingSlotData, nextPosition: DragPosition) => {
-    const bounded = boundCanvasPosition({
-      ...nextPosition,
-      scale: slot.scale || 1,
-    });
-    const nextSlot = createEmptyCopiedSlot(slot, bounded);
-
-    onUpdateSlots([...cardSlots, nextSlot]);
-    onSetDesignActiveSlot(cardSlots.length);
-  }, [boundCanvasPosition, cardSlots, createEmptyCopiedSlot, onSetDesignActiveSlot, onUpdateSlots]);
-
-  const handleDuplicateActiveSlot = useCallback(() => {
-    const slot = cardSlots[designActiveSlot];
-    if (!slot) return;
-
-    addCopiedSlot(slot, {
-      x: (slot.x || 0) + FREE_LAYOUT_GRID_SIZE * 3,
-      y: (slot.y || 0) + FREE_LAYOUT_GRID_SIZE * 3,
-    });
-  }, [addCopiedSlot, cardSlots, designActiveSlot]);
-
-  const handleDuplicateSelectedSlots = useCallback(() => {
-    if (selectedSlotIndexes.length === 0) return;
-
-    const copiedSlots = selectedSlotIndexes
-      .map((idx, sourceIndex) => {
-        const slot = cardSlots[idx];
-        if (!slot) return null;
-
-        const nextPosition = boundCanvasPosition({
-          x: (slot.x || 0) + FREE_LAYOUT_GRID_SIZE * 3,
-          y: (slot.y || 0) + FREE_LAYOUT_GRID_SIZE * 3,
-          scale: slot.scale || 1,
-        });
-
-        return createEmptyCopiedSlot(slot, nextPosition, cardSlots.length + sourceIndex);
-      })
-      .filter((slot): slot is ReadingSlotData => Boolean(slot));
-
-    if (copiedSlots.length === 0) return;
-
-    const nextSelection = copiedSlots.map((_, idx) => cardSlots.length + idx);
-    onUpdateSlots([...cardSlots, ...copiedSlots]);
-    setSelectedSlotIndexes(nextSelection);
-    onSetDesignActiveSlot(nextSelection[0] ?? -1);
-  }, [
-    boundCanvasPosition,
-    cardSlots,
-    createEmptyCopiedSlot,
-    onSetDesignActiveSlot,
-    onUpdateSlots,
-    selectedSlotIndexes,
-  ]);
 
   const handleDeleteSelectedSlots = useCallback(() => {
     if (selectedSlotIndexes.length === 0) return;
@@ -854,114 +769,6 @@ export const FreeLayoutEditor: React.FC<FreeLayoutEditorProps> = ({
 
     onUpdateSlots(newSlots);
   }, [cardSlots, getVisibleCanvasCenter, onUpdateSlots, selectedSlotIndexes]);
-
-  const handleRotateSelectedSlots = useCallback((delta: number) => {
-    if (selectedSlotIndexes.length === 0) return;
-
-    const selectedIndexes = new Set(selectedSlotIndexes);
-    const newSlots = cardSlots.map((slot, idx) => (
-      selectedIndexes.has(idx)
-        ? {
-          ...slot,
-          rotation: ((slot.rotation || 0) + delta) % 360,
-        }
-        : slot
-    ));
-
-    onUpdateSlots(newSlots);
-  }, [cardSlots, onUpdateSlots, selectedSlotIndexes]);
-
-  const handleScaleSelectedSlots = useCallback((delta: number) => {
-    if (selectedSlotIndexes.length === 0) return;
-
-    const selectedIndexes = new Set(selectedSlotIndexes);
-    const newSlots = cardSlots.map((slot, idx) => (
-      selectedIndexes.has(idx)
-        ? {
-          ...slot,
-          scale: Math.max(0.5, Math.min(2, (slot.scale || 1) + delta)),
-        }
-        : slot
-    ));
-
-    onUpdateSlots(newSlots);
-  }, [cardSlots, onUpdateSlots, selectedSlotIndexes]);
-
-  const handleMirrorCopyActiveSlot = useCallback((axis: 'horizontal' | 'vertical') => {
-    const slot = cardSlots[designActiveSlot];
-    if (!slot) return;
-
-    const center = getVisibleCanvasCenter();
-    const metrics = getSlotMetrics(slot);
-    const mirroredPosition = axis === 'horizontal'
-      ? {
-        x: center.x * 2 - metrics.centerX - metrics.width / 2,
-        y: metrics.y,
-      }
-      : {
-        x: metrics.x,
-        y: center.y * 2 - metrics.centerY - metrics.height / 2,
-      };
-    const minSeparationX = metrics.width + FREE_LAYOUT_GRID_SIZE * 2;
-    const minSeparationY = metrics.height + FREE_LAYOUT_GRID_SIZE * 2;
-    const isTooClose = axis === 'horizontal'
-      ? Math.abs(mirroredPosition.x - metrics.x) < minSeparationX
-      : Math.abs(mirroredPosition.y - metrics.y) < minSeparationY;
-    const nextPosition = { ...mirroredPosition };
-
-    if (isTooClose && axis === 'horizontal') {
-      nextPosition.x = metrics.x < center.x
-        ? metrics.x + minSeparationX
-        : metrics.x - minSeparationX;
-    }
-
-    if (isTooClose && axis === 'vertical') {
-      nextPosition.y = metrics.y < center.y
-        ? metrics.y + minSeparationY
-        : metrics.y - minSeparationY;
-    }
-
-    addCopiedSlot(slot, nextPosition);
-  }, [addCopiedSlot, cardSlots, designActiveSlot, getVisibleCanvasCenter]);
-
-  const handleMirrorGroupAroundActive = useCallback((axis: 'horizontal' | 'vertical') => {
-    const anchorSlot = cardSlots[designActiveSlot];
-    if (!anchorSlot || cardSlots.length < 2) return;
-
-    const anchorMetrics = getSlotMetrics(anchorSlot);
-    const mirroredSlots = cardSlots
-      .filter((_, idx) => idx !== designActiveSlot)
-      .map((slot, sourceIndex) => {
-        const metrics = getSlotMetrics(slot);
-        const mirroredPosition = axis === 'horizontal'
-          ? {
-            x: anchorMetrics.centerX * 2 - metrics.centerX - metrics.width / 2,
-            y: metrics.y,
-          }
-          : {
-            x: metrics.x,
-            y: anchorMetrics.centerY * 2 - metrics.centerY - metrics.height / 2,
-          };
-        const bounded = boundCanvasPosition({
-          ...mirroredPosition,
-          scale: slot.scale || 1,
-        });
-
-        return createEmptyCopiedSlot(slot, bounded, cardSlots.length + sourceIndex);
-      });
-
-    if (mirroredSlots.length === 0) return;
-
-    onUpdateSlots([...cardSlots, ...mirroredSlots]);
-    onSetDesignActiveSlot(cardSlots.length);
-  }, [
-    boundCanvasPosition,
-    cardSlots,
-    createEmptyCopiedSlot,
-    designActiveSlot,
-    onSetDesignActiveSlot,
-    onUpdateSlots,
-  ]);
 
   const handleCenterActiveSlot = useCallback((axis: 'horizontal' | 'vertical' | 'both') => {
     const slot = cardSlots[designActiveSlot];

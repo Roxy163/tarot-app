@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { OFFICIAL_SPREADS } from '../constants';
 import { AddReadingForm } from './AddReadingForm';
+import { readLocalDraft, resetDraftMemory } from '../hooks/useLocalDraft';
 import { SpreadDefinition, TarotReading } from '../types';
 
 const renderForm = (overrides: {
@@ -12,6 +13,7 @@ const renderForm = (overrides: {
 } = {}) => {
   const props = {
     onSubmit: vi.fn(),
+    onCancel: vi.fn(),
     isLoading: false,
     isLoggedIn: false,
     spreads: overrides.spreads || OFFICIAL_SPREADS,
@@ -50,6 +52,9 @@ const makeReading = (
 
 describe('AddReadingForm spread designer flow', () => {
   beforeEach(() => {
+    localStorage.clear();
+    sessionStorage.clear();
+    resetDraftMemory();
     window.scrollTo = vi.fn();
     Element.prototype.getBoundingClientRect = vi.fn(() => ({
       x: 0,
@@ -71,6 +76,22 @@ describe('AddReadingForm spread designer flow', () => {
       value: 1024,
     });
     vi.restoreAllMocks();
+  });
+
+  it('discards the edit draft when cancelling without changing the saved reading', async () => {
+    const user = userEvent.setup();
+    const initialData = makeReading('cancelled-edit', [], '2026-09-16');
+    const view = renderForm({ initialData });
+    await user.clear(screen.getByPlaceholderText('占卜的问题是什么？'));
+    await user.type(screen.getByPlaceholderText('占卜的问题是什么？'), '不要保存这次修改');
+    await user.click(screen.getByRole('button', { name: '取消修改' }));
+    expect(view.onCancel).toHaveBeenCalledOnce();
+    expect(view.onSubmit).not.toHaveBeenCalled();
+    view.unmount();
+    resetDraftMemory();
+    expect(readLocalDraft('tarot_reading_draft_guest_cancelled-edit')).toBeNull();
+    renderForm({ initialData });
+    expect(screen.getByPlaceholderText('占卜的问题是什么？')).toHaveValue(initialData.question);
   });
 
   it('closes the spread designer after saving and using a new free layout spread', async () => {
@@ -100,6 +121,51 @@ describe('AddReadingForm spread designer flow', () => {
 
     expect(screen.getByText('牌阵：')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '编辑当前牌阵 命名牌阵' })).toBeInTheDocument();
+  });
+
+  it('recovers an unfinished question without requiring a selected card', async () => {
+    const user = userEvent.setup();
+    const first = renderForm();
+    await user.type(screen.getByPlaceholderText('占卜的问题是什么？'), '切换页面也要保留的问题');
+    first.unmount();
+    resetDraftMemory();
+    renderForm();
+    expect(screen.getByPlaceholderText('占卜的问题是什么？')).toHaveValue('切换页面也要保留的问题');
+    expect(screen.getByText(/已恢复上次未完成的手记/)).toBeInTheDocument();
+  });
+
+  it('retains a tags-only draft and does not resurrect text the user erased', async () => {
+    const user = userEvent.setup();
+    const first = renderForm();
+    await user.type(screen.getByPlaceholderText('添加标签...'), '旅行');
+    await user.type(screen.getByPlaceholderText('占卜的问题是什么？'), '随后清除');
+    await user.clear(screen.getByPlaceholderText('占卜的问题是什么？'));
+    first.unmount();
+    resetDraftMemory();
+    renderForm();
+    expect(screen.getByPlaceholderText('占卜的问题是什么？')).toHaveValue('');
+    expect(screen.getByPlaceholderText('添加标签...')).toHaveValue('旅行');
+  });
+
+  it('preserves a resumed free layout and reversal when editing an existing reading', async () => {
+    const user = userEvent.setup();
+    const initialData: Partial<TarotReading> = {
+      id: 'saved-edit', question: '原问题', spread: '单牌阵', layoutType: 'free',
+      cards: [{ name: '愚者', isReversed: true, x: 120, y: 200, rotation: 15, scale: 1 }],
+      cardInterpretations: ['原解读'], readingDate: '2026-09-16T01:30:00+08:00',
+    };
+    const first = renderForm({ initialData });
+    await user.clear(screen.getByPlaceholderText('占卜的问题是什么？'));
+    await user.type(screen.getByPlaceholderText('占卜的问题是什么？'), '新问题');
+    first.unmount();
+    resetDraftMemory();
+    const resumed = renderForm({ initialData });
+    expect(screen.getByPlaceholderText('占卜的问题是什么？')).toHaveValue('新问题');
+    await user.click(screen.getByRole('button', { name: '保存修改' }));
+    expect(resumed.onSubmit).toHaveBeenCalledWith(expect.objectContaining({
+      question: '新问题', readingDate: initialData.readingDate,
+      cards: expect.arrayContaining([expect.objectContaining({ name: '愚者', isReversed: true, x: 120, y: 200, rotation: 15, scale: 1 })]),
+    }));
   });
 
   it('asks before overwriting an existing custom spread name', async () => {

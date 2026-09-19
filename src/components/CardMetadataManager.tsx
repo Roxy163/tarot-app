@@ -1,16 +1,18 @@
+import { downloadBlobFile, downloadTextFile } from '../lib/downloadFile';
 import React, { useCallback, useState, useMemo, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Search, Save, RotateCcw, ChevronRight, Book, Sparkles, History, Pencil, Hash, Plus, Edit3, Download, FileText, Table2, LayoutGrid, List } from 'lucide-react';
 import { CardKeywordMemory, DailyFortune, TarotCardMetadata, TarotReading } from '../types';
 import { getCardImageUrl, TAROT_CARDS } from '../constants';
 import { useCardNumerology } from '../hooks/useCardNumerology';
-import { getCardAnnotations, saveCardAnnotation } from '../lib/firebaseData';
 import { cardMatchesSearch } from '../lib/cardSearch';
 import { cardAnnotationService } from '../services/cardAnnotationService';
 import { CardAnnotationEditor } from './CardAnnotationEditor';
 import { ConfirmDialog } from './ConfirmDialog';
 import { TarotCardImage } from './TarotCardImage';
-import { readJsonRecordWithBackup, writeJsonWithBackup } from '../lib/safeLocalStorage';
+import { requireLocalSave } from '../lib/safeLocalStorage';
+import { readLocalDraft, useLocalDraft } from '../hooks/useLocalDraft';
+import { useAnnotationRevision } from '../hooks/useAnnotationSync';
 import {
   getCurrentMonthKey,
   getDailyFortunesByCard,
@@ -29,6 +31,7 @@ import {
 import { createExportPdfBlobFromLines } from '../lib/pdfExport';
 import { useClickOutside } from '../hooks/useClickOutside';
 import { useBodyScrollLock } from '../hooks/useBodyScrollLock';
+import { useModalFocus } from '../hooks/useModalFocus';
 import { MysticWatermark } from './MysticWatermark';
 import { QuietEmptyState } from './ui/SoftUI';
 import { AutoResizeTextarea } from './ui/AutoResizeTextarea';
@@ -90,33 +93,6 @@ const getSuitLabel = (cardId: string) => {
 const uniqueTexts = (items: Array<string | undefined | null>) => (
   Array.from(new Set(items.map(item => item?.trim()).filter(Boolean) as string[]))
 );
-
-const downloadTextFile = (filename: string, content: string, type: string) => {
-  if (typeof document === 'undefined' || typeof URL === 'undefined' || typeof URL.createObjectURL !== 'function') return;
-
-  const blob = new Blob([content], { type });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = filename;
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-  URL.revokeObjectURL(url);
-};
-
-const downloadBlobFile = (filename: string, blob: Blob) => {
-  if (typeof document === 'undefined' || typeof URL === 'undefined' || typeof URL.createObjectURL !== 'function') return;
-
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = filename;
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-  URL.revokeObjectURL(url);
-};
 
 function CardNumerologyCard({ cardName, isLoggedIn, userId }: CardNumerologyCardProps) {
   const { numerology, meaning, keywords, isCustom, saveNumerology, restoreDefault } = useCardNumerology(cardName, isLoggedIn, userId);
@@ -294,12 +270,20 @@ export function CardMetadataManager({ metadata, onUpdate, readings, dailyFortune
   const [localMetadata, setLocalMetadata] = useState<TarotCardMetadata[]>(() => buildCardLibrary(metadata));
   const [filterType, setFilterType] = useState<'all' | 'major' | 'wands' | 'cups' | 'swords' | 'pentacles'>('all');
   const [libraryViewMode, setLibraryViewMode] = useState<'grid' | 'list'>('grid');
-  const [personalMeanings, setPersonalMeanings] = useState<Record<string, string>>({});
+  const annotationRevision = useAnnotationRevision();
+  const personalDraftKey = `tarot_personal_meaning_draft_${userId || 'guest'}`;
+  const [personalMeaningDrafts, setPersonalMeaningDrafts] = useState<Record<string, string>>(() => readLocalDraft(personalDraftKey) || {});
+  useLocalDraft(personalDraftKey, personalMeaningDrafts);
+  const personalMeanings = useMemo(() => ({
+    ...Object.fromEntries(TAROT_CARDS.map(card => [card.name, cardAnnotationService.getUserAnnotation(card.id)?.personalMeaning || ''])),
+    ...personalMeaningDrafts,
+  }), [annotationRevision, personalMeaningDrafts]);
   const [isSaving, setIsSaving] = useState(false);
   const [isExportMenuOpen, setIsExportMenuOpen] = useState(false);
   const [exportStatus, setExportStatus] = useState('');
   const exportMenuRef = useRef<HTMLDivElement | null>(null);
   const detailScrollYRef = useRef(0);
+  const detailDialogRef = useRef<HTMLElement>(null);
   const [showAnnotationEditor, setShowAnnotationEditor] = useState(false);
   const [annotationEditorCardId, setAnnotationEditorCardId] = useState<string | undefined>(undefined);
   const [modifiedCount, setModifiedCount] = useState(0);
@@ -335,7 +319,7 @@ export function CardMetadataManager({ metadata, onUpdate, readings, dailyFortune
   
   useEffect(() => {
     setModifiedCount(cardAnnotationService.getModifiedCardIds().length);
-  }, [showAnnotationEditor]);
+  }, [showAnnotationEditor, annotationRevision]);
 
   useEffect(() => {
     if (!initialCardId) return;
@@ -377,21 +361,6 @@ export function CardMetadataManager({ metadata, onUpdate, readings, dailyFortune
     setIsDetailSheetOpen(true);
   }, [rememberDetailScrollPosition]);
   
-  // Load personal meanings
-  useEffect(() => {
-    const loadMeanings = async () => {
-      if (isLoggedIn && userId) {
-        try {
-          setPersonalMeanings(await getCardAnnotations(userId));
-        } catch (error) {
-          console.error('Error loading annotations:', error);
-        }
-      } else {
-        setPersonalMeanings(readJsonRecordWithBackup<Record<string, string>>('tarot_personal_meanings') || {});
-      }
-    };
-    loadMeanings();
-  }, [isLoggedIn, userId]);
 
   const filteredCards = useMemo(() => {
     return localMetadata.filter(card => {
@@ -469,7 +438,7 @@ export function CardMetadataManager({ metadata, onUpdate, readings, dailyFortune
   };
 
   const handlePersonalMeaningChange = (cardName: string, value: string) => {
-    setPersonalMeanings(prev => ({
+    setPersonalMeaningDrafts(prev => ({
       ...prev,
       [cardName]: value
     }));
@@ -501,22 +470,11 @@ export function CardMetadataManager({ metadata, onUpdate, readings, dailyFortune
 
   useBodyScrollLock(Boolean(detailCardId));
 
-  useEffect(() => {
-    if (!detailCard) return;
-
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        closeCardDetail();
-      }
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [closeCardDetail, detailCard]);
+  useModalFocus(Boolean(detailCard) && isDetailSheetOpen, detailDialogRef, closeCardDetail);
 
   const appendKeywordToPersonalMeaning = (cardName: string, keyword: string) => {
-    setPersonalMeanings(prev => {
-      const current = prev[cardName] || '';
+    setPersonalMeaningDrafts(prev => {
+      const current = prev[cardName] ?? personalMeanings[cardName] ?? '';
       if (current.includes(keyword)) return prev;
 
       return {
@@ -529,29 +487,25 @@ export function CardMetadataManager({ metadata, onUpdate, readings, dailyFortune
   const savePersonalMeaning = async (cardName: string) => {
     setIsSaving(true);
     const meaning = personalMeanings[cardName] || '';
-
-    if (isLoggedIn && userId) {
-      try {
-        await saveCardAnnotation(userId, cardName, meaning);
-      } catch (error) {
-        console.error('Error saving annotation:', error);
-      }
-    } else {
-      const updated = { ...personalMeanings, [cardName]: meaning };
-      writeJsonWithBackup('tarot_personal_meanings', updated);
-    }
-
-    if (onShowSnackbar) {
-      onShowSnackbar(`阁主为《${cardName}》添注一则，注疏见深。`);
-    }
-    setIsSaving(false);
+    try {
+      const card = TAROT_CARDS.find(item => item.name === cardName);
+      if (!card) throw new Error('Card not found');
+      cardAnnotationService.saveUserAnnotation(card.id, { personalMeaning: meaning });
+      setPersonalMeaningDrafts(prev => { const next = { ...prev }; delete next[cardName]; return next; });
+      onShowSnackbar?.(`《${cardName}》的注疏已保存在本机${isLoggedIn ? '，将自动同步。' : '。'}`);
+    } catch {
+      onShowSnackbar?.('保存失败，内容仍保留在编辑区，请释放存储空间后重试。');
+    } finally { setIsSaving(false); }
   };
 
   const saveAll = () => {
+    try {
+    requireLocalSave(userId ? `tarot_card_metadata_${userId}` : 'tarot_card_metadata', localMetadata);
     onUpdate(localMetadata);
     if (onShowSnackbar) {
       onShowSnackbar('已录入阁中典籍。');
     }
+    } catch { onShowSnackbar?.('本机保存失败，修改仍保留在此页，请重试。'); }
   };
 
   const handleExportCards = (scope: CardLibraryExportScope, format: 'pdf' | 'csv' | 'markdown') => {
@@ -945,6 +899,8 @@ export function CardMetadataManager({ metadata, onUpdate, readings, dailyFortune
               onClick={closeCardDetail}
             />
             <motion.section
+              ref={detailDialogRef}
+              tabIndex={-1}
               role="dialog"
               aria-modal="true"
               aria-label={`${detailCard.name}研习资料`}

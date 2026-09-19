@@ -28,7 +28,7 @@ interface AuthContextType {
   isEmailVerified: boolean;
   lastLogin: LoginHistory | null;
   signIn: (email: string, password: string) => Promise<void>;
-  signUp: (email: string, password: string) => Promise<void>;
+  signUp: (email: string, password: string) => Promise<boolean>;
   signOut: () => Promise<void>;
   resetPassword: (email: string) => Promise<void>;
   updatePassword: (currentPassword: string, newPassword: string) => Promise<void>;
@@ -64,6 +64,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
     const unsubscribe = onAuthStateChangedListener(
       (user) => {
+        if (cancelled) return;
         window.clearTimeout(restoreTimer);
         setSession(user);
         setIsEmailVerified(!!user?.emailVerified);
@@ -113,8 +114,10 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const signUp = useCallback(async (email: string, password: string) => {
     const userCredential = await signUpWithEmail(email, password);
 
+    let verificationSent = false;
     try {
       await sendCurrentUserEmailVerification();
+      verificationSent = true;
     } catch (error) {
       console.warn('Email verification was not sent automatically:', error);
     }
@@ -131,6 +134,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     setSession(userCredential.user);
     setIsEmailVerified(userCredential.user.emailVerified);
     setIsLocalFallback(false);
+    return verificationSent;
   }, []);
 
   const signOut = useCallback(async () => {

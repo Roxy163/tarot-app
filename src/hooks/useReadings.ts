@@ -28,7 +28,7 @@ import {
   mergeSpreadSources,
 } from '../lib/readingSessionMerge';
 import { trackEvent } from '../lib/analytics';
-import { readJsonArrayWithBackup, writeJsonWithBackup } from '../lib/safeLocalStorage';
+import { readJsonArrayWithBackup, writeJsonWithBackup, requireLocalSave } from '../lib/safeLocalStorage';
 
 const CLOUD_SAVE_DEBOUNCE_MS = 1200;
 const USER_READINGS_STORAGE_KEY = 'tarot_readings';
@@ -721,7 +721,9 @@ export const useReadings = (
 
       if (editingReading?.id) {
         const updatedReading = stampReadingUpdate({ ...editingReading, ...readingData });
-        setReadings(readings.map(r => r.id === editingReading.id ? updatedReading : r));
+        const updatedReadings = readings.map(r => r.id === editingReading.id ? updatedReading : r);
+        requireLocalSave(session?.uid ? getUserScopedStorageKey(USER_READINGS_STORAGE_KEY, session.uid) : GUEST_READINGS_STORAGE_KEY, getPersistableReadings(updatedReadings));
+        setReadings(updatedReadings);
         onShowSnackbar?.(updatedReading.status === 'draft' ? '已保存为待补全，可稍后继续补牌面或解读。' : '✨ 灵见手帖已更新。');
         savedReading = updatedReading;
       } else {
@@ -733,6 +735,7 @@ export const useReadings = (
           ...readingData
         };
         const updatedReadings = [reading, ...readings.filter(item => !item.isExample)];
+        requireLocalSave(session?.uid ? getUserScopedStorageKey(USER_READINGS_STORAGE_KEY, session.uid) : GUEST_READINGS_STORAGE_KEY, getPersistableReadings(updatedReadings));
         setReadings(updatedReadings);
 
         onShowSnackbar?.(reading.status === 'draft' ? '已保存为待补全，可在《阁中典籍》继续编辑。' : '✨ 灵见手帖已添入《阁中典籍》。');
@@ -741,6 +744,7 @@ export const useReadings = (
 
       // Trigger Smart Prompts for Guests
       if (!session) {
+        try {
         const totalRecords = parseInt(localStorage.getItem('total_guest_records') || '0') + 1;
         localStorage.setItem('total_guest_records', totalRecords.toString());
 
@@ -759,6 +763,7 @@ export const useReadings = (
           onShowSnackbar?.(randomMsg);
           localStorage.setItem('last_reminder_timestamp', now.toString());
         }
+        } catch { /* Reminder preferences must not invalidate a saved reading. */ }
       }
 
       if (savedReading) {
@@ -779,6 +784,7 @@ export const useReadings = (
       return savedReading;
     } catch (error) {
       console.error("Error adding/editing reading:", error);
+      onShowSnackbar?.('本机保存失败，内容仍在编辑页，请释放存储空间后重试。');
       return null;
     } finally {
       setIsProcessing(false);

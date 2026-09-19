@@ -9,7 +9,10 @@ interface BeforeInstallPromptEvent extends Event {
 const DISMISS_KEY = 'tarot_pwa_install_prompt_dismissed_at';
 const READY_KEY = 'tarot_pwa_install_prompt_ready_at';
 const PROMPT_REQUEST_EVENT = 'tarot:pwa-install-prompt-requested';
-const DISMISS_TTL_MS = 14 * 24 * 60 * 60 * 1000;
+const PREFERENCE_KEY = 'tarot_pwa_install_reminder';
+const PREFERENCE_EVENT = 'tarot:pwa-install-preference-changed';
+const INSTALL_USED_EVENT = 'tarot:pwa-install-event-used';
+export type InstallReminderPreference = 'auto' | 'never' | 'installed';
 
 interface PromptRequestDetail {
   autoInstall?: boolean;
@@ -30,14 +33,15 @@ const isLikelyIos = () => {
     || (platform.includes('mac') && window.navigator.maxTouchPoints > 1);
 };
 
-const wasRecentlyDismissed = () => {
-  if (typeof window === 'undefined') return false;
-
+const readReminderPreference = (): InstallReminderPreference => {
+  if (typeof window === 'undefined') return 'auto';
   try {
-    const dismissedAt = Number(localStorage.getItem(DISMISS_KEY) || 0);
-    return dismissedAt > 0 && Date.now() - dismissedAt < DISMISS_TTL_MS;
+    const preference = localStorage.getItem(PREFERENCE_KEY);
+    if (preference === 'auto' || preference === 'never' || preference === 'installed') return preference;
+    // Respect earlier dismissals too; they no longer expire after 14 days.
+    return Number(localStorage.getItem(DISMISS_KEY) || 0) > 0 ? 'never' : 'auto';
   } catch {
-    return false;
+    return 'auto';
   }
 };
 
@@ -48,14 +52,6 @@ const hasPromptBeenRequested = () => {
     return Number(localStorage.getItem(READY_KEY) || 0) > 0;
   } catch {
     return false;
-  }
-};
-
-const rememberDismissed = () => {
-  try {
-    localStorage.setItem(DISMISS_KEY, String(Date.now()));
-  } catch {
-    // 忽略存储失败；不影响用户继续使用应用。
   }
 };
 
@@ -75,9 +71,6 @@ export const requestPwaInstallPrompt = (options: PromptRequestDetail = {}) => {
   try {
     if (!options.suppressBanner) {
       localStorage.setItem(READY_KEY, String(Date.now()));
-    }
-    if (options.force && !options.suppressBanner) {
-      localStorage.removeItem(DISMISS_KEY);
     }
   } catch {
     // 忽略存储失败；继续派发当前页面事件。
@@ -101,7 +94,7 @@ export function usePwaInstallPrompt() {
   const [installEvent, setInstallEvent] = useState<BeforeInstallPromptEvent | null>(null);
   const installEventRef = useRef<BeforeInstallPromptEvent | null>(null);
   const installSourceRef = useRef<string>('unknown');
-  const [dismissed, setDismissed] = useState(() => wasRecentlyDismissed());
+  const [reminderPreference, setPreferenceState] = useState(readReminderPreference);
   const [promptRequested, setPromptRequested] = useState(() => hasPromptBeenRequested());
   const [isStandalone, setIsStandalone] = useState(() => (
     typeof window !== 'undefined' ? isStandaloneDisplay() : false
@@ -110,20 +103,27 @@ export function usePwaInstallPrompt() {
     typeof window !== 'undefined' ? isLikelyIos() : false
   ), []);
 
-  const dismiss = useCallback(() => {
-    rememberDismissed();
-    setDismissed(true);
+  const setReminderPreference = useCallback((preference: InstallReminderPreference) => {
+    let persisted = true;
+    try { localStorage.setItem(PREFERENCE_KEY, preference); }
+    catch { persisted = false; }
+    setPreferenceState(preference);
+    window.dispatchEvent(new CustomEvent(PREFERENCE_EVENT, { detail: preference }));
+    return persisted;
   }, []);
+  const dismiss = useCallback(() => setReminderPreference('never'), [setReminderPreference]);
 
   const install = useCallback(async () => {
     const event = installEventRef.current;
     if (!event) return false;
+    // The same native event is observed by the guide and banner, but can be used once.
+    window.dispatchEvent(new Event(INSTALL_USED_EVENT));
 
     try {
       await event.prompt();
       const choice = await event.userChoice;
       if (choice.outcome === 'accepted') {
-        setIsStandalone(true);
+        setReminderPreference('installed');
         trackEvent('pwa_install_result', {
           status: 'accepted',
           source: installSourceRef.current,
@@ -148,12 +148,28 @@ export function usePwaInstallPrompt() {
       installEventRef.current = null;
       setInstallEvent(null);
     }
-  }, [dismiss]);
+  }, [dismiss, setReminderPreference]);
 
   useEffect(() => {
     const media = window.matchMedia?.('(display-mode: standalone)');
-    const syncStandalone = () => setIsStandalone(isStandaloneDisplay());
+    const syncStandalone = () => {
+      const standalone = isStandaloneDisplay();
+      setIsStandalone(standalone);
+      if (standalone) setReminderPreference('installed');
+    };
     media?.addEventListener?.('change', syncStandalone);
+    const clearInstallEvent = () => {
+      installEventRef.current = null;
+      setInstallEvent(null);
+    };
+    const handleInstalled = () => {
+      // Installing from a browser tab does not change that tab's display mode.
+      clearInstallEvent();
+      setReminderPreference('installed');
+    };
+    const handlePreference = (event: Event) => {
+      setPreferenceState((event as CustomEvent<InstallReminderPreference>).detail);
+    };
 
     const handleBeforeInstallPrompt = (event: Event) => {
       event.preventDefault();
@@ -167,9 +183,6 @@ export function usePwaInstallPrompt() {
         setPromptRequested(true);
       }
       installSourceRef.current = detail?.source || 'unknown';
-      if (detail?.force && !detail?.suppressBanner) {
-        setDismissed(false);
-      }
       if (detail?.autoInstall && installEventRef.current) {
         void install();
       } else if (detail?.autoInstall && !installEventRef.current) {
@@ -181,34 +194,41 @@ export function usePwaInstallPrompt() {
     };
 
     const handleStorage = (event: StorageEvent) => {
-      if (event.key === READY_KEY) {
+      if (event.key === READY_KEY || event.key === null) {
         setPromptRequested(hasPromptBeenRequested());
       }
-      if (event.key === DISMISS_KEY) {
-        setDismissed(wasRecentlyDismissed());
+      if (event.key === DISMISS_KEY || event.key === PREFERENCE_KEY || event.key === null) {
+        setPreferenceState(readReminderPreference());
       }
     };
 
     window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
-    window.addEventListener('appinstalled', syncStandalone);
+    window.addEventListener('appinstalled', handleInstalled);
+    window.addEventListener(PREFERENCE_EVENT, handlePreference);
+    window.addEventListener(INSTALL_USED_EVENT, clearInstallEvent);
     window.addEventListener(PROMPT_REQUEST_EVENT, handlePromptRequest);
     window.addEventListener('storage', handleStorage);
+    syncStandalone();
 
     return () => {
       media?.removeEventListener?.('change', syncStandalone);
       window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
-      window.removeEventListener('appinstalled', syncStandalone);
+      window.removeEventListener('appinstalled', handleInstalled);
+      window.removeEventListener(PREFERENCE_EVENT, handlePreference);
+      window.removeEventListener(INSTALL_USED_EVENT, clearInstallEvent);
       window.removeEventListener(PROMPT_REQUEST_EVENT, handlePromptRequest);
       window.removeEventListener('storage', handleStorage);
     };
-  }, [install]);
+  }, [install, setReminderPreference]);
 
   return {
-    canInstall: Boolean(installEvent),
+    canInstall: Boolean(installEvent) && !isStandalone,
     dismiss,
     install,
     isIos,
     isStandalone,
-    shouldShow: !isStandalone && !dismissed && promptRequested,
+    reminderPreference,
+    setReminderPreference,
+    shouldShow: !isStandalone && reminderPreference === 'auto' && promptRequested,
   };
 }

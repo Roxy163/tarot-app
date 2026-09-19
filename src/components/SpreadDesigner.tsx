@@ -32,7 +32,6 @@ interface SpreadDesignerProps {
   onSwapSlotIndex: (oldIdx: number, newIdx: number) => void;
   onUpdateSlotLabel: (idx: number, label: string) => void;
   onSetDesignActiveSlot: (idx: number, fromSelect?: boolean) => void;
-  onRemoveSlot: (idx: number) => void;
   onRestoreDefaults: (name: string) => void;
   onUpdateGrid?: (cols: number, rows: number) => void;
   gridCols?: number;
@@ -63,7 +62,6 @@ export const SpreadDesigner: React.FC<SpreadDesignerProps> = ({
   saveNotice,
   onSwapSlotIndex,
   onSetDesignActiveSlot,
-  onRemoveSlot,
   onRestoreDefaults,
   onStartNewSession,
   onClose,
@@ -402,7 +400,6 @@ export const SpreadDesigner: React.FC<SpreadDesignerProps> = ({
                   cardSlots={cardSlots}
                   designActiveSlot={designActiveSlot}
                   onSetDesignActiveSlot={(idx) => onSetDesignActiveSlot(idx, true)}
-                  onRemoveSlot={onRemoveSlot}
                   onSwapSlotIndex={onSwapSlotIndex}
                   onUpdateSlots={(slots) => {
                     onUpdateSlots?.(slots);

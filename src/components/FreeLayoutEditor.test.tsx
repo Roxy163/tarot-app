@@ -9,7 +9,6 @@ const renderEditor = (overrides = {}) => {
     ],
     designActiveSlot: 0,
     onSetDesignActiveSlot: vi.fn(),
-    onRemoveSlot: vi.fn(),
     onUpdateSlots: vi.fn(),
     ...overrides,
   };

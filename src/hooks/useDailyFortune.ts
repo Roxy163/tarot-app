@@ -9,7 +9,8 @@ import { buildDailyFortuneAnnotationNote } from '../lib/dailyFortuneReview';
 import { mergeDailyFortuneSources } from '../lib/dailyFortuneCloudSync';
 import { trackEvent } from '../lib/analytics';
 import { getUserDailyFortunes, saveUserDailyFortunes } from '../lib/firebaseData';
-import { readJsonArrayWithBackup, writeJsonWithBackup } from '../lib/safeLocalStorage';
+import { readJsonArrayWithBackup, writeJsonWithBackup, requireLocalSave } from '../lib/safeLocalStorage';
+import { toLocalReadingDate } from '../lib/readingDate';
 
 const STORAGE_KEY = 'tarot_daily_fortunes';
 const CLOUD_SAVE_DEBOUNCE_MS = 1200;
@@ -84,9 +85,16 @@ export const useDailyFortune = (
 ) => {
   const activeDataKey = isAuthLoading ? 'auth-loading' : (session?.uid || 'guest');
   const storageKey = getDailyFortuneStorageKey(session?.uid);
-  const [fortunes, setFortunes] = useState<DailyFortune[]>(() => {
+  const [fortunes, setFortunesState] = useState<DailyFortune[]>(() => {
     return readJsonArrayWithBackup<DailyFortune>(storageKey) || [];
   });
+  // Network callbacks must see edits immediately, including before React commits a batched event.
+  const latestFortunesRef = useRef(fortunes);
+  const setFortunes = useCallback((update: DailyFortune[] | ((previous: DailyFortune[]) => DailyFortune[])) => {
+    const next = typeof update === 'function' ? update(latestFortunesRef.current) : update;
+    latestFortunesRef.current = next;
+    setFortunesState(next);
+  }, []);
   const [shuffledDeck, setShuffledDeck] = useState<number[]>([]);
   const [loadedDataKey, setLoadedDataKey] = useState<string | null>(isAuthLoading ? null : activeDataKey);
   const [isCloudSyncPaused, setIsCloudSyncPaused] = useState(false);
@@ -134,14 +142,22 @@ export const useDailyFortune = (
         const guestFortunes = localStorage.getItem(GUEST_DAILY_FORTUNES_OWNER_KEY) === 'guest'
           ? readJsonArrayWithBackup<DailyFortune>(STORAGE_KEY) || []
           : [];
+        // Let local edits proceed while the first cloud read is pending; defer cloud writes until it succeeds.
+        const initialFortunes = mergeDailyFortuneSources(session.uid, [localFortunes, guestFortunes]);
+        setFortunes(initialFortunes);
+        setIsCloudSyncPaused(true);
+        setLoadedDataKey(activeDataKey);
         const cloudFortunes = await getUserDailyFortunes(session.uid);
         if (cancelled) return;
 
         pendingGuestFortunesSyncRef.current = guestFortunes.length > 0;
+        const latestLocalFortunes = latestFortunesRef.current;
+        const remainingDates = new Set(latestLocalFortunes.map(item => item.date));
+        const deletedDates = new Set(initialFortunes.filter(item => !remainingDates.has(item.date)).map(item => item.date));
         const mergedFortunes = mergeDailyFortuneSources(session.uid, [
-          cloudFortunes || [],
-          localFortunes,
-          guestFortunes,
+          (cloudFortunes || []).filter(item => !deletedDates.has(item.date)),
+          latestLocalFortunes,
+          guestFortunes.filter(item => !deletedDates.has(item.date)),
         ]);
         const normalizedCloudFortunes = mergeDailyFortuneSources(session.uid, [cloudFortunes || []]);
         const shouldPushMergedFortunes = (
@@ -153,11 +169,12 @@ export const useDailyFortune = (
           : serializeCloudFortunes(mergedFortunes);
         setFortunes(mergedFortunes);
         writeJsonWithBackup(storageKey, mergedFortunes);
+        setIsCloudSyncPaused(false);
       } catch (error) {
         console.warn('Daily fortune cloud load failed; keeping local copy only:', error);
         if (cancelled) return;
 
-        setFortunes(localFortunes);
+        // Keep any local edits made while the network request was pending.
         setIsCloudSyncPaused(true);
       } finally {
         if (!cancelled) setLoadedDataKey(activeDataKey);
@@ -233,7 +250,7 @@ export const useDailyFortune = (
   }, [session?.uid]);
 
   const getToday = useCallback(() => {
-    const today = new Date().toISOString().split('T')[0];
+    const today = toLocalReadingDate();
     return fortunes.find(f => f.date === today);
   }, [fortunes]);
 
@@ -242,7 +259,7 @@ export const useDailyFortune = (
     isReversed: boolean,
     source: DailyFortune['source'] = 'app-draw'
   ) => {
-    const today = new Date().toISOString().split('T')[0];
+    const today = toLocalReadingDate();
     const now = new Date().toISOString();
     
     const fortune: DailyFortune = {
@@ -365,9 +382,11 @@ export const useDailyFortune = (
   }, []);
 
   const archiveDailyFortune = useCallback((fortuneId: string, reflection?: string | DailyFortuneReflectionParts) => {
+    if (loadedDataKey !== activeDataKey || isAuthLoading) throw new Error('记录正在恢复，请稍后再保存。');
+    if (!latestFortunesRef.current.some(item => item.id === fortuneId)) throw new Error('这条日运已变更，请保留文字后重新打开记录。');
     const archivedAt = new Date().toISOString();
 
-    setFortunes(prev => prev.map(f => (
+    const next = latestFortunesRef.current.map(f => (
       f.id === fortuneId
         ? {
             ...f,
@@ -376,20 +395,26 @@ export const useDailyFortune = (
             ...(reflection !== undefined ? createDailyReflectionPatch(reflection) : {})
           }
         : f
-    )));
+    ));
+    requireLocalSave(storageKey, next);
+    setFortunes(next);
     trackEvent('daily_fortune_archived', {
       ...getReflectionAnalyticsFlags(reflection),
       with_review_input: reflection !== undefined,
     });
-  }, []);
+  }, [activeDataKey, isAuthLoading, loadedDataKey, storageKey, setFortunes]);
 
   const updateDailyFortuneReflection = useCallback((fortuneId: string, reflection: string | DailyFortuneReflectionParts) => {
+    if (loadedDataKey !== activeDataKey || isAuthLoading) throw new Error('记录正在恢复，请稍后再保存。');
+    if (!latestFortunesRef.current.some(item => item.id === fortuneId)) throw new Error('这条日运已变更，请保留文字后重新打开记录。');
     const updatedAt = new Date().toISOString();
-    setFortunes(prev => prev.map(f => (
+    const next = latestFortunesRef.current.map(f => (
       f.id === fortuneId ? { ...f, ...createDailyReflectionPatch(reflection), updatedAt } : f
-    )));
+    ));
+    requireLocalSave(storageKey, next);
+    setFortunes(next);
     trackEvent('daily_reflection_saved', getReflectionAnalyticsFlags(reflection));
-  }, []);
+  }, [activeDataKey, isAuthLoading, loadedDataKey, storageKey, setFortunes]);
 
   const saveDailyFortuneToCardAnnotation = useCallback((fortuneId: string, note?: string) => {
     const updatedAt = new Date().toISOString();
@@ -429,8 +454,8 @@ export const useDailyFortune = (
   ), [fortunes]);
 
   const getMonthlySummary = useCallback((year: number, month: number): FortuneSummary | null => {
-    const startDate = new Date(year, month, 1).toISOString().split('T')[0];
-    const endDate = new Date(year, month + 1, 0).toISOString().split('T')[0];
+    const startDate = toLocalReadingDate(new Date(year, month, 1));
+    const endDate = toLocalReadingDate(new Date(year, month + 1, 0));
     
     const monthFortunes = fortunes.filter(f => 
       f.date >= startDate && f.date <= endDate

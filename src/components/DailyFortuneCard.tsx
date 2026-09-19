@@ -27,6 +27,9 @@ import {
   NO_OBVIOUS_DAILY_MATCH_TEXT,
 } from '../lib/dailyFortuneReflection';
 import { markPwaInstallPromptReady } from '../hooks/usePwaInstallPrompt';
+import { readLocalDraft, useLocalDraft } from '../hooks/useLocalDraft';
+import { useModalFocus } from '../hooks/useModalFocus';
+import { scrollFocusedFieldIntoView } from '../lib/mobileFocus';
 
 interface FortuneChoice {
   cardNumber: number;
@@ -38,6 +41,7 @@ interface DailyFortuneCardProps {
   fortune: DailyFortune | null;
   fortunes: DailyFortune[];
   ownerName?: string;
+  ownerScope?: string;
   embedded?: boolean;
   onGenerateWithNumber: (cardNumber: number, cardIndex?: number, replaceExisting?: boolean) => DailyFortune | null | void;
   onCreateFromCard: (
@@ -152,13 +156,14 @@ const getDailyReflectionActionLabel = (fortune: DailyFortune) => {
   const parts = getDailyReflectionParts(fortune);
   if (parts.initialImpression && !parts.dailyReview) return '补写今日回看';
   if (parts.initialImpression || parts.dailyReview || fortune.archivedAt) return '继续补写';
-  return '记录日运手札';
+  return '写下第一直觉';
 };
 
 export const DailyFortuneCard: React.FC<DailyFortuneCardProps> = ({
   fortune,
   fortunes,
   ownerName,
+  ownerScope = 'guest',
   embedded = false,
   onGenerateWithNumber,
   onCreateFromCard,
@@ -180,6 +185,9 @@ export const DailyFortuneCard: React.FC<DailyFortuneCardProps> = ({
   const [archiveDailyReview, setArchiveDailyReview] = useState('');
   const [editingFortuneId, setEditingFortuneId] = useState<string | null>(null);
   const [isRedrawing, setIsRedrawing] = useState(false);
+  const [saveError, setSaveError] = useState('');
+  const [saveNotice, setSaveNotice] = useState('');
+  const archiveDialogRef = useRef<HTMLDivElement>(null);
   const shuffleIntervalRef = useRef<number | null>(null);
   const shuffleEndTimerRef = useRef<number | null>(null);
 
@@ -202,6 +210,11 @@ export const DailyFortuneCard: React.FC<DailyFortuneCardProps> = ({
       ? [fortune, ...archivedFortunes].filter(Boolean).find(item => item?.id === editingFortuneId)
       : fortune
   ) || null;
+  const draftKey = `tarot_daily_reflection_draft_${ownerScope}_${editingFortuneId || 'none'}`;
+  const draft = useLocalDraft(draftKey, {
+    initialImpression: archiveInitialImpression,
+    dailyReview: archiveDailyReview,
+  }, showArchiveDialog && Boolean(editingFortune));
   const compactKeywords = fortune ? fortune.keywords.slice(0, 2) : [];
   const containerClassName = embedded
     ? 'w-full overflow-hidden rounded-[1.35rem] border border-white/70 bg-white/44 shadow-none backdrop-blur-sm'
@@ -315,9 +328,12 @@ export const DailyFortuneCard: React.FC<DailyFortuneCardProps> = ({
 
   const openArchiveDialog = (target: DailyFortune) => {
     const reflectionParts = getDailyReflectionParts(target);
+    const savedDraft = readLocalDraft<DailyFortuneReflectionParts>(`tarot_daily_reflection_draft_${ownerScope}_${target.id}`);
     setEditingFortuneId(target.id);
-    setArchiveInitialImpression(reflectionParts.initialImpression);
-    setArchiveDailyReview(reflectionParts.dailyReview);
+    setArchiveInitialImpression(typeof savedDraft?.initialImpression === 'string' ? savedDraft.initialImpression : reflectionParts.initialImpression);
+    setArchiveDailyReview(typeof savedDraft?.dailyReview === 'string' ? savedDraft.dailyReview : reflectionParts.dailyReview);
+    setSaveError('');
+    setSaveNotice('');
     setShowArchiveDialog(true);
   };
 
@@ -328,6 +344,8 @@ export const DailyFortuneCard: React.FC<DailyFortuneCardProps> = ({
     setArchiveDailyReview('');
   };
 
+  useModalFocus(showArchiveDialog, archiveDialogRef, closeArchiveDialog);
+
   const handleSaveArchive = () => {
     if (!editingFortune) return;
     const reflectionParts = {
@@ -335,13 +353,20 @@ export const DailyFortuneCard: React.FC<DailyFortuneCardProps> = ({
       dailyReview: archiveDailyReview,
     };
 
-    if (editingFortune.archivedAt) {
-      onUpdateReflection(editingFortune.id, reflectionParts);
-    } else {
-      onArchive(editingFortune.id, reflectionParts);
+    try {
+      if (editingFortune.archivedAt) {
+        onUpdateReflection(editingFortune.id, reflectionParts);
+      } else {
+        onArchive(editingFortune.id, reflectionParts);
+      }
+    } catch (error) {
+      setSaveError(error instanceof Error ? error.message : '保存暂未完成，文字已留在这里，请稍后重试。');
+      return;
     }
 
+    draft.clear();
     closeArchiveDialog();
+    setSaveNotice('已保存到本机，可在日运复盘中查看；今日回看可以晚些再写。');
     markPwaInstallPromptReady('daily-fortune-archive');
   };
 
@@ -906,6 +931,10 @@ export const DailyFortuneCard: React.FC<DailyFortuneCardProps> = ({
         )}
       </motion.div>
 
+      {saveNotice && (
+        <p role="status" className="mt-2 px-2 text-xs leading-relaxed text-forest-accent">{saveNotice}</p>
+      )}
+
       <AnimatePresence>
         {cardPickerMode && (
           <CardPicker
@@ -926,7 +955,10 @@ export const DailyFortuneCard: React.FC<DailyFortuneCardProps> = ({
           <div className="fixed inset-0 z-[950] flex items-center justify-center bg-[rgba(62,58,54,0.42)] p-3 backdrop-blur-[3px] overscroll-contain">
             <motion.div
               role="dialog"
-              aria-label="记录日运对应"
+              ref={archiveDialogRef}
+              tabIndex={-1}
+              aria-modal="true"
+              aria-label="记录日运"
               initial={{ opacity: 0, scale: 0.96, y: 16 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.96, y: 16 }}
@@ -935,9 +967,9 @@ export const DailyFortuneCard: React.FC<DailyFortuneCardProps> = ({
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-forest-accent">
-                    {editingFortune.archivedAt ? '补写日运' : '归档日运'}
+                    {editingFortune.archivedAt ? '补写日运' : '记录日运'}
                   </p>
-                  <h3 className="mt-1 font-serif text-lg font-semibold text-forest-ink">
+                  <h3 className="mt-1 font-serif text-lg font-bold text-forest-ink">
                     {editingFortune.cardName} · {editingFortune.isReversed ? '逆位' : '正位'}
                   </h3>
                   <p className="mt-1 text-xs leading-relaxed text-forest-muted">
@@ -947,8 +979,8 @@ export const DailyFortuneCard: React.FC<DailyFortuneCardProps> = ({
                 <button
                   type="button"
                   onClick={closeArchiveDialog}
-                  className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white/72 text-forest-muted transition-colors hover:bg-white hover:text-forest-accent"
-                  aria-label="关闭记录日运对应"
+                  className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-white/72 text-forest-muted transition-colors hover:bg-white hover:text-forest-accent"
+                  aria-label="关闭记录日运"
                 >
                   <X size={18} />
                 </button>
@@ -963,40 +995,46 @@ export const DailyFortuneCard: React.FC<DailyFortuneCardProps> = ({
                     value={archiveInitialImpression}
                     onChange={(event) => setArchiveInitialImpression(event.target.value)}
                     aria-label="第一直觉"
+                    onFocus={scrollFocusedFieldIntoView}
                     placeholder="刚看到这张牌时，第一眼想到什么？画面、关键词、身体感受都可以。"
-                    className="mt-1 w-full rounded-xl border border-forest-accent/10 bg-white/88 p-3 text-[13px] leading-relaxed text-forest-ink outline-none transition-all placeholder:text-forest-muted/65 focus:border-forest-accent/35 focus:ring-2 focus:ring-forest-accent/12 sm:rounded-2xl sm:p-3.5 sm:text-sm"
+                    className="mt-1 w-full rounded-xl border border-forest-accent/10 bg-white/88 p-3 text-base leading-relaxed text-forest-ink outline-none transition-all placeholder:text-forest-muted/65 focus:border-forest-accent/35 focus:ring-2 focus:ring-forest-accent/12 sm:rounded-2xl sm:p-3.5 sm:text-sm"
                   />
                 </label>
 
                 <label className="block">
                   <span className="text-xs font-semibold text-forest-accent">今日回看</span>
+                  <span className="ml-2 text-xs text-forest-muted">可晚些再填</span>
                   <AutoResizeTextarea
                     minRows={1.5}
                     maxRows={7}
                     value={archiveDailyReview}
                     onChange={(event) => setArchiveDailyReview(event.target.value)}
                     aria-label="今日回看"
+                    onFocus={scrollFocusedFieldIntoView}
                     placeholder="晚一点回来写：今天发生了什么？它和这张牌的关键词、画面或正逆位有什么关系？"
-                    className="mt-1 w-full rounded-xl border border-forest-accent/10 bg-white/88 p-3 text-[13px] leading-relaxed text-forest-ink outline-none transition-all placeholder:text-forest-muted/65 focus:border-forest-accent/35 focus:ring-2 focus:ring-forest-accent/12 sm:rounded-2xl sm:p-3.5 sm:text-sm"
+                    className="mt-1 w-full rounded-xl border border-forest-accent/10 bg-white/88 p-3 text-base leading-relaxed text-forest-ink outline-none transition-all placeholder:text-forest-muted/65 focus:border-forest-accent/35 focus:ring-2 focus:ring-forest-accent/12 sm:rounded-2xl sm:p-3.5 sm:text-sm"
                   />
                 </label>
 
                 <button
                   type="button"
                   onClick={() => setArchiveDailyReview(NO_OBVIOUS_DAILY_MATCH_TEXT)}
-                  className="min-h-10 rounded-full bg-forest-accent/8 px-3 text-xs font-semibold text-forest-accent transition-colors hover:bg-forest-accent/13"
+                  className="min-h-11 rounded-full bg-forest-accent/8 px-3 text-xs font-semibold text-forest-accent transition-colors hover:bg-forest-accent/13"
                 >
                   今天暂未看见明显对应
                 </button>
               </div>
 
+              <p className="mt-3 text-xs leading-relaxed text-forest-muted" role={saveError || !draft.durable ? 'alert' : undefined}>
+                {saveError || (!draft.durable ? '浏览器存储暂不可用，请保留当前页面或复制文字后再离开。' : '未保存的文字会暂存在本机，可稍后回来继续写。')}
+              </p>
               <div className="mt-4 flex gap-2">
                 <button
                   type="button"
                   onClick={closeArchiveDialog}
                   className="min-h-11 flex-1 rounded-xl px-4 text-xs font-semibold text-forest-muted hover:bg-forest-accent/5 hover:text-forest-ink"
                 >
-                  取消
+                  稍后再写
                 </button>
                 <button
                   type="button"
@@ -1004,7 +1042,7 @@ export const DailyFortuneCard: React.FC<DailyFortuneCardProps> = ({
                   className="flex min-h-11 flex-1 items-center justify-center gap-2 rounded-xl bg-forest-accent/88 px-4 text-xs font-semibold text-white hover:bg-forest-accent"
                 >
                   <Save size={14} />
-                  {editingFortune.archivedAt ? '保存补写' : '保存到日运复盘'}
+                  保存记录
                 </button>
               </div>
             </motion.div>
@@ -1022,6 +1060,7 @@ export const DailyFortuneCard: React.FC<DailyFortuneCardProps> = ({
         onSaveToCardAnnotation={onSaveToCardAnnotation}
         onDeleteFortunes={onDeleteFortunes}
         ownerName={ownerName}
+        ownerScope={ownerScope}
       />
     </>
   );

@@ -38,7 +38,6 @@ self.addEventListener('install', (event) => {
       caches.open(APP_CACHE).then((cache) => cache.addAll(APP_SHELL)),
       caches.open(STATIC_CACHE).then((cache) => cache.addAll(PRECACHE_ASSETS)),
     ])
-      .then(() => self.skipWaiting())
   );
 });
 
@@ -47,10 +46,9 @@ self.addEventListener('activate', (event) => {
     caches.keys()
       .then((keys) => Promise.all(
         keys
-          .filter((key) => ![APP_CACHE, STATIC_CACHE].includes(key))
+          .filter((key) => key.startsWith('tarot-pavilion-') && ![APP_CACHE, STATIC_CACHE].includes(key))
           .map((key) => caches.delete(key))
       ))
-      .then(() => self.clients.claim())
   );
 });
 
@@ -60,7 +58,7 @@ const refreshAppShell = async (request) => {
   try {
     const response = await fetch(request);
     if (response.ok) {
-      cache.put(request, response.clone());
+      await cache.put(request, response.clone());
     }
     return response;
   } catch {
@@ -68,18 +66,13 @@ const refreshAppShell = async (request) => {
   }
 };
 
-const appShellFirst = async (request, event) => {
+// A new worker waits for existing pages to close, so their hashed modules remain
+// available. Navigation loads the current shell online and falls back offline.
+const appShellFirst = async (request) => {
   const cache = await caches.open(APP_CACHE);
-  const cached = await cache.match(request) || await cache.match('/');
-
-  const refreshPromise = refreshAppShell(request);
-
-  if (cached) {
-    event.waitUntil(refreshPromise.catch(() => undefined));
-    return cached;
-  }
-
-  return (await refreshPromise) || Response.error();
+  const response = await refreshAppShell(request);
+  if (response?.ok) return response;
+  return await cache.match(request) || await cache.match('/') || response || Response.error();
 };
 
 const staleWhileRevalidate = async (request) => {
@@ -104,7 +97,7 @@ const cacheFirst = async (request) => {
   if (cached) return cached;
 
   const response = await fetch(request);
-  if (response.ok) {
+  if (response.ok && !response.headers.get('content-type')?.includes('text/html')) {
     await staticCache.put(request, response.clone());
   }
   return response;
@@ -115,7 +108,7 @@ self.addEventListener('fetch', (event) => {
   if (shouldBypassCache(event.request, url)) return;
 
   if (event.request.mode === 'navigate') {
-    event.respondWith(appShellFirst(event.request, event));
+    event.respondWith(appShellFirst(event.request));
     return;
   }
 

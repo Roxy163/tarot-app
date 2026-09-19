@@ -1,10 +1,12 @@
 import type { User } from 'firebase/auth';
 import type {
   CardKeywordMemory,
+  CardAnnotation,
   DailyFortune,
   PublicReadingModerationStatus,
   PublicReadingReport,
   PublicReadingReportReason,
+  PublicReadingLikeState,
   QuizMemoryEntry,
   SpreadDefinition,
   TarotCardMetadata,
@@ -321,13 +323,16 @@ export const deleteUserAccount = async (uid: string): Promise<void> => {
   const settingsBackupsRef = collection(firebaseDb, 'users', uid, 'settingsBackups');
   const annotationsRef = collection(firebaseDb, 'users', uid, 'cardAnnotations');
   const numerologyRef = collection(firebaseDb, 'users', uid, 'numerologySettings');
-  const [readingsSnapshot, settingsSnapshot, settingsBackupsSnapshot, annotationsSnapshot, numerologySnapshot] = await Promise.all([
+  const [readingsSnapshot, settingsSnapshot, settingsBackupsSnapshot, annotationsSnapshot, numerologySnapshot, likesSnapshot] = await Promise.all([
     getDocs(userReadingsRef),
     getDocs(settingsRef),
     getDocs(settingsBackupsRef),
     getDocs(annotationsRef),
     getDocs(numerologyRef),
+    getDocs(collection(firebaseDb, 'users', uid, 'publicLikes')),
   ]);
+
+  for (const like of likesSnapshot.docs) await setPublicReadingLike(like.id, uid, false);
 
   for (const reading of readingsSnapshot.docs) {
     const publicRef = doc(firebaseDb, 'publicReadings', reading.id);
@@ -450,6 +455,38 @@ export const getPublicReadings = async (): Promise<TarotReading[]> => {
     .map(item => ({ id: item.id, userId: 'public', ...item.data() }) as TarotReading)
     .filter(reading => reading.isPublic && reading.moderationStatus !== 'hidden')
     .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+};
+
+export const getPublicReadingLike = async (readingId: string, uid?: string): Promise<PublicReadingLikeState> => {
+  const { doc, getDocFromServer } = await loadFirestore();
+  const db = await getFirebaseDb();
+  const [total, mine] = await Promise.all([
+    getDocFromServer(doc(db, 'publicReadingReactions', readingId)),
+    uid ? getDocFromServer(doc(db, 'users', uid, 'publicLikes', readingId)) : null,
+  ]);
+  return { count: total.exists() ? total.data().count : 0, liked: mine?.exists() ?? false };
+};
+
+export const setPublicReadingLike = async (readingId: string, uid: string, liked: boolean): Promise<PublicReadingLikeState> => {
+  const { doc, runTransaction, increment, getDocFromServer } = await loadFirestore();
+  const db = await getFirebaseDb();
+  const totalRef = doc(db, 'publicReadingReactions', readingId);
+  const mineRef = doc(db, 'users', uid, 'publicLikes', readingId);
+  await runTransaction(db, async transaction => {
+    const mine = await transaction.get(mineRef);
+    if (mine.exists() === liked) return;
+    if (liked) transaction.set(mineRef, { active: true });
+    else transaction.delete(mineRef);
+    // Increment against the commit-time count, including simultaneous likes by other readers.
+    transaction.set(totalRef, { count: increment(liked ? 1 : -1) }, { merge: true });
+  });
+  try {
+    const total = await getDocFromServer(totalRef);
+    return { liked, count: total.exists() ? total.data().count : 0 };
+  } catch {
+    // The write is already committed; a failed count refresh must not undo its success.
+    return { liked };
+  }
 };
 
 export const getUserModeratorStatus = async (uid: string): Promise<boolean> => {
@@ -730,3 +767,25 @@ export const saveUserQuizMemory = (uid: string, memory: QuizMemoryEntry[]) => sa
 
 export const getUserDailyFortunes = (uid: string) => getUserSetting<DailyFortune>(uid, 'dailyFortunes');
 export const saveUserDailyFortunes = (uid: string, fortunes: DailyFortune[]) => saveUserSetting(uid, 'dailyFortunes', fortunes);
+
+export const getUserAnnotations = (uid: string) => getUserSetting<Partial<CardAnnotation>>(uid, 'cardAnnotations');
+
+// Merge within a transaction so two devices cannot replace each other's newer cards.
+export const syncUserAnnotations = async (uid: string, incoming: Partial<CardAnnotation>[]) => {
+  const { doc, runTransaction } = await loadFirestore();
+  const db = await getFirebaseDb();
+  const ref = doc(db, 'users', uid, 'settings', 'cardAnnotations');
+  return runTransaction(db, async transaction => {
+    const snapshot = await transaction.get(ref);
+    const previous: Partial<CardAnnotation>[] = snapshot.exists() && Array.isArray(snapshot.data().items) ? snapshot.data().items : [];
+    const byId = new Map(previous.filter(item => item.cardId).map(item => [item.cardId!, item]));
+    for (const item of incoming) {
+      if (!item.cardId) continue;
+      const old = byId.get(item.cardId);
+      if (!old || (item.updatedAt || '') >= (old.updatedAt || '')) byId.set(item.cardId, { ...item, userId: uid });
+    }
+    const items = [...byId.values()];
+    transaction.set(ref, { items: withoutUndefined(items), updatedAt: new Date().toISOString() });
+    return items;
+  });
+};

@@ -8,6 +8,7 @@ import { MysticWatermark } from '../MysticWatermark';
 import { useDailyFortune } from '../../hooks/useDailyFortune';
 import { cardAnnotationService } from '../../services/cardAnnotationService';
 import { getDailyReflectionParts } from '../../lib/dailyFortuneReflection';
+import { useAnnotationRevision } from '../../hooks/useAnnotationSync';
 
 interface HomeTabProps {
   session: { uid?: string; email?: string } | null;
@@ -26,6 +27,7 @@ interface HomeTabProps {
 }
 
 export const HomeTab: React.FC<HomeTabProps> = ({
+  session,
   profile,
   readings,
   cardMetadata,
@@ -67,7 +69,8 @@ export const HomeTab: React.FC<HomeTabProps> = ({
     || profile?.nickname?.trim()
     || '见习阁主'
   );
-  const modifiedAnnotationCount = useMemo(() => cardAnnotationService.getModifiedCardIds().length, []);
+  const annotationRevision = useAnnotationRevision();
+  const modifiedAnnotationCount = useMemo(() => cardAnnotationService.getModifiedCardIds().length, [annotationRevision]);
   return (
     <motion.div
       key="home"
@@ -86,13 +89,20 @@ export const HomeTab: React.FC<HomeTabProps> = ({
             <p className="text-[10px] font-medium uppercase tracking-[0.18em] text-forest-accent">今日研习</p>
           </div>
           <h3 className="mt-1.5 font-serif text-[1.05rem] font-bold text-forest-ink sm:mt-2 sm:text-xl">先抽日运，再把记录变成复盘</h3>
-          <p className="mt-0.5 text-[10px] leading-relaxed text-forest-muted sm:mt-1 sm:text-[11px]">
-            日常入口集中在这里：抽一张日运，记第一直觉，晚上回来回看。
+          <p className="mt-1 text-xs leading-relaxed text-forest-muted">
+            记下第一直觉，晚上回来回看。
           </p>
+          {!session?.uid && (
+            <p className="mt-1.5 text-xs leading-relaxed text-forest-muted">
+              无需注册，记录先存在当前浏览器；清理浏览器前记得导出备份。
+            </p>
+          )}
         </div>
 
         <div id="daily-draw-section" className="relative mt-2 scroll-mt-4 sm:mt-2.5">
           <DailyFortuneCard
+            key={session?.uid || 'guest'}
+            ownerScope={session?.uid || 'guest'}
             fortune={todayFortune}
             fortunes={fortunes}
             ownerName={dailyFortuneOwnerName}
@@ -109,7 +119,7 @@ export const HomeTab: React.FC<HomeTabProps> = ({
 
         <div className="relative mt-1.5 grid grid-cols-4 gap-1 sm:mt-2.5 sm:gap-2">
           {[
-            { label: '日运', value: archivedDailyFortuneCount, icon: Sun },
+            { label: '日运归档', value: archivedDailyFortuneCount, icon: Sun },
             { label: '日运回看', value: reviewedDailyFortuneCount, icon: CheckCircle2 },
             { label: '手记', value: realReadings.length, icon: BookOpen },
             { label: '手记复盘', value: reviewedReadings.length, icon: Sparkles },
@@ -145,14 +155,14 @@ export const HomeTab: React.FC<HomeTabProps> = ({
             </span>
             <div className="min-w-0">
               <span className="block truncate text-xs font-medium text-forest-ink sm:text-sm sm:font-semibold">典籍复盘</span>
-              <span className="mt-0.5 hidden text-[11px] leading-relaxed text-forest-muted min-[390px]:block">
-                全部 {realReadings.length} 条 · 已复盘 {reviewedReadings.length} 条
+              <span className="mt-1 block text-xs leading-relaxed text-forest-muted">
+                {realReadings.length} 条 · 复盘 {reviewedReadings.length} 条
               </span>
             </div>
           </div>
           <span
             data-tour="library-review"
-            className="relative hidden shrink-0 rounded-full border border-forest-accent/8 bg-white/36 px-2.5 py-0.5 text-[9px] font-medium text-forest-accent transition-colors group-hover:bg-forest-accent group-hover:text-white min-[390px]:inline"
+            className="relative hidden shrink-0 rounded-full border border-forest-accent/8 bg-white/36 px-2.5 py-0.5 text-xs font-medium text-forest-accent transition-colors group-hover:bg-forest-accent group-hover:text-white sm:inline"
           >
             进入
           </span>
@@ -173,14 +183,14 @@ export const HomeTab: React.FC<HomeTabProps> = ({
             </span>
             <span className="min-w-0">
               <span className="block truncate text-xs font-medium text-forest-ink sm:text-sm sm:font-semibold">牌义注疏</span>
-              <span className="mt-0.5 hidden text-[11px] leading-relaxed text-forest-muted min-[390px]:block">
-                批量修改单牌释义 · 已自定义 {modifiedAnnotationCount} 张
+              <span className="mt-1 block text-xs leading-relaxed text-forest-muted">
+                已自定义 {modifiedAnnotationCount} 张
               </span>
             </span>
           </div>
           <span
             data-tour="card-annotations"
-            className="relative hidden shrink-0 rounded-full border border-forest-accent/8 bg-white/36 px-2.5 py-0.5 text-[9px] font-medium text-forest-accent transition-colors group-hover:bg-forest-accent group-hover:text-white min-[390px]:inline"
+            className="relative hidden shrink-0 rounded-full border border-forest-accent/8 bg-white/36 px-2.5 py-0.5 text-xs font-medium text-forest-accent transition-colors group-hover:bg-forest-accent group-hover:text-white sm:inline"
           >
             编辑
           </span>

@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useDailyFortune } from './useDailyFortune';
 import { getLocalStorageBackupKey } from '../lib/safeLocalStorage';
 import { getUserDailyFortunes, saveUserDailyFortunes } from '../lib/firebaseData';
+import type { DailyFortune } from '../types';
 
 vi.mock('../lib/firebaseData', () => ({
   getUserDailyFortunes: vi.fn(),
@@ -35,6 +36,15 @@ describe('useDailyFortune', () => {
 
     expect(result.current.fortunes).toHaveLength(1);
     expect(result.current.fortunes[0].source).toBe('app-draw');
+  });
+
+  it('uses local midnight and includes the final day in monthly summaries', () => {
+    vi.setSystemTime(new Date(2026, 8, 30, 1, 30));
+    const { result } = renderHook(() => useDailyFortune());
+    act(() => { result.current.createDailyFortuneFromCard('ar00', false); });
+    expect(result.current.getToday()?.date).toBe('2026-09-30');
+    expect(result.current.getMonthlySummary(2026, 8)).not.toBeNull();
+    expect(result.current.getMonthlySummary(2026, 7)).toBeNull();
   });
 
   it('creates physical daily records from a selected real-world card', () => {
@@ -120,6 +130,54 @@ describe('useDailyFortune', () => {
     expect(saveUserDailyFortunes).not.toHaveBeenCalled();
     expect(result.current.fortunes).toHaveLength(1);
     expect(result.current.fortunes[0].id).toBe('fortune-local-fallback');
+  });
+
+  it.each(['resolve', 'reject'] as const)('keeps edits made before a slow cloud read can %s', async outcome => {
+    const stored: DailyFortune = {
+      id: 'local-first', userId: 'user-1', date: '2026-07-02', cardName: '女祭司',
+      isReversed: false, interpretation: '', keywords: [], source: 'physical-draw',
+      createdAt: '2026-07-02T07:00:00.000Z', updatedAt: '2026-07-02T07:00:00.000Z', isRevealed: true,
+    };
+    localStorage.setItem('tarot_daily_fortunes_user-1', JSON.stringify([stored]));
+    let finish!: (items: DailyFortune[]) => void;
+    let fail!: (error: Error) => void;
+    vi.mocked(getUserDailyFortunes).mockReturnValue(new Promise((resolve, reject) => { finish = resolve; fail = reject; }));
+    const { result } = renderHook(() => useDailyFortune({ uid: 'user-1' }));
+    expect(result.current.getToday()?.id).toBe('local-first');
+    act(() => { result.current.archiveDailyFortune('local-first', { initialImpression: '云端还没回来，我已经写下。' }); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(1500); });
+    expect(saveUserDailyFortunes).not.toHaveBeenCalled();
+    await act(async () => {
+      if (outcome === 'resolve') finish([stored]);
+      else fail(new Error('offline'));
+    });
+    expect(result.current.getToday()?.initialImpression).toBe('云端还没回来，我已经写下。');
+    expect(JSON.parse(localStorage.getItem('tarot_daily_fortunes_user-1')!)[0].initialImpression).toBe('云端还没回来，我已经写下。');
+  });
+
+  it('does not mark a daily reflection saved when browser storage rejects it', () => {
+    const { result } = renderHook(() => useDailyFortune());
+    act(() => { result.current.createDailyFortuneFromCard('ar02', false); });
+    const id = result.current.getToday()!.id;
+    const setItem = Storage.prototype.setItem;
+    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(function (key, value) {
+      if (key.startsWith('tarot_daily_fortunes')) throw new Error('storage full');
+      return setItem.call(this, key, value);
+    });
+    expect(() => { act(() => { result.current.archiveDailyFortune(id, '应保留在表单'); }); }).toThrow('本机保存失败');
+    expect(result.current.getToday()?.archivedAt).toBeUndefined();
+    expect(result.current.getToday()?.reflection).toBeUndefined();
+  });
+
+  it('preserves a new draw when the cloud responds before the next React commit', async () => {
+    let finish!: (items: DailyFortune[]) => void;
+    vi.mocked(getUserDailyFortunes).mockReturnValue(new Promise(resolve => { finish = resolve; }));
+    const { result } = renderHook(() => useDailyFortune({ uid: 'user-1' }));
+    await act(async () => {
+      result.current.createDailyFortuneFromCard('ar02', false);
+      finish([]);
+    });
+    expect(result.current.getToday()?.cardName).toBe('女祭司');
   });
 
   it('merges signed-in cloud records with the user-scoped local cache and saves the merged result', async () => {

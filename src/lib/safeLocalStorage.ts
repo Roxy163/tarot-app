@@ -43,61 +43,60 @@ const readStoredJson = (key: string) => {
   }
 };
 
-const readRecoveryCandidates = (key: string) => [
-  getLocalStorageLatestBackupKey(key),
-  getLocalStorageBackupKey(key),
-];
+function readJsonWithBackup(key: string, isExpectedShape: (value: unknown) => boolean): unknown {
+  // Primary first, then the latest mirror, then the previous version.
+  for (const candidateKey of [key, getLocalStorageLatestBackupKey(key), getLocalStorageBackupKey(key)]) {
+    const candidate = readStoredJson(candidateKey);
+    if (!candidate || !isExpectedShape(candidate.parsed)) continue;
+    if (candidateKey !== key) restoreStoredValue(key, candidate.raw);
+    return candidate.parsed;
+  }
+  return null;
+}
 
 export function readJsonArrayWithBackup<T>(key: string): T[] | null {
-  const readRecovery = () => {
-    for (const recoveryKey of readRecoveryCandidates(key)) {
-      const recovery = readStoredJson(recoveryKey);
-      if (!recovery || !Array.isArray(recovery.parsed)) continue;
-      restoreStoredValue(key, recovery.raw);
-      return recovery.parsed as T[];
-    }
-
-    return null;
-  };
-
-  const saved = readStoredJson(key);
-  if (!saved) return readRecovery();
-
-  return Array.isArray(saved.parsed) ? saved.parsed as T[] : readRecovery();
+  return readJsonWithBackup(key, Array.isArray) as T[] | null;
 }
 
 export function readJsonRecordWithBackup<T extends Record<string, unknown>>(key: string): T | null {
-  const readRecovery = () => {
-    for (const recoveryKey of readRecoveryCandidates(key)) {
-      const recovery = readStoredJson(recoveryKey);
-      if (!recovery || !isJsonRecord(recovery.parsed)) continue;
-      restoreStoredValue(key, recovery.raw);
-      return recovery.parsed as T;
-    }
-
-    return null;
-  };
-
-  const saved = readStoredJson(key);
-  if (!saved) return readRecovery();
-
-  return isJsonRecord(saved.parsed) ? saved.parsed as T : readRecovery();
+  return readJsonWithBackup(key, isJsonRecord) as T | null;
 }
 
-export function writeJsonWithBackup(key: string, value: unknown) {
+export type LocalSaveResult = { ok: true } | { ok: false; error: unknown };
+export const LOCAL_SAVE_ERROR = 'tarot-local-save-error';
+
+export function writeJsonWithBackup(key: string, value: unknown): LocalSaveResult {
   try {
     const nextValue = JSON.stringify(value);
     const currentValue = localStorage.getItem(key);
 
     if (currentValue && currentValue !== nextValue && isValidJson(currentValue)) {
-      localStorage.setItem(getLocalStorageBackupKey(key), currentValue);
-      localStorage.setItem(getLocalStorageBackupAtKey(key), new Date().toISOString());
+      try {
+        localStorage.setItem(getLocalStorageBackupKey(key), currentValue);
+        localStorage.setItem(getLocalStorageBackupAtKey(key), new Date().toISOString());
+      } catch { /* A full backup must not prevent saving the primary record. */ }
     }
 
     localStorage.setItem(key, nextValue);
-    localStorage.setItem(getLocalStorageLatestBackupKey(key), nextValue);
-    localStorage.setItem(getLocalStorageLatestBackupAtKey(key), new Date().toISOString());
+    try {
+      localStorage.setItem(getLocalStorageLatestBackupKey(key), nextValue);
+      localStorage.setItem(getLocalStorageLatestBackupAtKey(key), new Date().toISOString());
+    } catch { /* The primary record is durable even if its mirror cannot be refreshed. */ }
+    return { ok: true };
   } catch (error) {
-    console.warn(`Failed to persist ${key}; existing local data was left untouched.`, error);
+    console.warn(`Failed to persist ${key}.`, error);
+    if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent(LOCAL_SAVE_ERROR, { detail: { key } }));
+    return { ok: false, error };
+  }
+}
+
+export function requireLocalSave(key: string, value: unknown) {
+  const result = writeJsonWithBackup(key, value);
+  if (!result.ok) throw new Error('本机保存失败，请保留当前页面，释放存储空间后重试。');
+}
+
+export function removeJsonWithBackup(key: string) {
+  for (const suffix of ['', '__backup', '__latest', '__backup_at', '__latest_at']) {
+    localStorage.removeItem(`${key}${suffix}`);
   }
 }

@@ -32,7 +32,6 @@ export default defineConfig(() => {
             if (id.includes('@firebase/auth') || id.includes('firebase/auth')) return 'firebase-auth';
             if (id.includes('@firebase') || id.includes('firebase')) return 'firebase-core';
             if (id.includes('react') || id.includes('motion')) return 'react-vendor';
-            if (id.includes('konva') || id.includes('zustand')) return 'canvas-vendor';
             return undefined;
           },
         },

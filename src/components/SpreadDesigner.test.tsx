@@ -36,7 +36,6 @@ const renderDesigner = (overrides = {}) => {
     onSwapSlotIndex: vi.fn(),
     onUpdateSlotLabel: vi.fn(),
     onSetDesignActiveSlot: vi.fn(),
-    onRemoveSlot: vi.fn(),
     onRestoreDefaults: vi.fn(),
     onStartNewSession: vi.fn(),
     onClose: vi.fn(),
@@ -187,7 +186,6 @@ describe('SpreadDesigner', () => {
           onSwapSlotIndex={vi.fn()}
           onUpdateSlotLabel={vi.fn()}
           onSetDesignActiveSlot={vi.fn()}
-          onRemoveSlot={vi.fn()}
           onRestoreDefaults={vi.fn()}
           onStartNewSession={vi.fn()}
           onClose={vi.fn()}

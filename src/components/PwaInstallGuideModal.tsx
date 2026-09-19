@@ -2,6 +2,7 @@ import { useMemo } from 'react';
 import { CheckCircle2, Copy, Download, Monitor, Share2, Smartphone } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { Modal } from './Modal';
+import type { InstallReminderPreference } from '../hooks/usePwaInstallPrompt';
 
 type InstallDevice = 'ios' | 'android' | 'desktop';
 
@@ -11,6 +12,8 @@ interface PwaInstallGuideModalProps {
   canAutoInstall?: boolean;
   onTryInstall?: () => void | Promise<void>;
   onNotice?: (message: string) => void;
+  reminderPreference: InstallReminderPreference;
+  onReminderPreferenceChange: (preference: InstallReminderPreference) => boolean;
 }
 
 const detectInstallDevice = (): InstallDevice => {
@@ -64,6 +67,8 @@ export function PwaInstallGuideModal({
   canAutoInstall = false,
   onTryInstall,
   onNotice,
+  reminderPreference,
+  onReminderPreferenceChange,
 }: PwaInstallGuideModalProps) {
   const currentDevice = useMemo(() => detectInstallDevice(), [isOpen]);
   const currentGuide = installSteps[currentDevice];
@@ -84,18 +89,46 @@ export function PwaInstallGuideModal({
       onNotice?.('当前浏览器不能自动复制，请手动复制地址栏网址。');
     }
   };
+  const updatePreference = (preference: InstallReminderPreference) => {
+    const saved = onReminderPreferenceChange(preference);
+    if (!saved) onNotice?.('设置已在当前页面生效，但浏览器未能保存，刷新后可能需要重新设置。');
+  };
 
   return (
     <Modal
       isOpen={isOpen}
       onClose={onClose}
-      title="下载安装到桌面"
+      title="添加到桌面"
       icon={<Download size={20} />}
     >
       <div className="space-y-4">
         <p className="text-xs leading-relaxed text-forest-muted">
           塔罗研习阁是网页应用，不用应用商店；添加到桌面后会像 App 一样独立打开。
         </p>
+
+        <section className="rounded-[1.15rem] border border-forest-accent/10 bg-forest-accent/5 p-3">
+          <button
+            type="button"
+            role="switch"
+            aria-checked={reminderPreference !== 'auto'}
+            aria-label="不再提醒添加到桌面"
+            onClick={() => updatePreference(reminderPreference === 'auto' ? 'never' : 'auto')}
+            className="flex min-h-11 w-full items-center justify-between gap-3 text-left"
+          >
+            <span className="text-sm font-medium text-forest-ink">不再提醒添加到桌面</span>
+            <span className={`flex h-6 w-11 shrink-0 items-center rounded-full p-0.5 transition-colors ${reminderPreference === 'auto' ? 'bg-forest-muted/20' : 'bg-forest-accent'}`} aria-hidden="true">
+              <span className={`h-5 w-5 rounded-full bg-white shadow-sm transition-transform motion-reduce:transition-none ${reminderPreference === 'auto' ? 'translate-x-0' : 'translate-x-5'}`} />
+            </span>
+          </button>
+          <p className="mt-1 text-xs leading-relaxed text-forest-muted">
+            {reminderPreference === 'installed' ? '已记住添加状态，不再主动提醒。' : '设置保存在当前浏览器，之后可从菜单里的“添加到桌面”修改。'}
+          </p>
+          {reminderPreference !== 'installed' && (
+            <button type="button" onClick={() => updatePreference('installed')} className="mt-1 min-h-11 rounded-xl px-2 text-xs font-medium text-forest-accent hover:bg-white/60">
+              我已添加到桌面
+            </button>
+          )}
+        </section>
 
         <div className={`grid gap-2 ${canAutoInstall && currentDevice !== 'ios' ? 'grid-cols-2' : 'grid-cols-1'}`}>
           {canAutoInstall && currentDevice !== 'ios' && (

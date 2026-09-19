@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { AnimatePresence, motion } from 'motion/react';
 import { AlertTriangle, X } from 'lucide-react';
 import { useBodyScrollLock } from '../hooks/useBodyScrollLock';
+import { useModalFocus } from '../hooks/useModalFocus';
 
 interface ConfirmDialogProps {
   isOpen: boolean;
@@ -27,6 +28,8 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
 }) => {
   const titleId = React.useId();
   useBodyScrollLock(isOpen);
+  const dialogRef = React.useRef<HTMLDivElement>(null);
+  useModalFocus(isOpen, dialogRef, onClose);
 
   const handleConfirm = async () => {
     await onConfirm();
@@ -49,6 +52,8 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 16, scale: 0.98 }}
             role="dialog"
+            ref={dialogRef}
+            tabIndex={-1}
             aria-modal="true"
             aria-labelledby={titleId}
             className="relative my-auto max-h-[calc(100dvh-2rem)] w-full max-w-sm space-y-4 overflow-y-auto rounded-3xl border border-forest-border bg-white p-5 shadow-2xl"
@@ -64,7 +69,7 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
                 type="button"
                 aria-label="关闭"
                 onClick={onClose}
-                className="w-9 h-9 rounded-xl text-forest-muted hover:text-forest-accent hover:bg-forest-accent/5 flex items-center justify-center transition-colors"
+                className="min-w-11 min-h-11 rounded-xl text-forest-muted hover:text-forest-accent hover:bg-forest-accent/5 flex items-center justify-center transition-colors"
               >
                 <X size={18} />
               </button>

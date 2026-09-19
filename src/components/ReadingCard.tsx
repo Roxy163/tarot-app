@@ -377,7 +377,6 @@ export const ReadingCard: React.FC<ReadingCardProps> = ({
       isTracking: true,
       isDragging: false,
     };
-    event.currentTarget.setPointerCapture?.(event.pointerId);
   };
 
   const handleSwipePointerMove = (event: React.PointerEvent<HTMLDivElement>) => {
@@ -388,6 +387,9 @@ export const ReadingCard: React.FC<ReadingCardProps> = ({
     const deltaY = event.clientY - state.startY;
     if (!state.isDragging && (Math.abs(deltaX) < 8 || Math.abs(deltaX) < Math.abs(deltaY))) return;
 
+    // Capture only after a horizontal drag starts; capturing on press redirects
+    // button clicks (such as Edit) to the surrounding card on mobile.
+    if (!state.isDragging) event.currentTarget.setPointerCapture?.(event.pointerId);
     state.isDragging = true;
     didSwipeRef.current = true;
     event.preventDefault();
@@ -400,7 +402,9 @@ export const ReadingCard: React.FC<ReadingCardProps> = ({
 
     const finalOffset = clampSwipeOffset(state.startOffset + event.clientX - state.startX);
     swipeStateRef.current = { ...state, isTracking: false, isDragging: false };
-    event.currentTarget.releasePointerCapture?.(event.pointerId);
+    if (event.currentTarget.hasPointerCapture?.(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
 
     if (!state.isDragging) return;
     if (finalOffset <= -SWIPE_OPEN_THRESHOLD) openSwipe();
@@ -1067,16 +1071,6 @@ export const ReadingCard: React.FC<ReadingCardProps> = ({
             aria-label="编辑手记"
           >
             <PencilLine size={16} className="text-forest-accent" />
-          </button>
-        )}
-        {canShowDeleteAction && (
-          <button
-            onClick={() => setShowDeleteConfirm(true)}
-            className="flex min-h-11 min-w-11 items-center justify-center rounded-xl transition-colors hover:bg-red-50/70"
-            title="删除"
-            aria-label="删除手记"
-          >
-            <Trash2 size={16} className="text-red-500" />
           </button>
         )}
       </div>

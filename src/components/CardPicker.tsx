@@ -1,4 +1,5 @@
-import React, { useEffect, useState } from 'react';
+import { scrollFocusedFieldIntoView } from '../lib/mobileFocus';
+import { useEffect, useState, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { motion } from 'motion/react';
 import { X } from 'lucide-react';
@@ -7,6 +8,7 @@ import { cardMatchesSearch } from '../lib/cardSearch';
 import { preloadTarotCardImages } from '../lib/tarotImagePreload';
 import { useBodyScrollLock } from '../hooks/useBodyScrollLock';
 import { TarotCardImage } from './TarotCardImage';
+import { useModalFocus } from '../hooks/useModalFocus';
 
 interface CardPickerProps {
   onSelect: (card: typeof TAROT_CARDS[0], isReversed: boolean) => void;
@@ -28,17 +30,12 @@ export function CardPicker({
   description,
 }: CardPickerProps) {
   useBodyScrollLock(true);
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const searchRef = useRef<HTMLInputElement>(null);
 
   const [search, setSearch] = useState('');
   const shouldAutoFocus = typeof window !== 'undefined' ? window.innerWidth >= 640 : true;
-  const scrollSearchIntoView = (event: React.FocusEvent<HTMLInputElement>) => {
-    if (typeof window === 'undefined' || window.innerWidth >= 768) return;
-    const target = event.currentTarget;
-
-    window.setTimeout(() => {
-      target.scrollIntoView({ block: 'center', inline: 'nearest', behavior: 'smooth' });
-    }, 120);
-  };
+  useModalFocus(true, dialogRef, onClose, shouldAutoFocus ? searchRef : undefined);
 
   const filteredCards = TAROT_CARDS.filter(card => cardMatchesSearch(card, search));
   const firstVisibleCardIds = filteredCards
@@ -71,7 +68,12 @@ export function CardPicker({
 
   const modal = (
     <div className="fixed inset-0 z-[1000] flex items-end justify-center bg-forest-ink/18 p-0 backdrop-blur-[2px] overscroll-contain sm:items-center sm:p-4">
-      <motion.div 
+      <motion.div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label={title}
+        tabIndex={-1}
         initial={{ opacity: 0, y: 28, scale: 0.98 }}
         animate={{ opacity: 1, y: 0, scale: 1 }}
         className="flex h-[88dvh] w-full max-w-2xl flex-col overflow-hidden rounded-t-[1.55rem] border border-forest-accent/8 bg-white/84 shadow-[0_24px_70px_-54px_rgba(62,58,54,0.68)] backdrop-blur-md sm:h-auto sm:max-h-[80vh] sm:rounded-[1.45rem]"
@@ -95,13 +97,13 @@ export function CardPicker({
         
         <div className="border-b border-forest-accent/5 p-3 sm:p-4">
           <input 
-            autoFocus={shouldAutoFocus}
+            ref={searchRef}
             type="search"
             inputMode="search"
-            className="min-h-11 w-full rounded-xl border border-forest-accent/7 bg-white/46 px-4 py-2 text-sm outline-none focus:ring-2 focus:ring-forest-accent/15"
+            className="min-h-11 w-full rounded-xl border border-forest-accent/7 bg-white/46 px-4 py-2 text-base outline-none focus:ring-2 focus:ring-forest-accent/15 sm:text-sm"
             placeholder="搜索牌名、别称或英文..."
             value={search}
-            onFocus={scrollSearchIntoView}
+            onFocus={scrollFocusedFieldIntoView}
             onChange={e => setSearch(e.target.value)}
           />
         </div>

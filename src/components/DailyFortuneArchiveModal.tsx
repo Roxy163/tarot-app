@@ -1,3 +1,4 @@
+import { downloadBlobFile, downloadTextFile } from '../lib/downloadFile';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { AnimatePresence, motion } from 'motion/react';
@@ -42,6 +43,9 @@ import { QuietEmptyState } from './ui/SoftUI';
 import { AutoResizeTextarea } from './ui/AutoResizeTextarea';
 import { trackEvent } from '../lib/analytics';
 import { ConfirmDialog } from './ConfirmDialog';
+import { readLocalDraft, useLocalDraft } from '../hooks/useLocalDraft';
+import { useModalFocus } from '../hooks/useModalFocus';
+import { scrollFocusedFieldIntoView } from '../lib/mobileFocus';
 
 interface DailyFortuneArchiveModalProps {
   fortunes: DailyFortune[];
@@ -51,6 +55,7 @@ interface DailyFortuneArchiveModalProps {
   onSaveToCardAnnotation: (id: string, note?: string) => void;
   onDeleteFortunes: (ids: string[]) => void;
   ownerName?: string;
+  ownerScope?: string;
 }
 
 type ReviewView = 'timeline' | 'cards' | 'month';
@@ -106,20 +111,6 @@ const getSafeFileNamePart = (value: string) => (
 const getDailyReviewFileBaseName = (ownerName: string) => (
   `${getSafeFileNamePart(ownerName)}-日运复盘-${new Date().toISOString().split('T')[0]}`
 );
-
-const downloadTextFile = (filename: string, content: string, type: string) => {
-  if (typeof URL === 'undefined' || typeof URL.createObjectURL !== 'function') return;
-
-  const blob = new Blob([content], { type });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = filename;
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-  URL.revokeObjectURL(url);
-};
 
 const DailyReflectionBlocks = ({ fortune }: { fortune: DailyFortune }) => {
   const parts = getDailyReflectionParts(fortune);
@@ -229,7 +220,6 @@ const FortuneArchiveItem = ({
       isTracking: true,
       isDragging: false,
     };
-    event.currentTarget.setPointerCapture?.(event.pointerId);
   };
 
   const handlePointerMove = (event: React.PointerEvent<HTMLDivElement>) => {
@@ -240,6 +230,7 @@ const FortuneArchiveItem = ({
     const deltaY = event.clientY - state.startY;
     if (!state.isDragging && (Math.abs(deltaX) < 8 || Math.abs(deltaX) < Math.abs(deltaY))) return;
 
+    if (!state.isDragging) event.currentTarget.setPointerCapture?.(event.pointerId);
     state.isDragging = true;
     didSwipeRef.current = true;
     event.preventDefault();
@@ -252,7 +243,9 @@ const FortuneArchiveItem = ({
 
     const finalOffset = clampSwipeOffset(state.startOffset + event.clientX - state.startX);
     swipeStateRef.current = { ...state, isTracking: false, isDragging: false };
-    event.currentTarget.releasePointerCapture?.(event.pointerId);
+    if (event.currentTarget.hasPointerCapture?.(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
 
     if (!state.isDragging) return;
     if (finalOffset <= -SWIPE_OPEN_THRESHOLD) openSwipe();
@@ -414,6 +407,7 @@ export const DailyFortuneArchiveModal: React.FC<DailyFortuneArchiveModalProps> =
   onSaveToCardAnnotation,
   onDeleteFortunes,
   ownerName = '见习阁主',
+  ownerScope = 'guest',
 }) => {
   useBodyScrollLock(isOpen);
 
@@ -423,6 +417,13 @@ export const DailyFortuneArchiveModal: React.FC<DailyFortuneArchiveModalProps> =
   const [editingFortune, setEditingFortune] = useState<DailyFortune | null>(null);
   const [editInitialImpression, setEditInitialImpression] = useState('');
   const [editDailyReview, setEditDailyReview] = useState('');
+  const [editSaveError, setEditSaveError] = useState('');
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const editDialogRef = useRef<HTMLDivElement>(null);
+  const editDraft = useLocalDraft(`tarot_daily_reflection_draft_${ownerScope}_${editingFortune?.id || 'none'}`, {
+    initialImpression: editInitialImpression,
+    dailyReview: editDailyReview,
+  }, isOpen && Boolean(editingFortune));
   const [reviewFilter, setReviewFilter] = useState<ReviewFilter>('all');
   const [isExportMenuOpen, setIsExportMenuOpen] = useState(false);
   const [isOrganizing, setIsOrganizing] = useState(false);
@@ -511,12 +512,15 @@ export const DailyFortuneArchiveModal: React.FC<DailyFortuneArchiveModalProps> =
     resetSwipeActions();
     setIsExportMenuOpen(false);
     const reflectionParts = getDailyReflectionParts(fortune);
+    const savedDraft = readLocalDraft<DailyFortuneReflectionParts>(`tarot_daily_reflection_draft_${ownerScope}_${fortune.id}`);
     setEditingFortune(fortune);
-    setEditInitialImpression(reflectionParts.initialImpression);
-    setEditDailyReview(reflectionParts.dailyReview);
+    setEditSaveError('');
+    setEditInitialImpression(typeof savedDraft?.initialImpression === 'string' ? savedDraft.initialImpression : reflectionParts.initialImpression);
+    setEditDailyReview(typeof savedDraft?.dailyReview === 'string' ? savedDraft.dailyReview : reflectionParts.dailyReview);
   };
 
   const closeEdit = () => {
+    setEditSaveError('');
     setEditingFortune(null);
     setEditInitialImpression('');
     setEditDailyReview('');
@@ -528,10 +532,16 @@ export const DailyFortuneArchiveModal: React.FC<DailyFortuneArchiveModalProps> =
 
   const saveEdit = () => {
     if (!editingFortune) return;
-    onUpdateReflection(editingFortune.id, {
-      initialImpression: editInitialImpression,
-      dailyReview: editDailyReview,
-    });
+    try {
+      onUpdateReflection(editingFortune.id, {
+        initialImpression: editInitialImpression,
+        dailyReview: editDailyReview,
+      });
+    } catch (error) {
+      setEditSaveError(error instanceof Error ? error.message : '保存暂未完成，请保留文字后重试。');
+      return;
+    }
+    editDraft.clear();
     closeEdit();
   };
 
@@ -548,6 +558,15 @@ export const DailyFortuneArchiveModal: React.FC<DailyFortuneArchiveModalProps> =
     setSelectedDeleteIds([]);
     setShowDeleteConfirm(false);
   };
+
+  const closeArchive = () => {
+    closeEdit();
+    closeOrganizing();
+    setIsExportMenuOpen(false);
+    onClose();
+  };
+  useModalFocus(isOpen, dialogRef, closeArchive);
+  useModalFocus(isOpen && Boolean(editingFortune), editDialogRef, closeEdit);
 
   const handleViewChange = (view: ReviewView) => {
     resetSwipeActions();
@@ -637,14 +656,7 @@ export const DailyFortuneArchiveModal: React.FC<DailyFortuneArchiveModalProps> =
       buildDailyFortunePdfLines(exportFortunes, '塔罗研习阁｜日运复盘', ownerName)
     );
     const fileBaseName = getDailyReviewFileBaseName(ownerName);
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `${fileBaseName}.pdf`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
+    downloadBlobFile(`${fileBaseName}.pdf`, blob);
     trackEvent('daily_review_exported', {
       format: 'pdf',
       record_count: exportFortunes.length,
@@ -702,7 +714,10 @@ export const DailyFortuneArchiveModal: React.FC<DailyFortuneArchiveModalProps> =
         <>
           <div className="fixed inset-0 z-[900] flex items-center justify-center bg-[rgba(62,58,54,0.36)] p-2.5 backdrop-blur-[3px] overscroll-contain sm:p-5">
             <motion.div
+              ref={dialogRef}
               role="dialog"
+              aria-modal="true"
+              tabIndex={-1}
               aria-label="日运复盘"
               initial={{ opacity: 0, y: 32, scale: 0.98 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
@@ -723,10 +738,7 @@ export const DailyFortuneArchiveModal: React.FC<DailyFortuneArchiveModalProps> =
                   </div>
                   <button
                     type="button"
-                    onClick={() => {
-                      closeOrganizing();
-                      onClose();
-                    }}
+                    onClick={closeArchive}
                     className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-forest-muted hover:bg-white/50 hover:text-forest-accent"
                     aria-label="关闭日运复盘"
                   >
@@ -1073,8 +1085,11 @@ export const DailyFortuneArchiveModal: React.FC<DailyFortuneArchiveModalProps> =
             {editingFortune && (
               <div className="fixed inset-0 z-[960] flex items-center justify-center bg-[rgba(62,58,54,0.42)] p-3 backdrop-blur-[3px] overscroll-contain">
                 <motion.div
+                  ref={editDialogRef}
                   role="dialog"
-                  aria-label="补写日运对应"
+                  aria-label="补写日运"
+                  aria-modal="true"
+                  tabIndex={-1}
                   initial={{ opacity: 0, scale: 0.96, y: 16 }}
                   animate={{ opacity: 1, scale: 1, y: 0 }}
                   exit={{ opacity: 0, scale: 0.96, y: 16 }}
@@ -1083,7 +1098,7 @@ export const DailyFortuneArchiveModal: React.FC<DailyFortuneArchiveModalProps> =
                   <div className="flex items-start justify-between gap-3">
                     <div>
                       <p className="text-[10px] font-medium uppercase tracking-[0.18em] text-forest-accent">补写日运</p>
-                      <h3 className="mt-1 font-serif text-lg font-semibold text-forest-ink">
+                      <h3 className="mt-1 font-serif text-lg font-bold text-forest-ink">
                         {editingFortune.cardName} · {editingFortune.isReversed ? '逆位' : '正位'}
                       </h3>
                       <p className="mt-1 text-xs leading-relaxed text-forest-muted">
@@ -1093,8 +1108,8 @@ export const DailyFortuneArchiveModal: React.FC<DailyFortuneArchiveModalProps> =
                     <button
                       type="button"
                       onClick={closeEdit}
-                      className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white/70 text-forest-muted hover:bg-white hover:text-forest-accent"
-                      aria-label="关闭补写日运对应"
+                      className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-white/70 text-forest-muted hover:bg-white hover:text-forest-accent"
+                      aria-label="关闭补写日运"
                     >
                       <X size={18} />
                     </button>
@@ -1107,10 +1122,11 @@ export const DailyFortuneArchiveModal: React.FC<DailyFortuneArchiveModalProps> =
                         minRows={1.5}
                         maxRows={7}
                         value={editInitialImpression}
+                        onFocus={scrollFocusedFieldIntoView}
                         onChange={(event) => setEditInitialImpression(event.target.value)}
                         aria-label="第一直觉"
                         placeholder="刚看到这张牌时，第一眼想到什么？"
-                        className="mt-1 w-full rounded-xl border border-forest-accent/12 bg-white/88 p-3 text-[13px] leading-relaxed text-forest-ink outline-none transition-all placeholder:text-forest-muted/70 focus:border-forest-accent/35 focus:ring-2 focus:ring-forest-accent/15 sm:rounded-2xl sm:p-3.5 sm:text-sm"
+                        className="mt-1 w-full rounded-xl border border-forest-accent/12 bg-white/88 p-3 text-base leading-relaxed text-forest-ink outline-none transition-all placeholder:text-forest-muted/70 focus:border-forest-accent/35 focus:ring-2 focus:ring-forest-accent/15 sm:rounded-2xl sm:p-3.5 sm:text-sm"
                       />
                     </label>
 
@@ -1120,29 +1136,33 @@ export const DailyFortuneArchiveModal: React.FC<DailyFortuneArchiveModalProps> =
                         minRows={1.5}
                         maxRows={7}
                         value={editDailyReview}
+                        onFocus={scrollFocusedFieldIntoView}
                         onChange={(event) => setEditDailyReview(event.target.value)}
                         aria-label="今日回看"
                         placeholder="今天发生了什么？它和这张牌哪里有关系，或暂时没有看见关系？"
-                        className="mt-1 w-full rounded-xl border border-forest-accent/12 bg-white/88 p-3 text-[13px] leading-relaxed text-forest-ink outline-none transition-all placeholder:text-forest-muted/70 focus:border-forest-accent/35 focus:ring-2 focus:ring-forest-accent/15 sm:rounded-2xl sm:p-3.5 sm:text-sm"
+                        className="mt-1 w-full rounded-xl border border-forest-accent/12 bg-white/88 p-3 text-base leading-relaxed text-forest-ink outline-none transition-all placeholder:text-forest-muted/70 focus:border-forest-accent/35 focus:ring-2 focus:ring-forest-accent/15 sm:rounded-2xl sm:p-3.5 sm:text-sm"
                       />
                     </label>
 
                     <button
                       type="button"
                       onClick={() => setEditDailyReview(NO_OBVIOUS_DAILY_MATCH_TEXT)}
-                      className="min-h-10 rounded-full bg-forest-accent/10 px-3 text-xs font-medium text-forest-accent transition-colors hover:bg-forest-accent/15"
+                      className="min-h-11 rounded-full bg-forest-accent/10 px-3 text-xs font-medium text-forest-accent transition-colors hover:bg-forest-accent/15"
                     >
                       今天暂未看见明显对应
                     </button>
                   </div>
 
+                  <p className="mt-3 text-xs leading-relaxed text-forest-muted" role={editSaveError || !editDraft.durable ? 'alert' : undefined}>
+                    {editSaveError || (!editDraft.durable ? '浏览器存储暂不可用，请保留当前页面或复制文字后再离开。' : '未保存的文字会暂存在本机，可稍后回来继续写。')}
+                  </p>
                   <div className="mt-4 flex gap-2">
                     <button
                       type="button"
                       onClick={closeEdit}
                       className="min-h-11 flex-1 rounded-xl px-4 text-xs font-medium text-forest-muted hover:bg-forest-accent/5 hover:text-forest-ink"
                     >
-                      取消
+                      稍后再写
                     </button>
                     <button
                       type="button"
@@ -1150,7 +1170,7 @@ export const DailyFortuneArchiveModal: React.FC<DailyFortuneArchiveModalProps> =
                       className="flex min-h-11 flex-1 items-center justify-center gap-2 rounded-xl bg-forest-accent px-4 text-xs font-medium text-white hover:bg-forest-accent/90"
                     >
                       <Save size={14} />
-                      保存补写
+                      保存记录
                     </button>
                   </div>
                 </motion.div>

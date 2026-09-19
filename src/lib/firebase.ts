@@ -83,7 +83,7 @@ const ensureFirebaseAuth = async (): Promise<{ auth: Auth; api: FirebaseAuthApi 
 };
 
 const createAuthNetworkTimeoutError = () => Object.assign(
-  new Error('认证服务连接超时，请检查网络或 VPN 后再试。'),
+  new Error('登录服务连接超时，可以先在本机记录，稍后再试。'),
   { code: 'auth/network-request-failed' },
 );
 
@@ -419,13 +419,15 @@ export const sendCurrentUserEmailVerification = async (): Promise<void> => {
   if (!user) throw new Error('请先登录后再发送验证邮件。');
   if (!user.email) throw new Error('当前账号没有绑定邮箱。');
 
-  await api.reload(user);
-  if (user.emailVerified) return;
+  await withAuthOperationTimeout((async () => {
+    await api.reload(user);
+    if (user.emailVerified) return;
 
-  await api.sendEmailVerification(user, {
-    url: window.location.origin,
-    handleCodeInApp: false,
-  });
+    await api.sendEmailVerification(user, {
+      url: window.location.origin,
+      handleCodeInApp: false,
+    });
+  })());
 };
 
 export const refreshCurrentUser = async (): Promise<User> => {
@@ -434,7 +436,7 @@ export const refreshCurrentUser = async (): Promise<User> => {
   const user = firebaseAuth.currentUser;
   if (!user) throw new Error('请先登录后再刷新验证状态。');
 
-  await api.reload(user);
+  await withAuthOperationTimeout(api.reload(user));
   return firebaseAuth.currentUser || user;
 };
 

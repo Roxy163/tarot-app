@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { motion } from 'motion/react';
 import {
   BookOpen,
@@ -10,18 +10,21 @@ import {
   EyeOff,
   Flag,
   Globe,
-  Hash,
   Layers,
   MessageSquare,
   Plus,
   RefreshCcw,
   Search,
   ShieldCheck,
+  SlidersHorizontal,
   Sparkles,
   X,
 } from 'lucide-react';
 import { PublicReadingReport, PublicReadingReportReason, SpreadDefinition, TarotCardMetadata, TarotReading } from '../../types';
 import { ReadingCard } from '../ReadingCard';
+import { PublicReadingCard } from '../PublicReadingCard';
+import { ReadingDetailModal } from '../ReadingDetailModal';
+import { usePublicReadingLikes } from '../../hooks/usePublicReadingLikes';
 import { TarotCardImage } from '../TarotCardImage';
 import { Modal } from '../Modal';
 import { getPublicModerationSnapshot, getPublicReadings, reportPublicReading, updatePublicReadingModeration } from '../../lib/firebaseData';
@@ -126,14 +129,6 @@ const getTodayPracticePrompt = () => {
   return practicePrompts[dayIndex % practicePrompts.length];
 };
 
-const chipButtonClass = (active: boolean) => (
-  `inline-flex min-h-11 items-center justify-center gap-1 rounded-xl border px-2 text-xs font-medium transition-all sm:shrink-0 sm:gap-1.5 sm:rounded-full sm:px-3 ${
-    active
-      ? 'border-forest-accent bg-forest-accent text-white shadow-sm'
-      : 'border-forest-accent/9 bg-white/34 text-forest-muted hover:border-forest-accent/24 hover:text-forest-accent'
-  }`
-);
-
 const softActionButtonClass = (active = false) => (
   `inline-flex min-h-11 shrink-0 items-center justify-center gap-1.5 rounded-full border px-3 text-xs font-medium transition-all ${
     active
@@ -157,7 +152,7 @@ export const PublicTab: React.FC<PublicTabProps> = ({
   spreads = [],
   onTagClick: _onTagClick,
   onAuthorClick,
-  onProcessAi,
+  onProcessAi: _onProcessAi,
   onCollectSpread,
   onNotice,
   onLoginRequest,
@@ -180,6 +175,9 @@ export const PublicTab: React.FC<PublicTabProps> = ({
   const [activeView, setActiveView] = useState<PublicSquareView>('readings');
   const [readingFilter, setReadingFilter] = useState<PublicReadingFilter>('all');
   const [searchText, setSearchText] = useState('');
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const [detailReading, setDetailReading] = useState<TarotReading | null>(null);
+  const [actionsReading, setActionsReading] = useState<TarotReading | null>(null);
   const [selectedTopic, setSelectedTopic] = useState('');
   const [selectedCardName, setSelectedCardName] = useState('');
   const [isLoading, setIsLoading] = useState(true);
@@ -194,11 +192,8 @@ export const PublicTab: React.FC<PublicTabProps> = ({
   const [isModerationLoading, setIsModerationLoading] = useState(false);
   const [moderatingReadingId, setModeratingReadingId] = useState('');
   const [moderationNotice, setModerationNotice] = useState('');
-  const hasLoadedRef = useRef(false);
 
   useEffect(() => {
-    if (hasLoadedRef.current) return;
-    hasLoadedRef.current = true;
     let cancelled = false;
 
     const loadPublicReadings = async () => {
@@ -235,10 +230,10 @@ export const PublicTab: React.FC<PublicTabProps> = ({
     const byId = new Map<string, TarotReading>();
 
     cloudPublicReadings.forEach(reading => {
-      if (reading.isPublic && reading.moderationStatus !== 'hidden') byId.set(reading.id, reading);
+      if (reading.isPublic && !reading.isExample && reading.moderationStatus !== 'hidden') byId.set(reading.id, reading);
     });
 
-    readings.filter(reading => reading.isPublic).forEach(reading => {
+    readings.filter(reading => reading.isPublic && !reading.isExample).forEach(reading => {
       if (reading.moderationStatus !== 'hidden') byId.set(reading.id, reading);
     });
 
@@ -264,14 +259,6 @@ export const PublicTab: React.FC<PublicTabProps> = ({
   const selectedCardGroup = cardExampleGroups.find(group => group.cardName === selectedCardName) || cardExampleGroups[0];
   const reviewedCount = publicReadings.filter(isPublicReadingReviewed).length;
   const todayPrompt = useMemo(() => getTodayPracticePrompt(), []);
-  const accountStatusChip = canModerate
-    ? { label: '作者账号', className: 'bg-forest-accent/10 text-forest-accent' }
-    : null;
-  const visibleSquareViews = useMemo(() => (
-    canModerate
-      ? [...squareViews, { id: 'moderation' as const, label: '管理', icon: ShieldCheck }]
-      : squareViews
-  ), [canModerate]);
   const reportsByReadingId = useMemo(() => {
     const groups = new Map<string, PublicReadingReport[]>();
     moderationReports.forEach(report => {
@@ -290,9 +277,7 @@ export const PublicTab: React.FC<PublicTabProps> = ({
       return !isHidden;
     })
   ), [moderationFilter, moderationReadings, reportsByReadingId]);
-  const publicGridClassName = filteredReadings.length === 1
-    ? 'grid grid-cols-1 gap-4 md:grid-cols-[minmax(0,520px)] md:justify-center'
-    : 'grid grid-cols-1 gap-4 md:grid-cols-2';
+  const publicGridClassName = 'grid grid-cols-1 items-start gap-2.5 md:grid-cols-2';
 
   const loadModerationSnapshot = useCallback(async () => {
     if (!canModerate) return;
@@ -412,21 +397,17 @@ export const PublicTab: React.FC<PublicTabProps> = ({
     sentinelRef,
     visibleItems: visiblePublicReadings,
   } = useProgressiveList(filteredReadings);
+  const reactions = usePublicReadingLikes(visiblePublicReadings.map(reading => reading.id), currentUserId, onNotice, onLoginRequest);
 
   const toggleCollectedReading = (reading: TarotReading) => {
-    setCollectedReadingIds(current => {
-      const exists = current.includes(reading.id);
-      const next = exists ? current.filter(id => id !== reading.id) : [...current, reading.id];
-      writeJsonWithBackup(PUBLIC_READING_COLLECTION_KEY, next);
-      onNotice?.(exists ? '已从广场收藏移出。' : '已收藏到本机，之后可在广场筛选查看。');
-      return next;
-    });
-  };
-
-  const handleTagClick = (tag: string) => {
-    setActiveView('readings');
-    setSelectedTopic(tag);
-    setReadingFilter('all');
+    const exists = collectedReadingIds.includes(reading.id);
+    const next = exists ? collectedReadingIds.filter(id => id !== reading.id) : [...collectedReadingIds, reading.id];
+    if (!writeJsonWithBackup(PUBLIC_READING_COLLECTION_KEY, next).ok) {
+      onNotice?.('收藏未能保存在本机，请稍后再试。');
+      return;
+    }
+    setCollectedReadingIds(next);
+    onNotice?.(exists ? '已从广场收藏移出。' : '已收藏到本机，之后可在广场筛选查看。');
   };
 
   const handleCollectSpread = (spread: PublicSpreadGroup) => {
@@ -439,46 +420,17 @@ export const PublicTab: React.FC<PublicTabProps> = ({
   };
 
   const renderSquareHeader = () => (
-    <div className="rounded-[1.15rem] border border-forest-accent/8 bg-white/28 px-3 py-3 shadow-sm sm:px-4">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="space-y-1">
-          <div>
-            <h2 className="font-serif text-xl font-bold text-forest-ink sm:text-2xl">广场</h2>
-            <p className="mt-0.5 text-xs leading-relaxed text-forest-muted sm:text-sm">
-              看公开手记、牌例和牌阵。
-            </p>
-          </div>
-        </div>
-        <div className="flex flex-wrap gap-1.5 text-[10px] font-medium text-forest-muted sm:justify-end">
-          <span className="rounded-full bg-white/46 px-2.5 py-1">手记 {publicReadings.length}</span>
-          <span className="rounded-full bg-white/46 px-2.5 py-1">牌例 {cardExampleGroups.length}</span>
-          <span className="rounded-full bg-white/46 px-2.5 py-1">牌阵 {spreadGroups.length}</span>
-          <span className="rounded-full bg-forest-accent/8 px-2.5 py-1 text-forest-accent">公开可见</span>
-          {accountStatusChip && (
-            <span className={`rounded-full px-2.5 py-1 ${accountStatusChip.className}`}>
-              {accountStatusChip.label}
-            </span>
-          )}
-        </div>
+    <div>
+      <div className="flex min-h-11 items-center justify-between px-1">
+        <h2 className="font-serif text-xl font-bold text-forest-ink">广场</h2>
+        {canModerate && <button type="button" onClick={() => setActiveView('moderation')} aria-pressed={activeView === 'moderation'} className="inline-flex min-h-11 items-center gap-1 px-2 text-xs text-forest-muted hover:text-forest-accent"><ShieldCheck size={14} />管理</button>}
       </div>
-      <div className={`mt-3 grid ${canModerate ? 'grid-cols-5' : 'grid-cols-4'} gap-1.5 sm:flex sm:overflow-x-auto sm:pb-0.5 sm:no-scrollbar`} role="tablist" aria-label="广场内容">
-        {visibleSquareViews.map(item => {
-          const Icon = item.icon;
-          const active = activeView === item.id;
-          return (
-            <button
-              key={item.id}
-              type="button"
-              role="tab"
-              aria-selected={active}
-              onClick={() => setActiveView(item.id)}
-              className={chipButtonClass(active)}
-            >
-              <Icon size={14} />
-              {item.label}
-            </button>
-          );
-        })}
+      <div className="flex border-b border-forest-accent/10" role="tablist" aria-label="广场内容">
+        {squareViews.map(item => <button key={item.id} type="button" role="tab" aria-selected={activeView === item.id} onClick={() => setActiveView(item.id)}
+          className={'relative min-h-11 flex-1 text-sm transition-colors ' + (activeView === item.id ? 'font-medium text-forest-accent' : 'text-forest-muted hover:text-forest-accent')}>
+          {item.label}
+          {activeView === item.id && <motion.span layoutId="square-tab" className="absolute bottom-0 left-1/3 right-1/3 h-0.5 rounded-full bg-forest-accent" />}
+        </button>)}
       </div>
     </div>
   );
@@ -492,122 +444,50 @@ export const PublicTab: React.FC<PublicTabProps> = ({
   );
 
   const renderReadingFilters = () => (
-    <div className="rounded-[1.05rem] border border-forest-accent/7 bg-white/20 p-2.5">
-      <div className="relative">
-        <Search size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-forest-accent/55" />
-        <input
-          type="search"
-          value={searchText}
-          onChange={(event) => setSearchText(event.target.value)}
-          placeholder="搜索牌名、问题、牌阵或标签"
-          className="min-h-11 w-full rounded-full border border-forest-accent/8 bg-white/58 pl-9 pr-10 text-sm text-forest-ink outline-none transition focus:border-forest-accent/30"
-        />
-        {searchText && (
-          <button
-            type="button"
-            onClick={() => setSearchText('')}
-            className="absolute right-2 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full text-forest-muted hover:bg-white/60 hover:text-forest-accent"
-            aria-label="清空广场搜索"
-          >
-            <X size={14} />
-          </button>
-        )}
+    <>
+      <div className="flex items-center gap-2">
+        <div className="relative min-w-0 flex-1">
+          <Search size={14} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-forest-accent/55" />
+          <input type="search" aria-label="搜索公开手记" value={searchText} onChange={event => setSearchText(event.target.value)} placeholder="搜索问题、牌名或标签" className="min-h-11 w-full rounded-xl border border-forest-accent/8 bg-white/45 pl-9 pr-11 text-xs outline-none focus:border-forest-accent/30" />
+          {searchText && <button type="button" onClick={() => setSearchText('')} className="absolute right-0 top-0 grid h-11 w-11 place-items-center text-forest-muted" aria-label="清空广场搜索"><X size={14} /></button>}
+        </div>
+        <button type="button" aria-label="筛选手记" onClick={() => setFiltersOpen(true)} className={'inline-flex min-h-11 items-center gap-1.5 rounded-xl px-2 text-xs ' + (readingFilter !== 'all' || selectedTopic ? 'bg-forest-accent/10 text-forest-accent' : 'text-forest-muted')}><SlidersHorizontal size={15} />筛选</button>
       </div>
-      <div className="mt-2 flex gap-1.5 overflow-x-auto pb-0.5 no-scrollbar">
-        {readingFilters.map(item => {
-          const Icon = item.icon;
-          return (
-            <button
-              key={item.id}
-              type="button"
-              onClick={() => setReadingFilter(item.id)}
-              className={softActionButtonClass(readingFilter === item.id)}
-            >
-              <Icon size={13} />
-              {item.label}
-            </button>
-          );
-        })}
-        {topicChips.length > 0 && (
-          <>
-            <span className="my-auto h-4 w-px shrink-0 bg-forest-accent/10" aria-hidden />
-            <button
-              type="button"
-              onClick={() => setSelectedTopic('')}
-              className={softActionButtonClass(!selectedTopic)}
-            >
-              <Hash size={13} />
-              全部标签
-            </button>
-            {topicChips.map(item => (
-              <button
-                key={item.tag}
-                type="button"
-                onClick={() => setSelectedTopic(item.tag)}
-                className={softActionButtonClass(selectedTopic === item.tag)}
-              >
-                #{item.tag}
-                <span className="text-[10px] opacity-70">{item.count}</span>
-              </button>
-            ))}
-          </>
-        )}
-      </div>
-    </div>
+      {(readingFilter !== 'all' || selectedTopic) && <div className="flex items-center justify-between px-1 text-xs text-forest-muted">
+        <span>{[readingFilter !== 'all' && readingFilters.find(item => item.id === readingFilter)?.label, selectedTopic && '#' + selectedTopic].filter(Boolean).join(' · ')}</span>
+        <button type="button" onClick={() => { setReadingFilter('all'); setSelectedTopic(''); }} className="min-h-11 px-2 text-forest-accent">清除筛选</button>
+      </div>}
+    </>
   );
 
-  const renderPublicReadingActions = (reading: TarotReading) => {
-    const collected = collectedReadingIds.includes(reading.id);
-    const spread = spreadGroups.find(item => item.name === reading.spread);
-    const canCollectSpread = Boolean(spread && !isSpreadInLibrary(spreads, spread.definition));
+  const renderFilterModal = () => <Modal isOpen={filtersOpen} onClose={() => setFiltersOpen(false)} title="筛选手记" icon={<SlidersHorizontal size={18} />}>
+    <div className="space-y-4">
+      <div className="flex flex-wrap gap-2">{readingFilters.map(item => <button key={item.id} type="button" aria-pressed={readingFilter === item.id} onClick={() => setReadingFilter(item.id)} className={softActionButtonClass(readingFilter === item.id)}>{item.label}</button>)}</div>
+      {topicChips.length > 0 && <div className="space-y-2"><p className="text-xs text-forest-muted">按标签</p><div className="flex flex-wrap gap-2">
+        <button type="button" onClick={() => setSelectedTopic('')} className={softActionButtonClass(!selectedTopic)}>全部标签</button>
+        {topicChips.map(item => <button key={item.tag} type="button" onClick={() => setSelectedTopic(item.tag)} className={softActionButtonClass(selectedTopic === item.tag)}>#{item.tag} · {item.count}</button>)}
+      </div></div>}
+      <button type="button" onClick={() => setFiltersOpen(false)} className="min-h-11 w-full rounded-xl bg-forest-accent text-sm text-white">查看结果</button>
+    </div>
+  </Modal>;
 
-    return (
-      <div className="flex flex-wrap gap-2 px-1">
-        <button
-          type="button"
-          onClick={() => toggleCollectedReading(reading)}
-          className={softActionButtonClass(collected)}
-        >
-          <Bookmark size={13} fill={collected ? 'currentColor' : 'none'} />
-          {collected ? '已收藏' : '收藏研习'}
-        </button>
-        {reading.cards?.[0]?.name && (
-          <button
-            type="button"
-            onClick={() => {
-              const matchingGroup = cardExampleGroups.find(group => (
-                group.examples.some(example => example.reading.id === reading.id)
-              ));
-              setActiveView('cards');
-              setSelectedCardName(matchingGroup?.cardName || reading.cards[0].name);
-            }}
-            className={softActionButtonClass(false)}
-          >
-            <BookOpen size={13} />
-            看牌例
-          </button>
-        )}
-        {spread && (
-          <button
-            type="button"
-            onClick={() => handleCollectSpread(spread)}
-            disabled={!canCollectSpread}
-            className={`${softActionButtonClass(!canCollectSpread)} disabled:cursor-default disabled:opacity-70`}
-          >
-            {canCollectSpread ? <Plus size={13} /> : <CheckCircle2 size={13} />}
-            {canCollectSpread ? '收进我的牌阵' : '牌阵已在库'}
-          </button>
-        )}
-        <button
-          type="button"
-          onClick={() => openReportDialog(reading)}
-          className="inline-flex min-h-11 shrink-0 items-center justify-center gap-1.5 rounded-full border border-forest-pink/10 bg-forest-pink/5 px-3 text-xs font-medium text-forest-muted transition-all hover:border-forest-pink/22 hover:text-forest-pink"
-        >
-          <Flag size={13} />
-          举报
-        </button>
-      </div>
-    );
+  const renderReadingActions = () => {
+    const reading = actionsReading;
+    const spread = reading && spreadGroups.find(item => item.name === reading.spread);
+    const inLibrary = Boolean(spread && isSpreadInLibrary(spreads, spread.definition));
+    return <Modal isOpen={Boolean(reading)} onClose={() => setActionsReading(null)} title="案例操作">
+      {reading && <div className="space-y-2">
+        <p className="mb-3 line-clamp-2 text-sm text-forest-ink">{reading.question}</p>
+        {reading.cards?.[0]?.name && <button type="button" className="flex min-h-11 w-full items-center gap-2 rounded-xl px-3 hover:bg-forest-accent/5" onClick={() => {
+          const group = cardExampleGroups.find(item => item.examples.some(example => example.reading.id === reading.id));
+          setSelectedCardName(group?.cardName || reading.cards[0].name); setActiveView('cards'); setActionsReading(null);
+        }}><BookOpen size={15} />看牌例</button>}
+        {spread && <button type="button" disabled={inLibrary} className="flex min-h-11 w-full items-center gap-2 rounded-xl px-3 hover:bg-forest-accent/5 disabled:opacity-60" onClick={() => { handleCollectSpread(spread); setActionsReading(null); }}>
+          {inLibrary ? <CheckCircle2 size={15} /> : <Plus size={15} />}{inLibrary ? '牌阵已在库' : '收进我的牌阵'}
+        </button>}
+        <button type="button" className="flex min-h-11 w-full items-center gap-2 rounded-xl px-3 text-forest-muted hover:bg-forest-pink/5" onClick={() => { setActionsReading(null); openReportDialog(reading); }}><Flag size={15} />举报</button>
+      </div>}
+    </Modal>;
   };
 
   const renderReadingsView = () => {
@@ -652,17 +532,16 @@ export const PublicTab: React.FC<PublicTabProps> = ({
         {renderLoadingNotice()}
         <div className={publicGridClassName}>
           {visiblePublicReadings.map(reading => (
-            <article key={reading.id} className="space-y-2">
-              <ReadingCard
-                reading={reading}
-                isPublicView
-                cardMetadata={cardMetadata}
-                onTagClick={handleTagClick}
-                onAuthorClick={onAuthorClick}
-                onProcessAi={onProcessAi}
-              />
-              {renderPublicReadingActions(reading)}
-            </article>
+            <PublicReadingCard key={reading.id} reading={reading}
+              collected={collectedReadingIds.includes(reading.id)}
+              liked={reactions.likes[reading.id]?.liked ?? false}
+              likeCount={reactions.likes[reading.id]?.count}
+              likePending={reactions.isPending(reading.id)}
+              onOpen={() => setDetailReading(reading)}
+              onLike={() => void reactions.toggle(reading.id)}
+              onCollect={() => toggleCollectedReading(reading)}
+              onMore={() => setActionsReading(reading)}
+              onAuthor={onAuthorClick} />
           ))}
           <div ref={sentinelRef} className="col-span-full h-1" aria-hidden />
         </div>
@@ -702,9 +581,7 @@ export const PublicTab: React.FC<PublicTabProps> = ({
             key={example.id}
             type="button"
             onClick={() => {
-              setActiveView('readings');
-              setSearchText(example.cardName);
-              setSelectedTopic('');
+              setDetailReading(example.reading);
             }}
             className="w-full rounded-xl border border-forest-accent/7 bg-white/38 px-3 py-2.5 text-left transition hover:border-forest-accent/18 hover:bg-white/56"
           >
@@ -805,10 +682,10 @@ export const PublicTab: React.FC<PublicTabProps> = ({
           <div className="w-24 shrink-0 rounded-2xl border border-forest-accent/7 bg-white/42">
             <ReadingCard reading={spread.latestReading} cardMetadata={cardMetadata} isMini isPublicView />
           </div>
-          <div className="min-w-0 flex-1">
-            <p className="text-[10px] text-forest-muted">最近案例</p>
-            <p className="mt-1 line-clamp-2 text-xs font-medium leading-relaxed text-forest-ink">{spread.latestQuestion}</p>
-          </div>
+          <button type="button" onClick={() => setDetailReading(spread.latestReading)} className="min-h-11 min-w-0 flex-1 text-left">
+            <span className="text-[10px] text-forest-accent">查看最近案例</span>
+            <span className="mt-1 block line-clamp-2 text-xs font-medium leading-relaxed text-forest-ink">{spread.latestQuestion}</span>
+          </button>
         </div>
       </article>
     );
@@ -1032,13 +909,11 @@ export const PublicTab: React.FC<PublicTabProps> = ({
                       {isHidden ? <Eye size={13} /> : <EyeOff size={13} />}
                       {isHidden ? '恢复公开' : '从广场下架'}
                     </button>
-                    {!isHidden && (
+                    {(
                       <button
                         type="button"
                         onClick={() => {
-                          setActiveView('readings');
-                          setSearchText(reading.question || reading.spread || '');
-                          setSelectedTopic('');
+                          setDetailReading(reading);
                         }}
                         className={softActionButtonClass(false)}
                       >
@@ -1141,6 +1016,9 @@ export const PublicTab: React.FC<PublicTabProps> = ({
         )}
       </motion.div>
       {renderReportModal()}
+      {renderFilterModal()}
+      {renderReadingActions()}
+      <ReadingDetailModal reading={detailReading} onClose={() => setDetailReading(null)} isPublicView />
     </>
   );
 };

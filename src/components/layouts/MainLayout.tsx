@@ -1,8 +1,8 @@
 import React from 'react';
-import { motion, AnimatePresence } from 'motion/react';
-import { Menu, History, Plus, BookOpen, Globe, X } from 'lucide-react';
+import { motion } from 'motion/react';
+import { Menu, History, Plus, BookOpen, Globe } from 'lucide-react';
 import { TabButton } from '../TabButton';
-import { useBodyScrollLock } from '../../hooks/useBodyScrollLock';
+import { SidebarDrawer } from './SidebarDrawer';
 import { PwaInstallPrompt } from '../PwaInstallPrompt';
 
 type TabType = 'home' | 'add' | 'private' | 'public' | 'metadata' | 'profile';
@@ -14,6 +14,7 @@ interface MainLayoutProps {
   isSidebarOpen: boolean;
   setIsSidebarOpen: (open: boolean) => void;
   sidebarContent: React.ReactNode;
+  onOpenInstallGuide: () => void;
 }
 
 const NAV_ITEMS = [
@@ -29,46 +30,14 @@ export const MainLayout: React.FC<MainLayoutProps> = ({
   setActiveTab,
   isSidebarOpen,
   setIsSidebarOpen,
-  sidebarContent
+  sidebarContent,
+  onOpenInstallGuide
 }) => {
-  useBodyScrollLock(isSidebarOpen);
-
   return (
     <div className="min-h-screen bg-forest-bg flex flex-col max-w-5xl mx-auto px-3 pb-0 pt-2 sm:px-5 sm:pb-4 sm:pt-4 relative overflow-x-hidden">
-      {/* Sidebar */}
-      <AnimatePresence>
-        {isSidebarOpen && (
-          <>
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              onClick={() => setIsSidebarOpen(false)}
-              className="fixed inset-0 bg-forest-bg/25 backdrop-blur-[1px] z-[105] overscroll-contain"
-            />
-            <motion.aside
-              initial={{ x: '-100%' }}
-              animate={{ x: 0 }}
-              exit={{ x: '-100%' }}
-              transition={{ type: 'spring', damping: 30, stiffness: 300 }}
-              className="fixed left-0 top-0 bottom-0 w-80 max-w-[85vw] bg-white/92 shadow-xl backdrop-blur-md z-[110] flex flex-col overflow-hidden"
-            >
-              <button
-                type="button"
-                onClick={() => setIsSidebarOpen(false)}
-                className="absolute right-3 top-3 z-10 flex min-h-11 min-w-11 items-center justify-center rounded-full border border-forest-accent/8 bg-white/48 text-forest-muted transition-colors hover:bg-white/76 hover:text-forest-accent"
-                aria-label="关闭菜单"
-                title="关闭菜单"
-              >
-                <X size={16} />
-              </button>
-              <div className="flex-1 overflow-y-auto overscroll-contain">
-                {sidebarContent}
-              </div>
-            </motion.aside>
-          </>
-        )}
-      </AnimatePresence>
+      <SidebarDrawer isOpen={isSidebarOpen} onOpenChange={setIsSidebarOpen} allowEdgeSwipe={activeTab !== 'add'}>
+        {sidebarContent}
+      </SidebarDrawer>
 
       <header className="mb-2 text-center relative sm:mb-4">
         <div className="absolute left-0 top-1 sm:top-0">
@@ -76,6 +45,8 @@ export const MainLayout: React.FC<MainLayoutProps> = ({
             onClick={() => setIsSidebarOpen(true)}
             className="w-11 h-11 bg-white/35 text-forest-accent rounded-full hover:bg-white/65 transition-all border border-forest-accent/8 flex items-center justify-center"
             aria-label="打开菜单"
+            aria-expanded={isSidebarOpen}
+            aria-controls="sidebar-menu"
             title="打开菜单"
           >
             <Menu size={20} />
@@ -107,7 +78,7 @@ export const MainLayout: React.FC<MainLayoutProps> = ({
         {children}
       </main>
 
-      <PwaInstallPrompt />
+      <PwaInstallPrompt onOpenGuide={onOpenInstallGuide} hidden={isSidebarOpen} />
 
       {/* Mobile Navigation */}
       <nav className="fixed bottom-0 left-0 right-0 z-[100] border-t border-forest-accent/8 bg-white/88 px-3 py-0.5 shadow-[0_-8px_24px_-26px_rgba(62,58,54,0.38)] backdrop-blur-xl" style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}>
