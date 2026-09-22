@@ -171,12 +171,13 @@ export function SidebarDrawer({ isOpen, onOpenChange, children, allowEdgeSwipe }
     <AnimatePresence>
       {isVisible && <>
         <motion.div
+          data-sidebar-backdrop
           initial={{ opacity: 0 }}
           animate={{ opacity: offset === null ? 1 : (width + offset) / width }}
           exit={{ opacity: 0, transition: { duration: reducedMotion ? 0.12 : 0.2 } }}
           transition={transition}
           onClick={() => onOpenChange(false)}
-          className="fixed inset-0 z-[105] bg-forest-ink/10 backdrop-blur-[1px] overscroll-contain"
+          className="fixed inset-0 z-[105] bg-forest-ink/40 backdrop-blur-[2px] overscroll-contain"
           aria-hidden="true"
         />
         <motion.aside
@@ -196,9 +197,12 @@ export function SidebarDrawer({ isOpen, onOpenChange, children, allowEdgeSwipe }
           style={{ width, touchAction: 'pan-y pinch-zoom' }}
           className="fixed bottom-0 left-0 top-0 z-[110] flex touch-pan-y flex-col overflow-hidden rounded-r-[1.75rem] border-r border-forest-accent/10 bg-white/95 shadow-[12px_0_50px_-25px_rgba(62,58,54,0.3)] backdrop-blur-xl"
         >
-          <button type="button" onClick={() => onOpenChange(false)} className="absolute right-3 top-3 z-10 flex min-h-11 min-w-11 items-center justify-center rounded-full border border-forest-accent/8 bg-white/48 text-forest-muted outline-none transition-colors hover:bg-white/76 hover:text-forest-accent focus-visible:ring-2 focus-visible:ring-forest-accent/40" aria-label="关闭菜单"><X size={16} /></button>
+          <div className="flex shrink-0 items-center justify-between gap-3 px-4 pb-1 pt-2" style={{ paddingTop: 'max(0.5rem, env(safe-area-inset-top))' }}>
+            <p className="font-serif text-base font-bold text-forest-ink">菜单</p>
+            <button type="button" onClick={() => onOpenChange(false)} className="sr-only min-h-11 min-w-11 items-center justify-center rounded-full text-forest-ink/80 outline-none transition-colors hover:text-forest-ink focus-visible:ring-1 focus-visible:ring-forest-accent/40 md:not-sr-only md:flex" aria-label="关闭菜单"><X size={22} strokeWidth={2} aria-hidden="true" /></button>
+          </div>
           <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">{children}</div>
-          <p className="shrink-0 border-t border-forest-accent/6 py-2 text-center text-[10px] text-forest-muted/75" style={{ paddingBottom: 'max(0.5rem, env(safe-area-inset-bottom))' }}>向左轻滑收起 · 点击空白处关闭</p>
+          <p className="shrink-0 border-t border-forest-accent/6 py-2 text-center text-[10px] text-forest-muted" style={{ paddingBottom: 'max(0.5rem, env(safe-area-inset-bottom))' }}>点击右侧暗区或向左滑动收起</p>
         </motion.aside>
       </>}
     </AnimatePresence>

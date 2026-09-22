@@ -1,6 +1,6 @@
 import { Suspense, lazy, useCallback, useMemo, useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { X, User, ChevronRight, LogOut, Database, ShieldCheck, ArrowRight, LogIn, CheckCircle, AlertTriangle, Mail, Home, Download, MessageSquareText, FileText, Eye, EyeOff } from 'lucide-react';
+import { X, User, ChevronRight, LogOut, Database, ShieldCheck, ArrowRight, LogIn, CheckCircle, AlertTriangle, Mail, Download, MessageSquareText, FileText, Eye, EyeOff } from 'lucide-react';
 import { TarotReading, SpreadDefinition, UserProfile } from './types';
 import { OFFICIAL_SPREADS, PAVILION_PROVERBS } from './constants';
 import { Modal } from './components/Modal';
@@ -1111,11 +1111,11 @@ function AppContent() {
 
   // Sidebar Content
   const sidebarContent = (
-    <div className="flex min-h-full flex-col px-4 py-5">
+    <div className="flex min-h-full flex-col px-4 pb-5 pt-2">
       <button
         type="button"
         onClick={openAccountFromSidebar}
-        className="group mb-4 flex min-h-[5rem] w-full items-center gap-3 rounded-[1.55rem] border border-forest-accent/7 bg-white/28 py-3 pl-3 pr-14 text-left transition-all hover:bg-white/48 active:scale-[0.99]"
+        className="group mb-4 flex min-h-[5rem] w-full items-center gap-3 rounded-[1.55rem] border border-forest-accent/7 bg-white/28 p-3 text-left transition-all hover:bg-white/48 active:scale-[0.99]"
         aria-label={session ? '打开账号设置' : '登录开启同步'}
       >
         <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-forest-accent/8 bg-forest-accent/8 text-forest-accent shadow-sm">
@@ -1145,21 +1145,6 @@ function AppContent() {
       </button>
 
       <div className="space-y-3">
-        <button
-          onClick={() => navigateFromSidebar('home')}
-          className={`group flex min-h-12 w-full items-center justify-between rounded-2xl border px-3 transition-all ${
-            activeTab === 'home'
-              ? 'border-forest-accent/10 bg-forest-accent/8 text-forest-accent'
-              : 'border-forest-accent/7 bg-white/34 text-forest-text hover:bg-white/58'
-          }`}
-        >
-          <div className="flex items-center gap-3">
-            <Home size={18} className="text-forest-accent" />
-            <span className="text-sm font-medium">回到研习台</span>
-          </div>
-          <ChevronRight size={14} className="text-forest-muted transition-transform group-hover:translate-x-1" />
-        </button>
-
         <CloudSyncPanel
           session={session}
           cloudSyncInfo={cloudSyncInfo}
