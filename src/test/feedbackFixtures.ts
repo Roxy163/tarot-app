@@ -1,0 +1,2 @@
+export const PNG_CONTENT = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a1ioAAAAASUVORK5CYII=';
+export const PNG_BYTES = Uint8Array.from(atob(PNG_CONTENT), char => char.charCodeAt(0));

@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { PNG_CONTENT } from '../test/feedbackFixtures';
 import {
   clearFeedbackDraft,
   FEEDBACK_ATTACHMENT_MAX_COUNT,
@@ -55,7 +56,7 @@ describe('feedbackService', () => {
       attachments: [{
         filename: 'bug.png',
         contentType: 'image/png',
-        content: 'aW1hZ2U=',
+        content: PNG_CONTENT,
         size: 5,
       }],
     });
@@ -67,11 +68,11 @@ describe('feedbackService', () => {
 
     expect(url).toBe('/api/feedback');
     expect(payload).toMatchObject({
-      反馈类型: '遇到问题',
+      反馈类型: 'bug 反馈',
       反馈内容: '日运复盘页面偶尔无法滚动',
       联系方式: 'user@example.com',
       使用端: '手机端',
-      截图数量: '1',
+      附件数量: '1',
       用户识别: {
         登录状态: '已登录',
         公开ID: 'TAROT-260901-ABCD1234',
@@ -83,7 +84,7 @@ describe('feedbackService', () => {
     expect(payload.attachments[0]).toEqual(expect.objectContaining({
       filename: 'bug.png',
       contentType: 'image/png',
-      content: 'aW1hZ2U=',
+      content: PNG_CONTENT,
     }));
     expect(payload).not.toHaveProperty('页面');
     expect(JSON.stringify(payload)).not.toContain('readings');
@@ -101,7 +102,7 @@ describe('feedbackService', () => {
     vi.stubGlobal('fetch', fetchMock);
 
     await submitFeedback({
-      category: 'experience',
+      category: 'feature',
       message: '游客反馈也应该能识别是否来自同一台设备',
       contact: '',
     });
@@ -120,7 +121,7 @@ describe('feedbackService', () => {
     vi.stubGlobal('fetch', fetchMock);
 
     await expect(submitFeedback({
-      category: 'experience',
+      category: 'feature',
       message: '好',
       contact: '',
     })).rejects.toMatchObject({ code: 'invalid' });
@@ -145,11 +146,11 @@ describe('feedbackService', () => {
     })).resolves.toMatchObject({ deliveryState: 'needs-configuration' });
   });
 
-  it('限制截图数量、类型和总大小', async () => {
+  it('限制附件数量、类型和总大小', async () => {
     const tooManyAttachments = Array.from({ length: FEEDBACK_ATTACHMENT_MAX_COUNT + 1 }, (_, index) => ({
       filename: `bug-${index}.png`,
       contentType: 'image/png',
-      content: 'aW1hZ2U=',
+      content: PNG_CONTENT,
       size: 5,
     }));
 
@@ -163,7 +164,7 @@ describe('feedbackService', () => {
     const oversizedBatch = Array.from({ length: FEEDBACK_ATTACHMENT_MAX_COUNT }, (_, index) => ({
       filename: `bug-${index}.png`,
       contentType: 'image/png',
-      content: 'aW1hZ2U=',
+      content: PNG_CONTENT,
       size: Math.ceil(FEEDBACK_ATTACHMENT_TOTAL_MAX_BYTES / FEEDBACK_ATTACHMENT_MAX_COUNT) + 1,
     }));
 
@@ -176,16 +177,16 @@ describe('feedbackService', () => {
       attachments: oversizedBatch,
     })).rejects.toMatchObject({
       code: 'invalid',
-      message: '截图总大小不能超过 24MB。',
+      message: '附件总大小不能超过 24MB。',
     });
 
     await expect(submitFeedback({
       category: 'bug',
-      message: '不允许上传非图片附件',
+      message: '不允许上传脚本附件',
       contact: '',
       attachments: [{
-        filename: 'debug.txt',
-        contentType: 'text/plain',
+        filename: 'debug.js',
+        contentType: 'application/javascript',
         content: 'dGV4dA==',
         size: 4,
       }],
@@ -196,9 +197,14 @@ describe('feedbackService', () => {
     vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new TypeError('offline')));
 
     await expect(submitFeedback({
-      category: 'experience',
+      category: 'feature',
       message: '这是一条会保留的反馈内容',
       contact: '',
     })).rejects.toMatchObject({ code: 'network' });
+  });
+
+  it('兼容旧的使用感受草稿，保留文字和联系方式', () => {
+    localStorage.setItem('tarot_feedback_draft_v1', JSON.stringify({ category: 'experience', message: '之前还没写完的建议', contact: 'reader@example.com' }));
+    expect(loadFeedbackDraft()).toEqual({ category: 'feature', message: '之前还没写完的建议', contact: 'reader@example.com' });
   });
 });

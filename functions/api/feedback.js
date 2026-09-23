@@ -1,11 +1,9 @@
+import { normalizeFeedbackAttachments } from '../../shared/feedbackAttachments.js';
+
 const FEEDBACK_EMAIL = 'roxy163@outlook.com';
 const RESEND_ENDPOINT = 'https://api.resend.com/emails';
 const MESSAGE_MAX_LENGTH = 1200;
 const CONTACT_MAX_LENGTH = 100;
-const ATTACHMENT_MAX_COUNT = 9;
-const ATTACHMENT_MAX_BYTES = 3 * 1024 * 1024;
-const ATTACHMENT_TOTAL_MAX_BYTES = 24 * 1024 * 1024;
-const ATTACHMENT_ALLOWED_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/gif']);
 const RATE_LIMIT_WINDOW_MS = 60 * 1000;
 const RATE_LIMIT_MAX = 5;
 
@@ -79,54 +77,14 @@ const needsSenderActivation = (message) => (
   /activat|confirm|verif|验证|确认|激活|domain|sender|from/i.test(message)
 );
 
-const cleanFilename = (filename, index) => {
-  const cleaned = cleanText(filename, 90).replace(/[^\w.\-\u4e00-\u9fa5]/g, '-');
-  return cleaned || `screenshot-${index + 1}.png`;
-};
-
-const estimateBase64Bytes = (content) => Math.ceil(String(content || '').length * 3 / 4);
-
 const normalizeAttachments = (payloadAttachments) => {
-  if (!Array.isArray(payloadAttachments)) return [];
-  if (payloadAttachments.length > ATTACHMENT_MAX_COUNT) {
-    return { error: `截图最多上传 ${ATTACHMENT_MAX_COUNT} 张。` };
+  try {
+    return normalizeFeedbackAttachments(payloadAttachments).map(({ filename, content, contentType }) => ({
+      filename, content, content_type: contentType,
+    }));
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : '附件读取失败，请重新选择。' };
   }
-
-  let totalBytes = 0;
-  const attachments = [];
-
-  for (const [index, attachment] of payloadAttachments.entries()) {
-    const contentType = cleanText(attachment?.contentType, 40).toLowerCase();
-    const content = cleanText(attachment?.content, ATTACHMENT_MAX_BYTES * 2)
-      .replace(/^data:[^;]+;base64,/, '');
-    const declaredSize = Number.isFinite(attachment?.size) ? Number(attachment.size) : 0;
-    const size = Math.max(declaredSize, estimateBase64Bytes(content));
-
-    if (!content || !/^[a-z0-9+/=]+$/i.test(content)) {
-      return { error: '截图内容读取失败，请重新选择。' };
-    }
-
-    if (!ATTACHMENT_ALLOWED_TYPES.has(contentType)) {
-      return { error: '截图只支持 PNG、JPG、WebP 或 GIF。' };
-    }
-
-    if (size > ATTACHMENT_MAX_BYTES) {
-      return { error: '单张截图不能超过 3MB。' };
-    }
-
-    totalBytes += size;
-    if (totalBytes > ATTACHMENT_TOTAL_MAX_BYTES) {
-      return { error: '截图总大小不能超过 24MB。' };
-    }
-
-    attachments.push({
-      filename: cleanFilename(attachment?.filename, index),
-      content,
-      content_type: contentType,
-    });
-  }
-
-  return attachments;
 };
 
 const normalizePayload = (payload) => {
@@ -193,7 +151,7 @@ const createEmailText = (data) => [
   `联系方式：${data.contact}`,
   `使用端：${data.deviceType}`,
   `提交时间：${data.submittedAt}`,
-  `截图数量：${data.attachments.length}`,
+  `附件数量：${data.attachments.length}`,
   ...createUserContextRows(data.userContext).map(([label, value]) => `${label}：${value}`),
 ].join('\n\n');
 
@@ -213,7 +171,7 @@ const createEmailHtml = (data) => {
     ['联系方式', data.contact],
     ['使用端', data.deviceType],
     ['提交时间', data.submittedAt],
-    ['截图数量', `${data.attachments.length}`],
+    ['附件数量', `${data.attachments.length}`],
     ...createUserContextRows(data.userContext),
   ];
 

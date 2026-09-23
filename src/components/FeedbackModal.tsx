@@ -1,10 +1,10 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
-import { Camera, ExternalLink, FileImage, MessageSquareText, Send, Trash2, UploadCloud } from 'lucide-react';
-import { Modal } from './Modal';
+import { ChevronRight, ExternalLink, Paperclip, Send, Trash2, UploadCloud } from 'lucide-react';
+import { PageView } from './PageView';
 import {
   clearFeedbackDraft,
-  FEEDBACK_ATTACHMENT_ALLOWED_TYPES,
+  FEEDBACK_ATTACHMENT_ACCEPT,
   FEEDBACK_ATTACHMENT_MAX_BYTES,
   FEEDBACK_ATTACHMENT_MAX_COUNT,
   FEEDBACK_ATTACHMENT_TOTAL_MAX_BYTES,
@@ -20,6 +20,8 @@ import {
   loadFeedbackDraft,
   saveFeedbackDraft,
   submitFeedback,
+  resolveFeedbackAttachmentType,
+  validateFeedbackAttachment,
 } from '../lib/feedbackService';
 
 interface FeedbackModalProps {
@@ -34,7 +36,7 @@ type SelectedFeedbackAttachment = FeedbackAttachment & {
 };
 
 const EMPTY_DRAFT: FeedbackDraft = {
-  category: 'experience',
+  category: 'feature',
   message: '',
   contact: '',
 };
@@ -64,34 +66,33 @@ const createAttachmentId = (file: File) => (
 );
 
 const readAttachmentFile = (file: File): Promise<SelectedFeedbackAttachment> => new Promise((resolve, reject) => {
-  if (!FEEDBACK_ATTACHMENT_ALLOWED_TYPES.includes(file.type)) {
-    reject(new Error('截图只支持 PNG、JPG、WebP 或 GIF。'));
+  let contentType: string;
+  try {
+    contentType = resolveFeedbackAttachmentType(file.name, file.type);
+  } catch (error) {
+    reject(error);
     return;
   }
 
   if (file.size > FEEDBACK_ATTACHMENT_MAX_BYTES) {
-    reject(new Error('单张截图不能超过 3MB。'));
+    reject(new Error('单个附件不能超过 3MB。'));
     return;
   }
 
   const reader = new FileReader();
-  reader.onerror = () => reject(new Error('截图读取失败，请重新选择。'));
+  reader.onerror = () => reject(new Error('附件读取失败，请重新选择。'));
   reader.onload = () => {
     const result = typeof reader.result === 'string' ? reader.result : '';
     const content = result.split(',')[1] || '';
 
-    if (!content) {
-      reject(new Error('截图读取失败，请重新选择。'));
-      return;
+    try {
+      resolve({
+        ...validateFeedbackAttachment({ filename: file.name, contentType, content, size: file.size }),
+        id: createAttachmentId(file),
+      });
+    } catch (error) {
+      reject(error);
     }
-
-    resolve({
-      id: createAttachmentId(file),
-      filename: file.name || 'screenshot.png',
-      contentType: file.type,
-      content,
-      size: file.size,
-    });
   };
   reader.readAsDataURL(file);
 });
@@ -101,14 +102,14 @@ const createFeedbackEmailHref = (draft: FeedbackDraft, attachmentCount: number) 
   const message = draft.message.trim();
   const contact = draft.contact.trim();
   const subject = `[塔罗研习阁反馈] ${categoryLabel}`;
-  const screenshotLine = attachmentCount > 0
-    ? `站内已选择 ${attachmentCount} 张截图；如果自动发送失败，请在这封邮件里重新添加截图。`
-    : '请添加报错提示或异常状态截图。';
+  const attachmentLine = attachmentCount > 0
+    ? `站内已选择 ${attachmentCount} 个附件，请在这封邮件里重新添加。`
+    : '可按需附上图片、PDF 或 TXT 文件。';
   const body = [
-    '请在邮件里附上问题截图，并保留下面的文字说明。',
+    '请保留下面的文字说明，按需添加相关附件。',
     '',
     `反馈类型：${categoryLabel}`,
-    `截图：${screenshotLine}`,
+    `附件：${attachmentLine}`,
     `文字说明：${message || '（请描述在哪里、做了什么、发生了什么）'}`,
     contact ? `联系方式：${contact}` : '联系方式：（可选）',
     `使用端：${getDeviceType()}`,
@@ -122,8 +123,11 @@ export function FeedbackModal({ isOpen, onClose, onSent, userContext }: Feedback
   const [attachments, setAttachments] = useState<SelectedFeedbackAttachment[]>([]);
   const [honeypot, setHoneypot] = useState('');
   const [isSending, setIsSending] = useState(false);
+  const [isReadingAttachments, setIsReadingAttachments] = useState(false);
+  const attachmentReadVersion = useRef(0);
   const [errorMessage, setErrorMessage] = useState('');
   const [noticeMessage, setNoticeMessage] = useState('');
+  const [showContactDetails, setShowContactDetails] = useState(false);
   const emailHref = useMemo(() => createFeedbackEmailHref(draft, attachments.length), [attachments.length, draft]);
   const feedbackNotice = errorMessage || noticeMessage;
 
@@ -135,6 +139,9 @@ export function FeedbackModal({ isOpen, onClose, onSent, userContext }: Feedback
     setErrorMessage('');
     setNoticeMessage('');
     setIsSending(false);
+    setIsReadingAttachments(false);
+    setShowContactDetails(false);
+    return () => { attachmentReadVersion.current += 1; };
   }, [isOpen]);
 
   const updateDraft = (patch: Partial<FeedbackDraft>) => {
@@ -150,39 +157,43 @@ export function FeedbackModal({ isOpen, onClose, onSent, userContext }: Feedback
   const handleAttachmentChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(event.target.files || []);
     event.target.value = '';
-    if (files.length === 0) return;
+    if (files.length === 0 || isReadingAttachments || isSending) return;
 
     setErrorMessage('');
     setNoticeMessage('');
 
     const remainingSlots = FEEDBACK_ATTACHMENT_MAX_COUNT - attachments.length;
     if (remainingSlots <= 0) {
-      setErrorMessage(`截图最多上传 ${FEEDBACK_ATTACHMENT_MAX_COUNT} 张。`);
+      setErrorMessage(`附件最多上传 ${FEEDBACK_ATTACHMENT_MAX_COUNT} 个。`);
       return;
     }
 
     const selectedFiles = files.slice(0, remainingSlots);
+    const readVersion = ++attachmentReadVersion.current;
+    setIsReadingAttachments(true);
     const nextAttachments: SelectedFeedbackAttachment[] = [];
     let nextTotalSize = getAttachmentTotalSize(attachments);
     const issues: string[] = files.length > remainingSlots
-      ? [`截图最多上传 ${FEEDBACK_ATTACHMENT_MAX_COUNT} 张。`]
+      ? [`附件最多上传 ${FEEDBACK_ATTACHMENT_MAX_COUNT} 个。`]
       : [];
 
     for (const file of selectedFiles) {
       try {
         const attachment = await readAttachmentFile(file);
         if (nextTotalSize + attachment.size > FEEDBACK_ATTACHMENT_TOTAL_MAX_BYTES) {
-          issues.push(`截图总大小不能超过 ${formatFileSize(FEEDBACK_ATTACHMENT_TOTAL_MAX_BYTES)}。`);
+          issues.push(`附件总大小不能超过 ${formatFileSize(FEEDBACK_ATTACHMENT_TOTAL_MAX_BYTES)}。`);
           continue;
         }
 
         nextTotalSize += attachment.size;
         nextAttachments.push(attachment);
       } catch (error) {
-        issues.push(error instanceof Error ? error.message : '截图读取失败，请重新选择。');
+        issues.push(error instanceof Error ? error.message : '附件读取失败，请重新选择。');
       }
     }
 
+    if (readVersion !== attachmentReadVersion.current) return;
+    setIsReadingAttachments(false);
     if (nextAttachments.length > 0) {
       setAttachments(current => [...current, ...nextAttachments]);
     }
@@ -199,7 +210,7 @@ export function FeedbackModal({ isOpen, onClose, onSent, userContext }: Feedback
 
   const handleOpenEmail = () => {
     saveFeedbackDraft(draft);
-    onSent('已打开邮箱，请附上截图和文字说明后发送。');
+    onSent('已打开邮箱，请确认文字说明并重新添加所选附件后发送。');
   };
 
   const handleSubmit = async () => {
@@ -216,13 +227,8 @@ export function FeedbackModal({ isOpen, onClose, onSent, userContext }: Feedback
         userContext,
       });
 
-      if (result.deliveryState === 'needs-configuration') {
-        setNoticeMessage('邮件服务还没配置完成，已保留草稿。可以先点“打开邮箱手动发”，附上截图发给作者。');
-        return;
-      }
-
-      if (result.deliveryState === 'needs-activation') {
-        setNoticeMessage('邮件发件地址还需要验证，已保留草稿。可以先点“打开邮箱手动发”，附上截图发给作者。');
+      if (result.deliveryState === 'needs-configuration' || result.deliveryState === 'needs-activation') {
+        setNoticeMessage('暂时无法直接发送，草稿已保留。你可以打开邮箱，附上文字和附件发送。');
         return;
       }
 
@@ -243,31 +249,14 @@ export function FeedbackModal({ isOpen, onClose, onSent, userContext }: Feedback
   };
 
   return (
-    <Modal
+    <PageView
       isOpen={isOpen}
-      onClose={onClose}
-      title="反馈与建议"
-      icon={<MessageSquareText size={18} />}
+      onBack={onClose}
+      backDisabled={isSending}
+      title="支持与反馈"
     >
-      <div className="space-y-3">
-        <div className="rounded-[1.15rem] border border-forest-accent/10 bg-forest-accent/5 p-3">
-          <div className="flex items-start gap-3">
-            <div className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-white/58 text-forest-accent">
-              <Camera size={18} />
-            </div>
-            <div className="min-w-0 flex-1">
-              <p className="text-xs font-medium text-forest-accent">优先附截图说明</p>
-              <p className="mt-1 text-xs leading-5 text-forest-muted">
-                可以直接发送文字和截图。截图最好包含弹窗、报错或异常状态，以及你刚点过的按钮。
-              </p>
-              <p className="mt-1 text-[10px] leading-4 text-forest-muted/85">
-                如果不开 VPN 时发送失败，可复制底部邮箱，附上截图和文字手动反馈。
-              </p>
-            </div>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-4 gap-1 rounded-full border border-forest-accent/7 bg-white/32 p-1" aria-label="反馈类型">
+      <div className="space-y-5">
+        <div className="grid grid-cols-3 gap-1 rounded-full border border-forest-accent/7 bg-white/32 p-1" aria-label="反馈类型">
           {FEEDBACK_CATEGORIES.map(category => {
             const isActive = draft.category === category.value;
             return (
@@ -276,6 +265,7 @@ export function FeedbackModal({ isOpen, onClose, onSent, userContext }: Feedback
                 type="button"
                 whileTap={{ scale: 0.97 }}
                 onClick={() => updateDraft({ category: category.value })}
+                aria-pressed={isActive}
                 className={`min-h-11 rounded-full px-1 text-[11px] font-medium transition-colors sm:text-xs ${
                   isActive
                     ? 'bg-forest-accent text-white shadow-sm'
@@ -289,13 +279,13 @@ export function FeedbackModal({ isOpen, onClose, onSent, userContext }: Feedback
         </div>
 
         <label className="block space-y-1">
-          <span className="text-xs font-medium text-forest-ink">文字说明</span>
+          <span className="text-xs font-medium text-forest-ink">反馈内容</span>
           <textarea
             value={draft.message}
             onChange={event => updateDraft({ message: event.target.value })}
             maxLength={FEEDBACK_MESSAGE_MAX_LENGTH}
-            rows={4}
-            placeholder="刚刚点了什么、发生了什么？截图可在下方添加。"
+            rows={6}
+            placeholder="分享你的想法，或描述需要帮助的地方…"
             className="min-h-24 w-full resize-y rounded-[1.15rem] border border-forest-accent/10 bg-white/56 px-3.5 py-2.5 text-sm leading-5 text-forest-ink outline-none transition focus:border-forest-accent/30 focus:ring-2 focus:ring-forest-accent/8"
           />
           <span className="block text-right text-[10px] text-forest-muted/70">
@@ -306,23 +296,24 @@ export function FeedbackModal({ isOpen, onClose, onSent, userContext }: Feedback
         <div className="space-y-2 rounded-[1.15rem] border border-forest-accent/8 bg-white/34 p-2.5">
           <div className="flex items-center justify-between gap-2">
             <div className="flex min-w-0 items-center gap-2">
-              <FileImage size={16} className="shrink-0 text-forest-accent" />
+              <Paperclip size={16} className="shrink-0 text-forest-accent" />
               <div className="min-w-0">
-                <p className="text-xs font-medium text-forest-ink">截图（选填）</p>
+                <p className="text-xs font-medium text-forest-ink">上传附件（选填）</p>
                 <p className="text-[10px] text-forest-muted">
-                  最多 {FEEDBACK_ATTACHMENT_MAX_COUNT} 张，单张不超过 3MB，总计不超过 {formatFileSize(FEEDBACK_ATTACHMENT_TOTAL_MAX_BYTES)}
+                  图片、PDF、TXT · 单个不超过 3MB
                 </p>
               </div>
             </div>
             <label className="inline-flex min-h-11 shrink-0 cursor-pointer items-center justify-center gap-1.5 rounded-full border border-forest-accent/10 bg-white/58 px-3 text-xs font-medium text-forest-accent transition-colors hover:bg-white/78">
               <UploadCloud size={14} />
-              添加
+              {isReadingAttachments ? '读取中…' : '上传'}
               <input
                 type="file"
-                accept={FEEDBACK_ATTACHMENT_ALLOWED_TYPES.join(',')}
+                accept={FEEDBACK_ATTACHMENT_ACCEPT}
                 multiple
+                disabled={isReadingAttachments || isSending}
                 className="sr-only"
-                aria-label="添加反馈截图"
+                aria-label="上传反馈附件"
                 onChange={handleAttachmentChange}
               />
             </label>
@@ -341,8 +332,9 @@ export function FeedbackModal({ isOpen, onClose, onSent, userContext }: Feedback
                     <button
                       type="button"
                       onClick={() => removeAttachment(attachment.id)}
-                      aria-label={`移除截图 ${attachment.filename}`}
-                      className="grid min-h-9 min-w-9 place-items-center rounded-full text-forest-muted transition-colors hover:bg-forest-pink/8 hover:text-forest-pink"
+                      disabled={isReadingAttachments || isSending}
+                      aria-label={`移除附件 ${attachment.filename}`}
+                      className="grid min-h-11 min-w-11 place-items-center rounded-full text-forest-muted transition-colors hover:bg-forest-pink/8 hover:text-forest-pink"
                     >
                       <Trash2 size={13} />
                     </button>
@@ -405,25 +397,13 @@ export function FeedbackModal({ isOpen, onClose, onSent, userContext }: Feedback
           )}
         </AnimatePresence>
 
-        <p className="text-[10px] leading-4 text-forest-muted/80">
-          会附带登录状态和用户识别信息，方便作者定位问题；只发送这里填写的文字和你手动添加的截图，不会附带账号密码、手记或牌阵数据。
-        </p>
-
-        <div className="grid grid-cols-[0.85fr_1.5fr] gap-2 pt-0.5">
-          <motion.button
-            type="button"
-            whileTap={{ scale: 0.97 }}
-            onClick={onClose}
-            className="min-h-11 rounded-full border border-forest-accent/10 bg-white/38 px-4 text-sm font-medium text-forest-muted transition-colors hover:bg-white/66 hover:text-forest-ink"
-          >
-            稍后再写
-          </motion.button>
+        <div className="pt-0.5">
           <motion.button
             type="button"
             whileTap={{ scale: 0.98 }}
             onClick={handleSubmit}
-            disabled={isSending}
-            className="flex min-h-11 items-center justify-center gap-2 rounded-full bg-forest-accent px-4 text-sm font-medium text-white shadow-sm transition-colors hover:bg-forest-accent/90 disabled:cursor-wait disabled:opacity-60"
+            disabled={isSending || isReadingAttachments}
+            className="flex min-h-11 w-full items-center justify-center gap-2 rounded-full bg-forest-accent px-4 text-sm font-medium text-white shadow-sm transition-colors hover:bg-forest-accent/90 disabled:cursor-wait disabled:opacity-60"
           >
             {isSending ? (
               <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/35 border-t-white" />
@@ -434,10 +414,19 @@ export function FeedbackModal({ isOpen, onClose, onSent, userContext }: Feedback
           </motion.button>
         </div>
 
-        <p className="select-text text-center text-[10px] text-forest-muted/70">
-          邮箱：{FEEDBACK_EMAIL} · 微信：{FEEDBACK_WECHAT_ID}
-        </p>
+        <div className="text-[11px] leading-5 text-forest-muted">
+          <button type="button" aria-expanded={showContactDetails} aria-controls="feedback-contact-details" onClick={() => setShowContactDetails(open => !open)} className="flex min-h-11 w-full items-center gap-1.5 text-left">
+            <ChevronRight size={13} aria-hidden="true" className={`transition-transform ${showContactDetails ? 'rotate-90' : ''}`} />
+            发送说明与联系作者
+          </button>
+          {showContactDetails && <motion.div id="feedback-contact-details" initial={{ opacity: 0, y: -3 }} animate={{ opacity: 1, y: 0 }} className="space-y-2 pb-1">
+            <p>会附带登录状态和用户识别信息；不会自动附带账号密码、手记或牌阵数据。文字自动暂存在本机，附件仅在本次打开时保留。</p>
+            <p>支持 PNG、JPG、WebP、GIF、PDF 和 UTF-8 编码的 TXT。最多 {FEEDBACK_ATTACHMENT_MAX_COUNT} 个附件，每个不超过 3MB，总计不超过 {formatFileSize(FEEDBACK_ATTACHMENT_TOTAL_MAX_BYTES)}。</p>
+            <p className="select-text">邮箱：{FEEDBACK_EMAIL} · 微信：{FEEDBACK_WECHAT_ID}</p>
+            <a href={emailHref} onClick={handleOpenEmail} className="inline-flex min-h-11 items-center text-forest-accent">用邮箱联系作者</a>
+          </motion.div>}
+        </div>
       </div>
-    </Modal>
+    </PageView>
   );
 }

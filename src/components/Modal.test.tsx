@@ -1,12 +1,30 @@
 import { useState } from 'react';
-import { fireEvent, render, screen, within, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, within, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it } from 'vitest';
 import { Modal } from './Modal';
 import { ConfirmDialog } from './ConfirmDialog';
 import { CardPicker } from './CardPicker';
+import { closeTopModal } from '../hooks/useModalFocus';
 
 describe('modal keyboard navigation', () => {
+  it('system back respects a close guard instead of forcing a form to disappear', async () => {
+    function Harness() {
+      const [confirm, setConfirm] = useState(false);
+      return <>
+        <Modal isOpen title="未保存记录" onClose={() => setConfirm(true)}><input aria-label="记录内容" defaultValue="未保存内容" /></Modal>
+        <ConfirmDialog isOpen={confirm} title="确认离开" message="内容未保存" onClose={() => setConfirm(false)} onConfirm={() => {}} />
+      </>;
+    }
+    render(<Harness />);
+    act(() => { expect(closeTopModal()).toBe(true); });
+    expect(screen.getByRole('dialog', { name: '确认离开' })).toBeInTheDocument();
+    expect(screen.getByRole('textbox', { name: '记录内容' })).toHaveValue('未保存内容');
+    act(() => { expect(closeTopModal()).toBe(true); });
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: '确认离开' })).not.toBeInTheDocument());
+    expect(screen.getByRole('dialog', { name: '未保存记录' })).toBeInTheDocument();
+  });
+
   it('skips hidden, disabled and untabbable controls and leaves Escape to Chinese input composition', async () => {
     function Harness() {
       const [open, setOpen] = useState(false);

@@ -1,13 +1,13 @@
 import type React from 'react';
 import { useState, useEffect, useRef } from 'react';
-import { motion, AnimatePresence } from 'motion/react';
-import { Mail, Lock, Send, Sparkles, CloudOff, Home, CheckCircle, X, AlertCircle, Eye, EyeOff, FileText, ShieldCheck } from 'lucide-react';
+import { motion } from 'motion/react';
+import { Mail, Lock, Send, Sparkles, CloudOff, Home, CheckCircle, AlertCircle, Eye, EyeOff, FileText, ShieldCheck } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { checkIfMagicLink, confirmPasswordReset } from '../lib/firebase';
 import { normalizeEmailInput } from '../lib/emailInput';
 import { getAuthErrorDisplay } from '../lib/authError';
 import type { AuthErrorDisplay, AuthRecoveryAction } from '../lib/authError';
-import { useBodyScrollLock } from '../hooks/useBodyScrollLock';
+import { PageView } from './PageView';
 import type { LegalTab } from './LegalModal';
 
 interface AuthProps {
@@ -80,7 +80,6 @@ export const Auth: React.FC<AuthProps> = ({ onClose, onSignedOut, onOpenLegal })
   const changePasswordTimerRef = useRef<number | null>(null);
   const closeTimerRef = useRef<number | null>(null);
   const onCloseRef = useRef(onClose);
-  useBodyScrollLock(showResetPassword || showSetNewPassword || showChangePassword);
 
   useEffect(() => {
     onCloseRef.current = onClose;
@@ -663,35 +662,9 @@ export const Auth: React.FC<AuthProps> = ({ onClose, onSignedOut, onOpenLegal })
         </motion.div>
       </motion.div>
 
-      {/* 密码重置弹窗 */}
-      <AnimatePresence>
-        {showResetPassword && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-forest-text/20 backdrop-blur-sm overscroll-contain"
-            onClick={() => setShowResetPassword(false)}
-          >
-            <motion.div
-              initial={{ opacity: 0, scale: 0.9 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.9 }}
-              onClick={(e) => e.stopPropagation()}
-              className="w-full max-w-sm bg-white rounded-3xl shadow-xl border border-forest-border p-6 space-y-5"
-            >
-              <div className="flex items-center justify-between">
-                <div>
-                  <h2 className="text-lg font-serif font-bold text-forest-ink">找回密码</h2>
-                  <p className="text-xs text-forest-muted mt-1">输入注册时使用的邮箱</p>
-                </div>
-                <button
-                  onClick={() => setShowResetPassword(false)}
-                  className="p-2 hover:bg-forest-bg rounded-full transition-colors"
-                >
-                  <X size={18} className="text-forest-muted" />
-                </button>
-              </div>
+      <PageView isOpen={showResetPassword} title="找回密码" onBack={() => setShowResetPassword(false)} backDisabled={loading}>
+        <div className="space-y-5">
+          <p className="text-xs text-forest-muted">输入注册时使用的邮箱</p>
 
               <form onSubmit={handleResetPassword} className="space-y-4">
                 <div className="space-y-2">
@@ -754,50 +727,18 @@ export const Auth: React.FC<AuthProps> = ({ onClose, onSignedOut, onOpenLegal })
                 </button>
               </form>
 
-              <button
-                onClick={() => setShowResetPassword(false)}
-                className="w-full py-2 text-xs text-forest-muted hover:text-forest-accent transition-colors"
-              >
-                返回登录
-              </button>
-            </motion.div>
-          </motion.div>
-        )}
+        </div>
+      </PageView>
 
-        {/* 设置新密码弹窗（通过链接进入） */}
-        {showSetNewPassword && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-forest-text/20 backdrop-blur-sm overscroll-contain"
-            onClick={() => {
+      {/* 通过密码重置链接进入 */}
+      <PageView isOpen={showSetNewPassword} title="设置新密码" backDisabled={loading}
+            onBack={() => {
               setShowSetNewPassword(false);
               window.history.replaceState({}, document.title, window.location.pathname);
             }}
-          >
-            <motion.div
-              initial={{ opacity: 0, scale: 0.9 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.9 }}
-              onClick={(e) => e.stopPropagation()}
-              className="w-full max-w-sm bg-white rounded-3xl shadow-xl border border-forest-border p-6 space-y-5"
-            >
-              <div className="flex items-center justify-between">
-                <div>
-                  <h2 className="text-lg font-serif font-bold text-forest-ink">设置新密码</h2>
-                  <p className="text-xs text-forest-muted mt-1">请设置您的新密码</p>
-                </div>
-                <button
-                  onClick={() => {
-                    setShowSetNewPassword(false);
-                    window.history.replaceState({}, document.title, window.location.pathname);
-                  }}
-                  className="p-2 hover:bg-forest-bg rounded-full transition-colors"
-                >
-                  <X size={18} className="text-forest-muted" />
-                </button>
-              </div>
+      >
+        <div className="space-y-5">
+          <p className="text-xs text-forest-muted">请设置您的新密码</p>
 
               <form onSubmit={handleSetNewPassword} className="space-y-4">
                 <div className="space-y-2">
@@ -870,47 +811,12 @@ export const Auth: React.FC<AuthProps> = ({ onClose, onSignedOut, onOpenLegal })
                 </button>
               </form>
 
-              <button
-                onClick={() => {
-                  setShowSetNewPassword(false);
-                  window.history.replaceState({}, document.title, window.location.pathname);
-                }}
-                className="w-full py-2 text-xs text-forest-muted hover:text-forest-accent transition-colors"
-              >
-                返回登录
-              </button>
-            </motion.div>
-          </motion.div>
-        )}
+        </div>
+      </PageView>
 
-        {/* 修改密码弹窗 */}
-        {showChangePassword && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-forest-text/20 backdrop-blur-sm overscroll-contain"
-            onClick={() => setShowChangePassword(false)}
-          >
-            <motion.div
-              initial={{ opacity: 0, scale: 0.9 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.9 }}
-              onClick={(e) => e.stopPropagation()}
-              className="w-full max-w-sm bg-white rounded-3xl shadow-xl border border-forest-border p-6 space-y-5"
-            >
-              <div className="flex items-center justify-between">
-                <div>
-                  <h2 className="text-lg font-serif font-bold text-forest-ink">修改密码</h2>
-                  <p className="text-xs text-forest-muted mt-1">请验证当前密码并设置新密码</p>
-                </div>
-                <button
-                  onClick={() => setShowChangePassword(false)}
-                  className="p-2 hover:bg-forest-bg rounded-full transition-colors"
-                >
-                  <X size={18} className="text-forest-muted" />
-                </button>
-              </div>
+      <PageView isOpen={showChangePassword} title="修改密码" onBack={() => setShowChangePassword(false)} backDisabled={loading}>
+        <div className="space-y-5">
+          <p className="text-xs text-forest-muted">请验证当前密码并设置新密码</p>
 
               <form onSubmit={handleChangePassword} className="space-y-4">
                 <div className="space-y-2">
@@ -1001,16 +907,8 @@ export const Auth: React.FC<AuthProps> = ({ onClose, onSignedOut, onOpenLegal })
                 </button>
               </form>
 
-              <button
-                onClick={() => setShowChangePassword(false)}
-                className="w-full py-2 text-xs text-forest-muted hover:text-forest-accent transition-colors"
-              >
-                取消
-              </button>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+        </div>
+      </PageView>
     </div>
   );
 };

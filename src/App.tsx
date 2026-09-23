@@ -1,15 +1,18 @@
 import { Suspense, lazy, useCallback, useMemo, useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'motion/react';
-import { X, User, ChevronRight, LogOut, Database, ShieldCheck, ArrowRight, LogIn, CheckCircle, AlertTriangle, Mail, Download, MessageSquareText, FileText, Eye, EyeOff } from 'lucide-react';
+import { X, User, ChevronRight, LogOut, Database, ShieldCheck, ArrowRight, LogIn, CheckCircle, AlertTriangle, Mail, Eye, EyeOff, Settings } from 'lucide-react';
 import { TarotReading, SpreadDefinition, UserProfile } from './types';
 import { OFFICIAL_SPREADS, PAVILION_PROVERBS } from './constants';
 import { Modal } from './components/Modal';
+import { PageView } from './components/PageView';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { checkIfMagicLink, verifyMagicLink, deleteUserAccount, reauthenticateForAccountDeletion } from './lib/firebase';
 import { getCachedUserProfile, getOrCreateUserProfile, getUserModeratorStatus, hasPendingUserProfileUpdate, updateUserProfile, deleteUserAccount as deleteUserAccountData } from './lib/firebaseData';
 import { clearDeletedAccountLocalData } from './lib/accountDeletion';
 import { isValidPassword } from './lib/utils';
 import { HomeTab } from './components/tabs/HomeTab';
+import { SettingsTab } from './components/tabs/SettingsTab';
 import { MainLayout } from './components/layouts/MainLayout';
 import { SplashScreen } from './components/SplashScreen';
 import { StartupScreen } from './components/StartupScreen';
@@ -29,6 +32,7 @@ import {
 import { getAuthorDisplayName, syncReadingAuthorProfile } from './lib/readingAuthor';
 import { warmTarotDeckImages } from './lib/tarotImagePreload';
 import { useBodyScrollLock } from './hooks/useBodyScrollLock';
+import { closeTopModal } from './hooks/useModalFocus';
 import { useMobileFocusScroll } from './hooks/useMobileFocusScroll';
 import { usePwaInstallPrompt } from './hooks/usePwaInstallPrompt';
 import { installCloudflareWebAnalytics, setAnalyticsAuthState, trackEvent } from './lib/analytics';
@@ -76,9 +80,9 @@ type SnackbarState = {
   showLoginAction?: boolean;
 };
 
-type AppTab = 'home' | 'add' | 'private' | 'public' | 'metadata' | 'profile';
+type AppTab = 'home' | 'add' | 'private' | 'public' | 'metadata' | 'profile' | 'settings';
 
-const APP_TABS: AppTab[] = ['home', 'add', 'private', 'public', 'metadata', 'profile'];
+const APP_TABS: AppTab[] = ['home', 'add', 'private', 'public', 'metadata', 'profile', 'settings'];
 
 const isAppTab = (value: string | null): value is AppTab => (
   !!value && APP_TABS.includes(value as AppTab)
@@ -114,6 +118,8 @@ function AppContent() {
   const { canInstall: canAutoInstallPwa, install: installPwa, reminderPreference, setReminderPreference } = usePwaInstallPrompt();
   
   const [activeTab, setActiveTab] = usePersistentTab<AppTab>('tarot_active_tab', 'home', isAppTab);
+  const settingsSourceTabRef = useRef<Exclude<AppTab, 'settings'>>(activeTab === 'settings' ? 'home' : activeTab);
+  const contentTab = activeTab === 'settings' ? settingsSourceTabRef.current : activeTab;
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [selectedReadingDetail, setSelectedReadingDetail] = useState<TarotReading | null>(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
@@ -584,6 +590,16 @@ function AppContent() {
       const currentTab = activeTabRef.current;
       const stateTab = state?.tab || null;
       const incomingTab: AppTab = isAppTab(stateTab) ? stateTab : 'home';
+
+      if (closeTopModal()) {
+        lastBackExitNoticeRef.current = 0;
+        try {
+          window.history.pushState(createState(currentTab), '', window.location.href);
+        } catch {
+          // 无法写入历史时仍只处理当前最上层窗口。
+        }
+        return;
+      }
 
       if (showAuthPageRef.current) {
         setShowAuthPage(false);
@@ -1084,16 +1100,25 @@ function AppContent() {
     setLegalModal(prev => ({ ...prev, isOpen: false }));
   }, []);
 
-  const openLegalFromSidebar = useCallback((tab: LegalTab) => {
-    openLegalModal(tab);
+  const openSettings = useCallback(() => {
+    // Keep the source page mounted so editor drafts, undo and selection survive this detour.
+    if (activeTabRef.current !== 'settings') settingsSourceTabRef.current = activeTabRef.current;
+    setActiveTab('settings');
     closeSidebar();
-  }, [closeSidebar, openLegalModal]);
+  }, [closeSidebar, setActiveTab]);
 
-  const openInstallGuideFromSidebar = useCallback(() => {
-    trackEvent('pwa_install_requested', { source: 'sidebar' });
+  const closeSettings = useCallback(() => {
+    if (appHistoryReadyRef.current) {
+      window.history.back();
+    } else {
+      setActiveTab('home');
+    }
+  }, [setActiveTab]);
+
+  const openInstallGuideFromSettings = useCallback(() => {
+    trackEvent('pwa_install_requested', { source: 'settings' });
     setIsInstallGuideOpen(true);
-    closeSidebar();
-  }, [closeSidebar]);
+  }, []);
 
   const tryInstallFromGuide = useCallback(async () => {
     trackEvent('pwa_install_requested', { source: 'install_guide' });
@@ -1160,70 +1185,14 @@ function AppContent() {
         />
 
         <div className="space-y-1.5 rounded-[1.35rem] border border-forest-accent/7 bg-white/24 p-1.5">
-            <button
-              type="button"
-              onClick={openInstallGuideFromSidebar}
-              className="group flex min-h-11 w-full items-center justify-between rounded-xl px-2.5 text-forest-text transition-all hover:bg-white/54"
-            >
-              <div className="flex items-center gap-3">
-                <Download size={17} className="text-forest-accent" />
-                <div className="text-left">
-                  <span className="block text-sm font-medium">添加到桌面</span>
-                  <span className="text-[10px] text-forest-muted">{reminderPreference === 'auto' ? '安装方法 · 提醒设置' : '安装方法 · 提醒已关闭'}</span>
-                </div>
-              </div>
-              <ChevronRight size={14} className="text-forest-muted transition-transform group-hover:translate-x-1" />
-            </button>
-
           <button
             type="button"
-            onClick={() => {
-              setIsFeedbackModalOpen(true);
-              closeSidebar();
-            }}
-            className="group flex min-h-11 w-full items-center justify-between rounded-xl px-2.5 text-forest-text transition-all hover:bg-white/54"
+            onClick={openSettings}
+            className="group flex min-h-12 w-full items-center justify-between rounded-xl px-2.5 text-forest-text transition-all hover:bg-white/54"
           >
-            <div className="flex items-center gap-3">
-              <MessageSquareText size={17} className="text-forest-accent" />
-              <div className="text-left">
-                <span className="block text-sm font-medium">反馈与建议</span>
-                <span className="text-[10px] text-forest-muted">截图 + 邮箱直达</span>
-              </div>
-            </div>
-            <ChevronRight size={14} className="text-forest-muted transition-transform group-hover:translate-x-1" />
+            <span className="flex items-center gap-3"><Settings size={17} className="text-forest-accent" /><span className="text-sm font-medium">设置</span></span>
+            <ChevronRight size={14} className="text-forest-muted transition-transform group-hover:translate-x-0.5" />
           </button>
-
-          <button
-            type="button"
-            onClick={() => openLegalFromSidebar('privacy')}
-            className="group flex min-h-11 w-full items-center justify-between rounded-xl px-2.5 text-forest-text transition-all hover:bg-white/54"
-          >
-            <div className="flex items-center gap-3">
-              <FileText size={17} className="text-forest-accent" />
-              <div className="text-left">
-                <span className="block text-sm font-medium">隐私与条款</span>
-                <span className="text-[10px] text-forest-muted">数据与公开说明</span>
-              </div>
-            </div>
-            <ChevronRight size={14} className="text-forest-muted transition-transform group-hover:translate-x-1" />
-          </button>
-
-          {isPublicModerator && (
-            <button
-              type="button"
-              onClick={openPublicModerationFromSidebar}
-              className="group flex min-h-11 w-full items-center justify-between rounded-xl px-2.5 text-forest-text transition-all hover:bg-white/54"
-            >
-              <div className="flex items-center gap-3">
-                <ShieldCheck size={17} className="text-forest-accent" />
-                <div className="text-left">
-                  <span className="block text-sm font-medium">作者管理</span>
-                  <span className="text-[10px] text-forest-muted">举报与下架</span>
-                </div>
-              </div>
-              <ChevronRight size={14} className="text-forest-muted transition-transform group-hover:translate-x-1" />
-            </button>
-          )}
         </div>
       </div>
 
@@ -1270,13 +1239,14 @@ function AppContent() {
     <div>
       <MainLayout
         activeTab={activeTab}
-        setActiveTab={(tab: 'home' | 'add' | 'private' | 'public' | 'metadata' | 'profile') => {
+        setActiveTab={(tab) => {
           if (tab === 'public') {
             setPublicViewRequest(previous => ({ view: 'readings', key: (previous?.key ?? 0) + 1 }));
           }
           navigateToTab(tab);
         }}
         isSidebarOpen={isSidebarOpen}
+        isSidebarCovered={isFeedbackModalOpen || isInstallGuideOpen || legalModal.isOpen}
         setIsSidebarOpen={(open) => {
           if (open) openSidebar();
           else closeSidebar();
@@ -1449,9 +1419,9 @@ function AppContent() {
         </div>
       </Modal>
 
-      <Modal 
+      <PageView
         isOpen={isSecurityModalOpen} 
-        onClose={() => setIsSecurityModalOpen(false)} 
+        onBack={() => setIsSecurityModalOpen(false)}
         title="账号安全"
       >
         <div className="space-y-4">
@@ -1524,11 +1494,12 @@ function AppContent() {
           )}
 
         </div>
-      </Modal>
+      </PageView>
 
-      <Modal
+      <PageView
         isOpen={showPasswordModal}
-        onClose={() => setShowPasswordModal(false)}
+        onBack={() => setShowPasswordModal(false)}
+        backDisabled={isPasswordUpdateLoading}
         title="修改密码"
       >
         <div className="space-y-6">
@@ -1601,7 +1572,7 @@ function AppContent() {
             </button>
           </div>
         </div>
-      </Modal>
+      </PageView>
 
       <FeedbackModal
         isOpen={isFeedbackModalOpen}
@@ -1627,7 +1598,7 @@ function AppContent() {
       />
 
       {/* Snackbar */}
-      <AnimatePresence>
+      {createPortal(<div data-page-announcement><AnimatePresence>
         {snackbar.isOpen && (
           <motion.div
             initial={{ opacity: 0, y: 100, x: '-50%' }}
@@ -1640,7 +1611,7 @@ function AppContent() {
             }}
             className="fixed bottom-[calc(5.75rem+env(safe-area-inset-bottom))] left-1/2 z-[250] flex w-[calc(100vw-2rem)] max-w-sm items-center gap-3 rounded-2xl border border-forest-border bg-white/95 px-4 py-3 text-xs font-medium text-forest-text shadow-2xl backdrop-blur-md sm:bottom-[calc(5.25rem+env(safe-area-inset-bottom))] sm:w-auto sm:min-w-[320px] sm:text-sm"
           >
-            <span className="flex-1">{snackbar.message}</span>
+            <span role="status" className="flex-1">{snackbar.message}</span>
             <div className={`flex items-center gap-3 ${snackbar.showLoginAction ? 'border-l border-forest-border pl-4' : ''}`}>
               {snackbar.showLoginAction && (
                 <button 
@@ -1662,7 +1633,7 @@ function AppContent() {
             </div>
           </motion.div>
         )}
-      </AnimatePresence>
+      </AnimatePresence></div>, document.body)}
 
       {/* Global Loading Overlay */}
       <AnimatePresence>
@@ -1686,7 +1657,7 @@ function AppContent() {
       </AnimatePresence>
 
       {/* Smart Tips Banner */}
-      {currentTip && !isHomeTipDuplicate && (
+      {currentTip && !isHomeTipDuplicate && activeTab !== 'settings' && (
         <SmartTipBanner
           tip={currentTip}
           isVisible={isTipVisible}
@@ -1695,9 +1666,23 @@ function AppContent() {
         />
       )}
 
-      {/* Tab Content */}
+      {/* Settings is a separate page; the source page stays mounted but inaccessible. */}
       <AnimatePresence initial={false}>
-        {activeTab === 'home' && (
+        {activeTab === 'settings' && (
+          <SettingsTab
+            key="settings"
+            onBack={closeSettings}
+            onOpenInstallGuide={openInstallGuideFromSettings}
+            onOpenFeedback={() => setIsFeedbackModalOpen(true)}
+            onOpenLegal={() => openLegalModal('privacy')}
+            onOpenModeration={isPublicModerator ? openPublicModerationFromSidebar : undefined}
+            remindersEnabled={reminderPreference === 'auto'}
+          />
+        )}
+      </AnimatePresence>
+      <div hidden={activeTab === 'settings'}>
+      <AnimatePresence initial={false}>
+        {contentTab === 'home' && (
           <HomeTab
             session={session}
             profile={profile}
@@ -1742,7 +1727,7 @@ function AppContent() {
           />
         )}
 
-        {activeTab === 'private' && (
+        {contentTab === 'private' && (
           <Suspense fallback={<SuspenseFallback />}>
             <PrivateTab
               readings={readings}
@@ -1768,7 +1753,7 @@ function AppContent() {
           </Suspense>
         )}
 
-        {activeTab === 'public' && (
+        {contentTab === 'public' && (
           <Suspense fallback={<SuspenseFallback />}>
             <PublicTab
               readings={readings}
@@ -1790,7 +1775,7 @@ function AppContent() {
           </Suspense>
         )}
 
-        {activeTab === 'add' && (
+        {contentTab === 'add' && (
           <Suspense fallback={<SuspenseFallback />}>
             <AddTab
               key={`${session?.uid || 'guest'}:${editingReading?.id || 'new'}`}
@@ -1815,7 +1800,7 @@ function AppContent() {
           </Suspense>
         )}
 
-        {activeTab === 'profile' && (
+        {contentTab === 'profile' && (
           <Suspense fallback={<SuspenseFallback />}>
             <ProfileTab
               authorName={ownAuthorName}
@@ -1862,7 +1847,7 @@ function AppContent() {
           </Suspense>
         )}
 
-        {activeTab === 'metadata' && (
+        {contentTab === 'metadata' && (
           <motion.div key="metadata" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 20 }}>
             <Suspense fallback={<SuspenseFallback />}>
               <CardMetadataManager
@@ -1883,6 +1868,7 @@ function AppContent() {
           </motion.div>
         )}
       </AnimatePresence>
+      </div>
 
       <Suspense fallback={null}>
         <ReadingDetailModal

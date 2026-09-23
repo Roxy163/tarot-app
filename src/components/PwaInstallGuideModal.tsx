@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import { CheckCircle2, Copy, Download, Monitor, Share2, Smartphone } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
-import { Modal } from './Modal';
+import { PageView } from './PageView';
 import type { InstallReminderPreference } from '../hooks/usePwaInstallPrompt';
 
 type InstallDevice = 'ios' | 'android' | 'desktop';
@@ -95,11 +95,10 @@ export function PwaInstallGuideModal({
   };
 
   return (
-    <Modal
+    <PageView
       isOpen={isOpen}
-      onClose={onClose}
+      onBack={onClose}
       title="添加到桌面"
-      icon={<Download size={20} />}
     >
       <div className="space-y-4">
         <p className="text-xs leading-relaxed text-forest-muted">
@@ -121,7 +120,7 @@ export function PwaInstallGuideModal({
             </span>
           </button>
           <p className="mt-1 text-xs leading-relaxed text-forest-muted">
-            {reminderPreference === 'installed' ? '已记住添加状态，不再主动提醒。' : '设置保存在当前浏览器，之后可从菜单里的“添加到桌面”修改。'}
+            {reminderPreference === 'installed' ? '已记住添加状态，不再主动提醒。' : '设置保存在当前浏览器，之后可从侧栏“设置 → 添加到桌面”修改。'}
           </p>
           {reminderPreference !== 'installed' && (
             <button type="button" onClick={() => updatePreference('installed')} className="mt-1 min-h-11 rounded-xl px-2 text-xs font-medium text-forest-accent hover:bg-white/60">
@@ -184,6 +183,6 @@ export function PwaInstallGuideModal({
           </p>
         </div>
       </div>
-    </Modal>
+    </PageView>
   );
 }

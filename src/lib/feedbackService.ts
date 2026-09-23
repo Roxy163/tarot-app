@@ -1,13 +1,18 @@
 import { readJsonRecordWithBackup, writeJsonWithBackup } from './safeLocalStorage';
+import { normalizeFeedbackAttachments } from '../../shared/feedbackAttachments.js';
+export {
+  FEEDBACK_ATTACHMENT_ACCEPT,
+  FEEDBACK_ATTACHMENT_MAX_COUNT,
+  FEEDBACK_ATTACHMENT_MAX_BYTES,
+  FEEDBACK_ATTACHMENT_TOTAL_MAX_BYTES,
+  resolveFeedbackAttachmentType,
+  validateFeedbackAttachment,
+} from '../../shared/feedbackAttachments.js';
 
 export const FEEDBACK_EMAIL = 'roxy163@outlook.com';
 export const FEEDBACK_WECHAT_ID = 'juben6868';
 export const FEEDBACK_MESSAGE_MAX_LENGTH = 1200;
 export const FEEDBACK_CONTACT_MAX_LENGTH = 100;
-export const FEEDBACK_ATTACHMENT_MAX_COUNT = 9;
-export const FEEDBACK_ATTACHMENT_MAX_BYTES = 3 * 1024 * 1024;
-export const FEEDBACK_ATTACHMENT_TOTAL_MAX_BYTES = 24 * 1024 * 1024;
-export const FEEDBACK_ATTACHMENT_ALLOWED_TYPES = ['image/png', 'image/jpeg', 'image/webp', 'image/gif'];
 
 const FEEDBACK_DRAFT_KEY = 'tarot_feedback_draft_v1';
 const FEEDBACK_LAST_SENT_KEY = 'tarot_feedback_last_sent_at';
@@ -16,9 +21,8 @@ const FEEDBACK_COOLDOWN_MS = 30_000;
 const FEEDBACK_ENDPOINT = '/api/feedback';
 
 export const FEEDBACK_CATEGORIES = [
-  { value: 'experience', label: '使用感受' },
-  { value: 'feature', label: '功能建议' },
-  { value: 'bug', label: '遇到问题' },
+  { value: 'feature', label: '产品建议' },
+  { value: 'bug', label: 'bug 反馈' },
   { value: 'other', label: '其他' },
 ] as const;
 
@@ -118,10 +122,12 @@ const getGuestFeedbackId = () => {
 
 export const loadFeedbackDraft = (): FeedbackDraft | null => {
   const saved = readJsonRecordWithBackup<Record<string, unknown>>(FEEDBACK_DRAFT_KEY);
-  if (!saved || !isFeedbackCategory(saved.category)) return null;
+  if (!saved) return null;
+  const category = saved.category === 'experience' ? 'feature' : saved.category;
+  if (!isFeedbackCategory(category)) return null;
 
   return {
-    category: saved.category,
+    category,
     message: typeof saved.message === 'string' ? saved.message.slice(0, FEEDBACK_MESSAGE_MAX_LENGTH) : '',
     contact: typeof saved.contact === 'string' ? saved.contact.slice(0, FEEDBACK_CONTACT_MAX_LENGTH) : '',
   };
@@ -129,7 +135,7 @@ export const loadFeedbackDraft = (): FeedbackDraft | null => {
 
 export const saveFeedbackDraft = (draft: FeedbackDraft) => {
   writeJsonWithBackup(FEEDBACK_DRAFT_KEY, {
-    category: isFeedbackCategory(draft.category) ? draft.category : 'experience',
+    category: isFeedbackCategory(draft.category) ? draft.category : 'feature',
     message: draft.message.slice(0, FEEDBACK_MESSAGE_MAX_LENGTH),
     contact: draft.contact.slice(0, FEEDBACK_CONTACT_MAX_LENGTH),
   });
@@ -143,23 +149,6 @@ export const clearFeedbackDraft = () => {
   } catch {
     // 已发送成功，清理失败不影响用户继续使用。
   }
-};
-
-const isAllowedAttachmentType = (contentType: string) => (
-  FEEDBACK_ATTACHMENT_ALLOWED_TYPES.includes(contentType)
-);
-
-const getAttachmentSize = (attachment: FeedbackAttachment) => {
-  const estimatedSize = Math.ceil((attachment.content || '').length * 3 / 4);
-  if (Number.isFinite(attachment.size) && attachment.size > 0) {
-    return Math.max(attachment.size, estimatedSize);
-  }
-  return estimatedSize;
-};
-
-const cleanAttachmentFilename = (filename: string, index: number) => {
-  const cleaned = filename.trim().replace(/[^\w.\-\u4e00-\u9fa5]/g, '-').slice(0, 90);
-  return cleaned || `screenshot-${index + 1}.png`;
 };
 
 const cleanContextText = (value: string | null | undefined, maxLength = 160) => (
@@ -186,41 +175,11 @@ const createFeedbackUserPayload = (userContext?: FeedbackUserContext) => {
 };
 
 const sanitizeAttachments = (attachments: FeedbackAttachment[] = []) => {
-  if (attachments.length > FEEDBACK_ATTACHMENT_MAX_COUNT) {
-    throw new FeedbackSubmissionError('invalid', `截图最多上传 ${FEEDBACK_ATTACHMENT_MAX_COUNT} 张。`);
+  try {
+    return normalizeFeedbackAttachments(attachments);
+  } catch (error) {
+    throw new FeedbackSubmissionError('invalid', error instanceof Error ? error.message : '附件读取失败，请重新选择。');
   }
-
-  let totalBytes = 0;
-
-  return attachments.map((attachment, index) => {
-    const contentType = String(attachment.contentType || '').toLowerCase();
-    const content = String(attachment.content || '').replace(/^data:[^;]+;base64,/, '');
-    const size = getAttachmentSize({ ...attachment, content });
-
-    if (!content || !/^[a-z0-9+/=]+$/i.test(content)) {
-      throw new FeedbackSubmissionError('invalid', '截图内容读取失败，请重新选择。');
-    }
-
-    if (!isAllowedAttachmentType(contentType)) {
-      throw new FeedbackSubmissionError('invalid', '截图只支持 PNG、JPG、WebP 或 GIF。');
-    }
-
-    if (size > FEEDBACK_ATTACHMENT_MAX_BYTES) {
-      throw new FeedbackSubmissionError('invalid', '单张截图不能超过 3MB。');
-    }
-
-    totalBytes += size;
-    if (totalBytes > FEEDBACK_ATTACHMENT_TOTAL_MAX_BYTES) {
-      throw new FeedbackSubmissionError('invalid', '截图总大小不能超过 24MB。');
-    }
-
-    return {
-      filename: cleanAttachmentFilename(attachment.filename, index),
-      contentType,
-      content,
-      size,
-    };
-  });
 };
 
 const readProviderResult = async (response: Response) => {
@@ -271,7 +230,7 @@ const createFeedbackPayload = (
   联系方式: contact || '未填写',
   使用端: submission.deviceType || '电脑端',
   提交时间: new Date(now).toLocaleString('zh-CN', { hour12: false }),
-  截图数量: String(attachments.length),
+  附件数量: String(attachments.length),
   用户识别: createFeedbackUserPayload(submission.userContext),
   attachments,
 });

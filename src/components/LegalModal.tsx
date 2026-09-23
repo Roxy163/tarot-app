@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { AlertTriangle, BarChart3, Database, FileText, Mail, ShieldCheck, Users } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
-import { Modal } from './Modal';
+import { PageView } from './PageView';
 
 export type LegalTab = 'privacy' | 'terms';
 
@@ -17,7 +17,7 @@ interface LegalSection {
   body: string;
 }
 
-const UPDATED_AT = '2026/09/15';
+const UPDATED_AT = '2026/09/23';
 
 const privacySections: LegalSection[] = [
   {
@@ -31,9 +31,9 @@ const privacySections: LegalSection[] = [
     body: '只有你主动勾选公开的手记才会进入广场。匿名公开会隐藏昵称和签名，但手记内容本身仍会被其他用户看到。',
   },
   {
-    title: '反馈与截图',
+    title: '反馈与附件',
     icon: Mail,
-    body: '站内反馈会通过 Resend 转发到作者邮箱，内容包括你填写的文字、联系方式、手动添加的截图，以及登录状态和用户识别信息；不会自动附带私人手记或牌阵数据。发送失败时，文字草稿会留在本机。',
+    body: '站内反馈会通过 Resend 转发到作者邮箱，内容包括你填写的文字、联系方式、手动添加的附件，以及登录状态和用户识别信息；不会自动附带私人手记或牌阵数据。发送失败时，文字草稿会留在本机。',
   },
   {
     title: '运行与统计',
@@ -88,11 +88,10 @@ export function LegalModal({ isOpen, onClose, initialTab = 'privacy' }: LegalMod
   const sections = activeTab === 'privacy' ? privacySections : termsSections;
 
   return (
-    <Modal
+    <PageView
       isOpen={isOpen}
-      onClose={onClose}
+      onBack={onClose}
       title={activeTab === 'privacy' ? '隐私政策' : '用户协议'}
-      icon={activeTab === 'privacy' ? <ShieldCheck size={20} /> : <FileText size={20} />}
     >
       <div className="space-y-4">
         <div className="grid grid-cols-2 gap-2" role="tablist" aria-label="法律说明">
@@ -141,6 +140,6 @@ export function LegalModal({ isOpen, onClose, initialTab = 'privacy' }: LegalMod
           联系作者：roxy163@outlook.com · 微信：juben6868
         </p>
       </div>
-    </Modal>
+    </PageView>
   );
 }

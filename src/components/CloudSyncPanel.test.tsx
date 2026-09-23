@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ComponentProps } from 'react';
 import { describe, expect, it, vi } from 'vitest';
@@ -40,21 +40,38 @@ describe('CloudSyncPanel', () => {
 
     expect(screen.getByTestId('cloud-sync-panel')).toBeInTheDocument();
     expect(screen.getByText('本机已保存')).toBeInTheDocument();
-    expect(screen.getByText('点这里登录，云端记录会自动合并。')).toBeInTheDocument();
-    expect(screen.getByText('本机记录已保留，登录后可同步到云端。')).toBeInTheDocument();
+    expect(screen.queryByText('最近同步')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '同步详情' })).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.getByText('手记复盘')).toBeInTheDocument();
+    expect(screen.getByText('今日手记')).toBeInTheDocument();
     expect(screen.getByText('待登录')).toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: '登录开启同步' }));
     expect(onLogin).toHaveBeenCalledTimes(1);
   });
 
-  it('lets guests open login by clicking the whole sync card', async () => {
+  it('keeps the card and statistics read-only; only the login button starts login', async () => {
     const user = userEvent.setup();
     const onLogin = vi.fn();
     renderPanel({ onLogin, showPrimaryAction: false });
 
     await user.click(screen.getByTestId('cloud-sync-panel'));
-    expect(onLogin).toHaveBeenCalledTimes(1);
+    await user.click(screen.getByText('今日手记'));
+    expect(onLogin).not.toHaveBeenCalled();
+    await user.click(screen.getByRole('button', { name: '登录开启同步' }));
+    expect(onLogin).toHaveBeenCalledOnce();
+  });
+
+  it('reveals sync details on demand and supports keyboard collapse', async () => {
+    const user = userEvent.setup();
+    renderPanel();
+    const details = screen.getByRole('button', { name: '同步详情' });
+    await user.click(details);
+    expect(details).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByText('还没有同步记录')).toBeInTheDocument();
+    expect(screen.getByText('本机记录已保留，登录后可同步到云端。')).toBeInTheDocument();
+    await user.keyboard('{Enter}');
+    await waitFor(() => expect(screen.queryByText('最近同步')).not.toBeInTheDocument());
   });
 
   it('shows signed-in cloud counts and runs manual sync', async () => {
@@ -81,7 +98,8 @@ describe('CloudSyncPanel', () => {
     expect(onManualSync).toHaveBeenCalledTimes(1);
   });
 
-  it('shows retry status and keeps the retry button available after sync error', () => {
+  it('keeps real sync errors and retry visible while technical details are folded', async () => {
+    const user = userEvent.setup();
     renderPanel({
       session: { uid: 'user-1' },
       isCloudSyncPaused: true,
@@ -93,7 +111,10 @@ describe('CloudSyncPanel', () => {
     });
 
     expect(screen.getByText('稍后再同步')).toBeInTheDocument();
-    expect(screen.getByText('Missing or insufficient permissions.')).toBeInTheDocument();
+    expect(screen.getByText('云端暂时没有连上，记录已保留在本机。')).toBeInTheDocument();
+    expect(screen.queryByText('Missing or insufficient permissions.')).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: '重新同步' })).toBeEnabled();
+    await user.click(screen.getByRole('button', { name: '同步详情' }));
+    expect(screen.getByText('Missing or insufficient permissions.')).toBeInTheDocument();
   });
 });

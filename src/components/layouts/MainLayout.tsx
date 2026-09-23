@@ -5,13 +5,14 @@ import { TabButton } from '../TabButton';
 import { SidebarDrawer } from './SidebarDrawer';
 import { PwaInstallPrompt } from '../PwaInstallPrompt';
 
-type TabType = 'home' | 'add' | 'private' | 'public' | 'metadata' | 'profile';
+type TabType = 'home' | 'add' | 'private' | 'public' | 'metadata' | 'profile' | 'settings';
 
 interface MainLayoutProps {
   children: React.ReactNode;
   activeTab: TabType;
   setActiveTab: (tab: TabType) => void;
   isSidebarOpen: boolean;
+  isSidebarCovered?: boolean;
   setIsSidebarOpen: (open: boolean) => void;
   sidebarContent: React.ReactNode;
   onOpenInstallGuide: () => void;
@@ -29,17 +30,18 @@ export const MainLayout: React.FC<MainLayoutProps> = ({
   activeTab,
   setActiveTab,
   isSidebarOpen,
+  isSidebarCovered = false,
   setIsSidebarOpen,
   sidebarContent,
   onOpenInstallGuide
 }) => {
   return (
     <div className="min-h-screen bg-forest-bg flex flex-col max-w-5xl mx-auto px-3 pb-0 pt-2 sm:px-5 sm:pb-4 sm:pt-4 relative overflow-x-hidden">
-      <SidebarDrawer isOpen={isSidebarOpen} onOpenChange={setIsSidebarOpen} allowEdgeSwipe={activeTab !== 'add'}>
+      {activeTab !== 'settings' && <SidebarDrawer isOpen={isSidebarOpen} covered={isSidebarCovered} onOpenChange={setIsSidebarOpen} allowEdgeSwipe={activeTab !== 'add'}>
         {sidebarContent}
-      </SidebarDrawer>
+      </SidebarDrawer>}
 
-      <header className="mb-2 text-center relative sm:mb-4">
+      {activeTab !== 'settings' && <header className="mb-2 text-center relative sm:mb-4">
         <div className="absolute left-0 top-1 sm:top-0">
           <button 
             onClick={() => setIsSidebarOpen(true)}
@@ -72,16 +74,16 @@ export const MainLayout: React.FC<MainLayoutProps> = ({
             </p>
           </div>
         </motion.div>
-      </header>
+      </header>}
 
-      <main className="flex-1 pb-[3.75rem] sm:pb-[3.5rem]">
+      <main className={activeTab === 'settings' ? 'flex-1' : 'flex-1 pb-[3.75rem] sm:pb-[3.5rem]'}>
         {children}
       </main>
 
-      <PwaInstallPrompt onOpenGuide={onOpenInstallGuide} hidden={isSidebarOpen} />
+      <PwaInstallPrompt onOpenGuide={onOpenInstallGuide} hidden={isSidebarOpen || activeTab === 'settings'} />
 
       {/* Mobile Navigation */}
-      <nav className="fixed bottom-0 left-0 right-0 z-[100] border-t border-forest-accent/8 bg-white/88 px-3 py-0.5 shadow-[0_-8px_24px_-26px_rgba(62,58,54,0.38)] backdrop-blur-xl" style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}>
+      {activeTab !== 'settings' && <nav className="fixed bottom-0 left-0 right-0 z-[100] border-t border-forest-accent/8 bg-white/88 px-3 py-0.5 shadow-[0_-8px_24px_-26px_rgba(62,58,54,0.38)] backdrop-blur-xl" style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}>
         <div className="mx-auto flex h-14 max-w-xl items-center justify-around sm:h-[3.35rem] sm:max-w-2xl">
           {NAV_ITEMS.map(item => (
             <TabButton
@@ -95,7 +97,7 @@ export const MainLayout: React.FC<MainLayoutProps> = ({
             />
           ))}
         </div>
-      </nav>
+      </nav>}
     </div>
   );
 };

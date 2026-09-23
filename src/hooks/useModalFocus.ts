@@ -1,7 +1,17 @@
 import { useLayoutEffect, useRef, type RefObject } from 'react';
 
 const stack: HTMLElement[] = [];
+const closeHandlers = new Map<HTMLElement, () => void>();
 const selector = 'button:not(:disabled), a[href], input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex]:not([tabindex="-1"])';
+
+// 系统返回与 Escape 共用层级；调用原关闭逻辑，保留未保存内容等保护。
+export function closeTopModal() {
+  const top = stack.at(-1);
+  const close = top && closeHandlers.get(top);
+  if (!close) return false;
+  close();
+  return true;
+}
 
 export function useModalFocus(open: boolean, ref: RefObject<HTMLElement | null>, onClose: () => void, initialFocus?: RefObject<HTMLElement | null>) {
   const close = useRef(onClose);
@@ -11,6 +21,7 @@ export function useModalFocus(open: boolean, ref: RefObject<HTMLElement | null>,
     if (!open || !dialog) return;
     const previous = document.activeElement as HTMLElement | null;
     stack.push(dialog);
+    closeHandlers.set(dialog, () => close.current());
     const focusable = () => [...dialog.querySelectorAll<HTMLElement>(selector)].filter(element => {
       if (element.tabIndex < 0 || element.matches(':disabled, input[type="hidden"]')) return false;
       let node: HTMLElement | null = element;
@@ -48,6 +59,7 @@ export function useModalFocus(open: boolean, ref: RefObject<HTMLElement | null>,
       const wasTop = stack.at(-1) === dialog;
       const index = stack.indexOf(dialog);
       if (index >= 0) stack.splice(index, 1);
+      closeHandlers.delete(dialog);
       document.removeEventListener('keydown', keydown);
       document.removeEventListener('focusin', focusin);
       if (wasTop && previous?.isConnected) {

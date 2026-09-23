@@ -1,27 +1,38 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { FeedbackModal } from './FeedbackModal';
+import { PNG_BYTES } from '../test/feedbackFixtures';
 
 describe('FeedbackModal', () => {
   beforeEach(() => {
     localStorage.clear();
     vi.restoreAllMocks();
   });
+  afterEach(() => vi.unstubAllGlobals());
 
-  it('展示截图说明、发送失败兜底和底部联系方式', () => {
+  it('保留简洁表单，按需展开发送说明和联系方式', async () => {
+    const user = userEvent.setup();
     render(<FeedbackModal isOpen onClose={vi.fn()} onSent={vi.fn()} />);
 
-    expect(screen.getByText('反馈与建议')).toBeInTheDocument();
-    expect(screen.getByText('优先附截图说明')).toBeInTheDocument();
-    expect(screen.getByText(/截图最好包含弹窗、报错或异常状态/)).toBeInTheDocument();
-    expect(screen.getByText(/如果不开 VPN 时发送失败/)).toBeInTheDocument();
-    expect(screen.getByText(/最多 9 张，单张不超过 3MB，总计不超过 24\.0MB/)).toBeInTheDocument();
-    expect(screen.getByText(/会附带登录状态和用户识别信息/)).toBeInTheDocument();
-    expect(screen.queryByText('roxy163@outlook.com')).not.toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: '支持与反馈' })).toBeInTheDocument();
+    expect(screen.queryByText('优先附截图说明')).not.toBeInTheDocument();
+    expect(screen.queryByText(/VPN/)).not.toBeInTheDocument();
+    expect(screen.getByText('图片、PDF、TXT · 单个不超过 3MB')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '产品建议' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('button', { name: 'bug 反馈' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '其他' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '使用感受' })).not.toBeInTheDocument();
+    expect(screen.queryByText(/邮箱：roxy163@outlook/)).not.toBeInTheDocument();
+    const details = screen.getByRole('button', { name: '发送说明与联系作者' });
+    expect(details).toHaveAttribute('aria-expanded', 'false');
+    await user.click(details);
+    expect(details).toHaveAttribute('aria-expanded', 'true');
+    await waitFor(() => expect(screen.getByText(/会附带登录状态和用户识别信息/)).toBeVisible());
     expect(screen.getByText(/邮箱：roxy163@outlook\.com/)).toBeInTheDocument();
     expect(screen.getByText(/微信：juben6868/)).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /复制微信/ })).not.toBeInTheDocument();
+    await user.click(details);
+    expect(screen.queryByRole('link', { name: '用邮箱联系作者' })).not.toBeInTheDocument();
   });
 
   it('把用户填写的说明和截图发送到反馈接口', async () => {
@@ -50,14 +61,14 @@ describe('FeedbackModal', () => {
       />,
     );
 
-    await user.click(screen.getByRole('button', { name: '遇到问题' }));
+    await user.click(screen.getByRole('button', { name: 'bug 反馈' }));
     await user.type(
-      screen.getByPlaceholderText(/刚刚点了什么/),
+      screen.getByPlaceholderText(/分享你的想法/),
       '删除自定义牌阵时弹窗被底部导航挡住',
     );
     await user.upload(
-      screen.getByLabelText('添加反馈截图'),
-      new File(['image-content'], 'bug.png', { type: 'image/png' }),
+      screen.getByLabelText('上传反馈附件'),
+      new File([PNG_BYTES], 'bug.png', { type: 'image/png' }),
     );
 
     expect(await screen.findByText('bug.png')).toBeInTheDocument();
@@ -73,9 +84,9 @@ describe('FeedbackModal', () => {
 
     expect(url).toBe('/api/feedback');
     expect(payload).toMatchObject({
-      反馈类型: '遇到问题',
+      反馈类型: 'bug 反馈',
       反馈内容: '删除自定义牌阵时弹窗被底部导航挡住',
-      截图数量: '1',
+      附件数量: '1',
       用户识别: {
         登录状态: '已登录',
         公开ID: 'TAROT-260901-ABCD1234',
@@ -107,11 +118,86 @@ describe('FeedbackModal', () => {
 
     render(<FeedbackModal isOpen onClose={onClose} onSent={vi.fn()} />);
 
-    await user.type(screen.getByPlaceholderText(/刚刚点了什么/), '希望反馈入口更清楚');
+    await user.type(screen.getByPlaceholderText(/分享你的想法/), '希望反馈入口更清楚');
     await user.click(screen.getByRole('button', { name: '发送给作者' }));
 
-    expect(await screen.findByText(/邮件服务还没配置完成/)).toBeInTheDocument();
+    expect(await screen.findByText(/暂时无法直接发送，草稿已保留/)).toBeInTheDocument();
     expect(screen.getByRole('link', { name: '打开邮箱手动发' })).toHaveAttribute('href', expect.stringContaining('mailto:roxy163@outlook.com'));
     expect(onClose).not.toHaveBeenCalled();
+  });
+
+  it('支持 PDF 和 TXT 附件，移除后不会发送被移除的文件', async () => {
+    const user = userEvent.setup();
+    const onClose = vi.fn();
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      headers: { get: () => 'application/json' },
+      json: async () => ({ deliveryState: 'sent' }),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    render(<FeedbackModal isOpen onClose={onClose} onSent={vi.fn()} />);
+    await user.type(screen.getByRole('textbox', { name: /反馈内容/ }), '这是附件上传的反馈内容');
+    await user.upload(screen.getByLabelText('上传反馈附件'), [
+      new File(['%PDF-1.4\n%%EOF'], '说明.pdf', { type: 'application/pdf' }),
+      new File(['复现步骤：打开设置'], '说明.txt', { type: 'text/plain' }),
+    ]);
+    expect(await screen.findByText('说明.pdf')).toBeInTheDocument();
+    expect(await screen.findByText('说明.txt')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: '移除附件 说明.pdf' }));
+    expect(screen.queryByText('说明.pdf')).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: '发送给作者' }));
+    await waitFor(() => expect(onClose).toHaveBeenCalledOnce());
+    const payload = JSON.parse(fetchMock.mock.calls[0][1].body);
+    expect(payload.附件数量).toBe('1');
+    expect(payload.attachments).toEqual([expect.objectContaining({ filename: '说明.txt', contentType: 'text/plain' })]);
+  });
+
+  it('拒绝伪装为图片的附件，保留反馈内容', async () => {
+    const user = userEvent.setup();
+    render(<FeedbackModal isOpen onClose={vi.fn()} onSent={vi.fn()} />);
+    await user.type(screen.getByRole('textbox', { name: /反馈内容/ }), '这段反馈需要保留');
+    await user.upload(screen.getByLabelText('上传反馈附件'), new File(['not a png'], '假图片.png', { type: 'image/png' }));
+    expect(await screen.findByText(/附件内容与文件格式不符/)).toBeInTheDocument();
+    expect(screen.queryByText('假图片.png')).not.toBeInTheDocument();
+    expect(screen.getByRole('textbox', { name: /反馈内容/ })).toHaveValue('这段反馈需要保留');
+  });
+
+  it('读取附件时暂缓发送，关闭后完成的旧读取不会混入新表单', async () => {
+    const readers: Array<{ result: string; onload: (() => void) | null }> = [];
+    vi.stubGlobal('FileReader', class {
+      result = '';
+      onload: (() => void) | null = null;
+      onerror: (() => void) | null = null;
+      readAsDataURL() { readers.push(this); }
+    });
+    const user = userEvent.setup();
+    const props = { onClose: vi.fn(), onSent: vi.fn() };
+    const { rerender } = render(<FeedbackModal {...props} isOpen />);
+    await user.upload(screen.getByLabelText('上传反馈附件'), new File(['text'], '旧附件.txt', { type: 'text/plain' }));
+    expect(screen.getByRole('button', { name: '发送给作者' })).toBeDisabled();
+    rerender(<FeedbackModal {...props} isOpen={false} />);
+    await waitFor(() => expect(screen.queryByRole('main', { name: '支持与反馈' })).not.toBeInTheDocument());
+    rerender(<FeedbackModal {...props} isOpen />);
+    await act(async () => {
+      readers[0].result = 'data:text/plain;base64,dGV4dA==';
+      readers[0].onload?.();
+    });
+    expect(screen.queryByText('旧附件.txt')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '发送给作者' })).toBeEnabled();
+  });
+
+  it('关闭再打开时恢复文字草稿，并可用键盘访问折叠说明', async () => {
+    const user = userEvent.setup();
+    const props = { onClose: vi.fn(), onSent: vi.fn() };
+    const { rerender } = render(<FeedbackModal {...props} isOpen />);
+    await user.type(screen.getByRole('textbox', { name: /反馈内容/ }), '保留原有风格，只收纳次要入口');
+    rerender(<FeedbackModal {...props} isOpen={false} />);
+    await waitFor(() => expect(screen.queryByRole('main', { name: '支持与反馈' })).not.toBeInTheDocument());
+    rerender(<FeedbackModal {...props} isOpen />);
+    expect(screen.getByRole('textbox', { name: /反馈内容/ })).toHaveValue('保留原有风格，只收纳次要入口');
+    const details = screen.getByRole('button', { name: '发送说明与联系作者' });
+    details.focus();
+    await user.keyboard('{Enter}');
+    await waitFor(() => expect(screen.getByRole('link', { name: '用邮箱联系作者' })).toBeVisible());
   });
 });

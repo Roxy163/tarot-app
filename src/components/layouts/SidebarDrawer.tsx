@@ -6,6 +6,7 @@ import { useModalFocus } from '../../hooks/useModalFocus';
 
 interface SidebarDrawerProps {
   isOpen: boolean;
+  covered?: boolean;
   onOpenChange: (open: boolean) => void;
   children: React.ReactNode;
   allowEdgeSwipe: boolean;
@@ -24,7 +25,7 @@ const interactive = 'button, a, input, textarea, select, [role="button"], [role=
 const editable = 'input, textarea, select, [role="slider"], [contenteditable="true"]';
 const drawerWidth = () => Math.min(320, window.innerWidth * 0.85);
 
-export function SidebarDrawer({ isOpen, onOpenChange, children, allowEdgeSwipe }: SidebarDrawerProps) {
+export function SidebarDrawer({ isOpen, covered = false, onOpenChange, children, allowEdgeSwipe }: SidebarDrawerProps) {
   const panelRef = useRef<HTMLElement>(null);
   const handleRef = useRef<HTMLButtonElement>(null);
   const suppressClickUntil = useRef(0);
@@ -178,6 +179,7 @@ export function SidebarDrawer({ isOpen, onOpenChange, children, allowEdgeSwipe }
           transition={transition}
           onClick={() => onOpenChange(false)}
           className="fixed inset-0 z-[105] bg-forest-ink/40 backdrop-blur-[2px] overscroll-contain"
+          style={{ visibility: covered ? 'hidden' : 'visible' }}
           aria-hidden="true"
         />
         <motion.aside
@@ -185,16 +187,17 @@ export function SidebarDrawer({ isOpen, onOpenChange, children, allowEdgeSwipe }
           ref={panelRef}
           role="dialog"
           aria-label="侧边菜单"
-          aria-modal={isOpen || undefined}
-          aria-hidden={!isOpen}
-          inert={!isOpen}
+          aria-modal={(isOpen && !covered) || undefined}
+          aria-hidden={!isOpen || covered}
+          inert={!isOpen || covered}
           tabIndex={-1}
           initial={{ x: -width }}
           animate={{ x: offset ?? 0 }}
           // Exit must settle even when the last pointer move used an immediate transition.
           exit={{ x: -width, transition: settleTransition }}
           transition={transition}
-          style={{ width, touchAction: 'pan-y pinch-zoom' }}
+          // 子窗口打开时保留菜单、滚动位置与焦点目标，避免关闭后重新寻找入口。
+          style={{ width, touchAction: 'pan-y pinch-zoom', visibility: covered ? 'hidden' : 'visible' }}
           className="fixed bottom-0 left-0 top-0 z-[110] flex touch-pan-y flex-col overflow-hidden rounded-r-[1.75rem] border-r border-forest-accent/10 bg-white/95 shadow-[12px_0_50px_-25px_rgba(62,58,54,0.3)] backdrop-blur-xl"
         >
           <div className="flex shrink-0 items-center justify-between gap-3 px-4 pb-1 pt-2" style={{ paddingTop: 'max(0.5rem, env(safe-area-inset-top))' }}>

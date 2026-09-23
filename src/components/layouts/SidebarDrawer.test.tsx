@@ -1,8 +1,10 @@
 import { useState } from 'react';
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { SidebarDrawer } from './SidebarDrawer';
+import { Modal } from '../Modal';
+import { closeTopModal } from '../../hooks/useModalFocus';
 
 function Harness({ allowEdgeSwipe = true, onAction = () => {} }: { allowEdgeSwipe?: boolean; onAction?: () => void }) {
   const [open, setOpen] = useState(false);
@@ -23,6 +25,42 @@ function drag(target: Element, from: [number, number], to: [number, number], can
 }
 
 describe('SidebarDrawer', () => {
+  it('returns from a child window to the same expanded menu and restores focus', async () => {
+    function SettingsHarness() {
+      const [open, setOpen] = useState(false);
+      const [expanded, setExpanded] = useState(false);
+      const [feedback, setFeedback] = useState(false);
+      return <>
+        <button onClick={() => setOpen(true)}>打开菜单</button>
+        <SidebarDrawer isOpen={open} covered={feedback} onOpenChange={setOpen} allowEdgeSwipe>
+          <button onClick={() => setExpanded(value => !value)} aria-expanded={expanded}>设置</button>
+          {expanded && <button onClick={() => setFeedback(true)}>支持与反馈</button>}
+        </SidebarDrawer>
+        <Modal isOpen={feedback} onClose={() => setFeedback(false)} title="支持与反馈"><input aria-label="反馈内容" /></Modal>
+      </>;
+    }
+    const user = userEvent.setup();
+    render(<SettingsHarness />);
+    await user.click(screen.getByRole('button', { name: '打开菜单' }));
+    await user.click(screen.getByRole('button', { name: '设置' }));
+    const drawer = screen.getByRole('dialog', { name: '侧边菜单' });
+    const feedbackOpener = screen.getByRole('button', { name: '支持与反馈' });
+    await user.click(feedbackOpener);
+    expect(drawer).toBeInTheDocument();
+    expect(drawer).not.toBeVisible();
+    expect(drawer).toHaveAttribute('inert');
+    expect(screen.getByRole('textbox', { name: '反馈内容' })).toBeInTheDocument();
+    act(() => { expect(closeTopModal()).toBe(true); });
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: '支持与反馈' })).not.toBeInTheDocument());
+    expect(screen.getByRole('dialog', { name: '侧边菜单' })).toBe(drawer);
+    expect(screen.getByRole('button', { name: '设置' })).toHaveAttribute('aria-expanded', 'true');
+    expect(feedbackOpener).toHaveFocus();
+    act(() => { expect(closeTopModal()).toBe(true); });
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(closeTopModal()).toBe(false);
+    expect(screen.getByRole('button', { name: '打开菜单' })).toHaveFocus();
+  });
+
   it('supports keyboard opening, focus containment, Escape and focus restoration', async () => {
     const user = userEvent.setup();
     render(<Harness />);
