@@ -5,6 +5,7 @@ import { OFFICIAL_SPREADS } from '../constants';
 import { AddReadingForm } from './AddReadingForm';
 import { readLocalDraft, resetDraftMemory } from '../hooks/useLocalDraft';
 import { SpreadDefinition, TarotReading } from '../types';
+import * as spreadReveal from '../lib/revealReadingSpread';
 
 const renderForm = (overrides: {
   spreads?: SpreadDefinition[];
@@ -76,6 +77,35 @@ describe('AddReadingForm spread designer flow', () => {
       value: 1024,
     });
     vi.restoreAllMocks();
+  });
+
+  it('reveals the complete cloth after selecting a spread but not while writing', async () => {
+    const reveal = vi.spyOn(spreadReveal, 'revealReadingSpread').mockImplementation(() => {});
+    const user = userEvent.setup();
+    renderForm();
+    await user.type(screen.getByPlaceholderText('占卜的问题是什么？'), '接下来需要关注什么');
+    expect(reveal).not.toHaveBeenCalled();
+    await user.selectOptions(screen.getByRole('combobox'), '选择牌阵');
+    await waitFor(() => expect(reveal).toHaveBeenCalledOnce());
+    expect(reveal.mock.calls[0][0]).toHaveAttribute('data-required-field', 'cards');
+    await user.type(screen.getByPlaceholderText('占卜的问题是什么？'), '？');
+    expect(reveal).toHaveBeenCalledOnce();
+  });
+
+  it('switches quick themes without submitting an otherwise valid reading', async () => {
+    const reveal = vi.spyOn(spreadReveal, 'revealReadingSpread').mockImplementation(() => {});
+    const user = userEvent.setup();
+    const { onSubmit } = renderForm();
+    await user.type(screen.getByPlaceholderText('占卜的问题是什么？'), '接下来需要关注什么');
+    await user.click(screen.getByRole('button', { name: '1 主牌' }));
+    await user.click(screen.getByRole('button', { name: '愚者 愚者' }));
+    await user.click(screen.getByRole('button', { name: '年运' }));
+    expect(screen.getByRole('combobox')).toHaveValue('年运十二宫牌阵');
+    await waitFor(() => expect(reveal).toHaveBeenCalledOnce());
+    await user.click(screen.getByRole('button', { name: '四季' }));
+    expect(screen.getByRole('combobox')).toHaveValue('四季牌阵');
+    await waitFor(() => expect(reveal).toHaveBeenCalledTimes(2));
+    expect(onSubmit).not.toHaveBeenCalled();
   });
 
   it('discards the edit draft when cancelling without changing the saved reading', async () => {

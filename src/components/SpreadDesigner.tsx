@@ -1,11 +1,10 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { createPortal } from 'react-dom';
-import { motion } from 'motion/react';
-import { Layers, X, Plus, RotateCcw, FolderOpen, Trash2, RefreshCw, Sparkles } from 'lucide-react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { Layers, Plus, RotateCcw, FolderOpen, Trash2, RefreshCw, Sparkles } from 'lucide-react';
 import { SpreadDefinition, ReadingSlotData } from '../types';
 import { OFFICIAL_SPREADS } from '../constants';
 import { FreeLayoutEditor } from './FreeLayoutEditor';
-import { useBodyScrollLock } from '../hooks/useBodyScrollLock';
+import { PageView } from './PageView';
+import { ConfirmDialog } from './ConfirmDialog';
 
 export type FreeLayoutSaveMode = 'original' | 'adaptive';
 
@@ -71,11 +70,17 @@ export const SpreadDesigner: React.FC<SpreadDesignerProps> = ({
   freeLayoutSaveMode = 'original',
   onUpdateFreeLayoutSaveMode
 }) => {
-  useBodyScrollLock(true);
 
   const [selectedCustomSpreadNames, setSelectedCustomSpreadNames] = useState<string[]>([]);
   const [isMobileWorkbench, setIsMobileWorkbench] = useState(isMobileViewport);
   const [showCustomManager, setShowCustomManager] = useState(() => !isMobileViewport());
+  const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
+  const workspaceSnapshot = JSON.stringify({ currentSpread, cardSlots, newSpreadName, freeLayoutSaveMode });
+  const initialWorkspace = useRef(workspaceSnapshot);
+  const requestBack = () => {
+    if (workspaceSnapshot !== initialWorkspace.current) setShowLeaveConfirm(true);
+    else onClose?.();
+  };
 
   useEffect(() => {
     const updateResponsiveState = () => {
@@ -151,25 +156,15 @@ export const SpreadDesigner: React.FC<SpreadDesignerProps> = ({
     onSetDesignActiveSlot(-1);
   };
 
-  const modal = (
-    <motion.div 
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, y: 20 }}
-      className="fixed inset-0 z-[520] flex items-start justify-center bg-forest-ink/26 p-2 backdrop-blur-[3px] overscroll-contain sm:p-4"
-      onClick={(e) => { if (e.target === e.currentTarget && onClose) onClose(); }}
-    >
-      <motion.div 
-        className="max-h-[calc(100dvh-1rem)] w-full max-w-4xl overflow-y-auto overscroll-contain rounded-[1.35rem] border border-forest-accent/8 bg-white/96 shadow-[0_24px_76px_-56px_rgba(62,58,54,0.7)] backdrop-blur-md sm:max-h-[calc(100dvh-2rem)] sm:rounded-[1.6rem]"
-        onClick={(e) => e.stopPropagation()}
-      >
+  return (
+    <PageView isOpen onBack={requestBack} title="牌阵工作台" width="wide">
         <div className="sticky top-0 z-10 flex flex-col gap-1.5 border-b border-forest-accent/7 bg-white/72 px-2.5 py-1.5 backdrop-blur-md sm:flex-row sm:items-center sm:justify-between sm:px-4 sm:py-2">
           <div className="flex min-w-0 items-center gap-2 sm:gap-3">
             <div className="rounded-lg bg-forest-accent/7 p-1.5 text-forest-accent ring-1 ring-forest-accent/7">
               <Layers size={16} />
             </div>
             <div className="min-w-0">
-              <h2 className="font-serif text-base font-semibold text-forest-ink sm:text-lg">牌阵工作台</h2>
+              <p className="font-serif text-base font-bold text-forest-ink sm:text-lg">布置你的牌阵</p>
               <p className="truncate text-[10px] font-medium uppercase tracking-wider text-forest-muted">
                 {editorStateLabel} · 自由画布
               </p>
@@ -195,14 +190,6 @@ export const SpreadDesigner: React.FC<SpreadDesignerProps> = ({
                 className="min-h-11 rounded-lg bg-forest-accent/90 px-3 py-1.5 text-xs font-semibold text-white transition-all hover:bg-forest-accent sm:min-h-10 sm:px-4"
               >
                 {saveButtonLabel}
-              </button>
-              <button
-                type="button"
-                onClick={onClose}
-                aria-label="关闭工作台"
-                className="min-h-11 min-w-11 rounded-lg bg-white/28 p-2 transition-colors hover:bg-white/56 sm:min-h-10 sm:min-w-10"
-              >
-                <X size={20} className="text-forest-muted" />
               </button>
             </div>
             {saveNotice && (
@@ -440,17 +427,11 @@ export const SpreadDesigner: React.FC<SpreadDesignerProps> = ({
             </div>
           )}
 
-          <div className="-mx-2 -mb-2 rounded-b-[1.35rem] border-t border-forest-accent/10 bg-white/95 px-3 py-2 text-xs text-forest-muted backdrop-blur sm:-mx-4 sm:-mb-4 sm:rounded-b-[2rem] sm:px-6 sm:py-3">
+          <div className="border-t border-forest-accent/10 px-3 py-2 text-xs text-forest-muted sm:py-3">
             <span>位置数量：{cardSlots.length}</span>
           </div>
         </div>
-      </motion.div>
-    </motion.div>
+      <ConfirmDialog isOpen={showLeaveConfirm} title="离开牌阵工作台" message="尚未保存的牌阵修改会撤回，原手记和摆牌会保留。" confirmText="放弃修改并返回" cancelText="继续编辑" onConfirm={() => onClose?.()} onClose={() => setShowLeaveConfirm(false)} />
+    </PageView>
   );
-
-  if (typeof document === 'undefined') {
-    return modal;
-  }
-
-  return createPortal(modal, document.body);
 };

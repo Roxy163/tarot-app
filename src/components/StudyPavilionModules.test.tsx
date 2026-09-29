@@ -84,7 +84,7 @@ describe('StudyPavilionModules', () => {
     expect(within(quizCard).queryByText(/你刚刚选了/)).not.toBeInTheDocument();
 
     await user.click(within(quizCard).getByRole('button', { name: /档案/ }));
-    const archiveDialog = screen.getByRole('dialog', { name: /小考档案/ });
+    const archiveDialog = screen.getByRole('main', { name: /小考档案/ });
     expect(within(archiveDialog).getByText('本次作答')).toBeInTheDocument();
     expect(within(archiveDialog).getByText(/选了 水/)).toBeInTheDocument();
     expect(within(archiveDialog).getByText('累计')).toBeInTheDocument();
@@ -95,10 +95,11 @@ describe('StudyPavilionModules', () => {
     expect(within(archiveDialog).getAllByText('待温习').length).toBeGreaterThan(0);
     expect(within(quizCard).getByText('这张牌对应哪个元素？')).toBeInTheDocument();
     expect(within(quizCard).getByText(/答案：风/)).toBeInTheDocument();
-    expect(within(quizCard).getByRole('button', { name: /换一题|下一题/ })).toBeInTheDocument();
+    expect(within(quizCard).queryByRole('button', { name: /换一题|下一题/ })).not.toBeInTheDocument();
 
-    await user.click(within(archiveDialog).getByRole('button', { name: /关闭小考档案/ }));
-    await waitForElementToBeRemoved(() => screen.queryByRole('dialog', { name: /小考档案/ }));
+    await user.click(within(archiveDialog).getByRole('button', { name: /返回（小考档案）/ }));
+    await waitForElementToBeRemoved(() => screen.queryByRole('main', { name: /小考档案/ }));
+    expect(within(quizCard).getByRole('button', { name: /换一题|下一题/ })).toBeInTheDocument();
   });
 
   it('shows persisted quiz history in the archive', async () => {
@@ -131,7 +132,7 @@ describe('StudyPavilionModules', () => {
     const quizCard = screen.getByTestId('card-quiz-card');
     await user.click(within(quizCard).getByRole('button', { name: /档案/ }));
 
-    const archiveDialog = screen.getByRole('dialog', { name: /小考档案/ });
+    const archiveDialog = screen.getByRole('main', { name: /小考档案/ });
     expect(within(archiveDialog).getByText('作答履历')).toBeInTheDocument();
     expect(within(archiveDialog).getByText(/选了 水/)).toBeInTheDocument();
     expect(within(archiveDialog).getByText('薄弱牌')).toBeInTheDocument();
@@ -146,10 +147,10 @@ describe('StudyPavilionModules', () => {
     expect(within(quizCard).queryByText('这段含义，更接近哪张牌？')).not.toBeInTheDocument();
 
     await user.click(within(quizCard).getByRole('button', { name: '档案' }));
-    const dialog = screen.getByRole('dialog', { name: /小考档案/ });
+    const dialog = screen.getByRole('main', { name: /小考档案/ });
     await user.click(within(dialog).getByRole('button', { name: /专项设置/ }));
     await user.click(within(dialog).getByRole('button', { name: '文字找牌' }));
-    await user.click(within(dialog).getByRole('button', { name: '关闭小考档案' }));
+    await user.click(within(dialog).getByRole('button', { name: '返回（小考档案）' }));
 
     expect(await within(quizCard).findByText('读含义，找牌面')).toBeInTheDocument();
     expect(within(quizCard).getByText('这段含义，更接近哪张牌？')).toBeInTheDocument();

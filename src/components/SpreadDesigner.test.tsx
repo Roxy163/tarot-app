@@ -1,10 +1,11 @@
 import { useState } from 'react';
-import { render, screen } from '@testing-library/react';
+import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { SpreadDesigner } from './SpreadDesigner';
 import { SpreadDefinition } from '../types';
 import { OFFICIAL_SPREADS } from '../constants';
+import { closeTopModal } from '../hooks/useModalFocus';
 
 const spreads: SpreadDefinition[] = [
   {
@@ -43,8 +44,8 @@ const renderDesigner = (overrides = {}) => {
     ...overrides,
   };
 
-  render(<SpreadDesigner {...props} />);
-  return props;
+  const view = render(<SpreadDesigner {...props} />);
+  return { ...props, update: (next: Partial<typeof props>) => view.rerender(<SpreadDesigner {...props} {...next} />) };
 };
 
 const setViewportWidth = (width: number) => {
@@ -55,6 +56,29 @@ const setViewportWidth = (width: number) => {
 };
 
 describe('SpreadDesigner', () => {
+  it('guards changed layouts on browser Back and keeps editing after cancelling the confirmation', async () => {
+    const user = userEvent.setup();
+    const props = renderDesigner();
+    expect(screen.getByRole('main', { name: '牌阵工作台' })).toBeInTheDocument();
+    props.update({ cardSlots: [{ ...props.cardSlots[0], x: 240 }], newSpreadName: '新的布局' });
+    act(() => { closeTopModal(); });
+    expect(screen.getByRole('dialog', { name: '离开牌阵工作台' })).toBeInTheDocument();
+    expect(props.onClose).not.toHaveBeenCalled();
+    await user.click(screen.getByRole('button', { name: '继续编辑' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(screen.getByLabelText('名称')).toHaveValue('新的布局');
+    await user.click(screen.getByRole('button', { name: '返回（牌阵工作台）' }));
+    await user.click(screen.getByRole('button', { name: '放弃修改并返回' }));
+    expect(props.onClose).toHaveBeenCalledOnce();
+  });
+
+  it('returns directly when the workbench has no changes', async () => {
+    const user = userEvent.setup();
+    const props = renderDesigner();
+    await user.click(screen.getByRole('button', { name: '返回（牌阵工作台）' }));
+    expect(props.onClose).toHaveBeenCalledOnce();
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
   afterEach(() => {
     setViewportWidth(1024);
     vi.restoreAllMocks();

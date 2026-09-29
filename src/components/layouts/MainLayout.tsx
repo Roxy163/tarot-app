@@ -83,7 +83,7 @@ export const MainLayout: React.FC<MainLayoutProps> = ({
       <PwaInstallPrompt onOpenGuide={onOpenInstallGuide} hidden={isSidebarOpen || activeTab === 'settings'} />
 
       {/* Mobile Navigation */}
-      {activeTab !== 'settings' && <nav className="fixed bottom-0 left-0 right-0 z-[100] border-t border-forest-accent/8 bg-white/88 px-3 py-0.5 shadow-[0_-8px_24px_-26px_rgba(62,58,54,0.38)] backdrop-blur-xl" style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}>
+      {activeTab !== 'settings' && <nav data-app-navigation className="fixed bottom-0 left-0 right-0 z-[100] border-t border-forest-accent/8 bg-white/88 px-3 py-0.5 shadow-[0_-8px_24px_-26px_rgba(62,58,54,0.38)] backdrop-blur-xl" style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}>
         <div className="mx-auto flex h-14 max-w-xl items-center justify-around sm:h-[3.35rem] sm:max-w-2xl">
           {NAV_ITEMS.map(item => (
             <TabButton

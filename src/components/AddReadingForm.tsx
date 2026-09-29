@@ -1,4 +1,5 @@
 import { scrollFocusedFieldIntoView } from '../lib/mobileFocus';
+import { revealReadingSpread } from '../lib/revealReadingSpread';
 import React, { useState, useEffect, FormEvent, useRef, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'motion/react';
@@ -318,6 +319,17 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
   const [submitIssue, setSubmitIssue] = useState<ReadingRequiredFieldIssue | null>(null);
   const [pendingDeleteSpreadNames, setPendingDeleteSpreadNames] = useState<string[]>([]);
   const readingDetailRef = useRef<HTMLDivElement | null>(null);
+  const spreadDisplayRef = useRef<HTMLDivElement | null>(null);
+  const [spreadRevealRequest, setSpreadRevealRequest] = useState(0);
+  useEffect(() => {
+    if (!spreadRevealRequest) return;
+    let frame = requestAnimationFrame(() => {
+      frame = requestAnimationFrame(() => {
+        if (spreadDisplayRef.current) revealReadingSpread(spreadDisplayRef.current);
+      });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [spreadRevealRequest]);
   const spreadManagerDraftBackupRef = useRef<SpreadManagerDraftBackup | null>(null);
   const initialFields = useRef(JSON.stringify(formData));
   const draftStarted = useRef(Boolean(restoredDraft || initialData?.id));
@@ -830,6 +842,7 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
   };
 
   const handleSpreadSelection = (spreadDef: SpreadDefinition) => {
+    setSpreadRevealRequest(value => value + 1);
     setFormData(prev => ({ ...prev, spread: spreadDef.name, layoutType: spreadDef.layout }));
     setGridCols(spreadDef.gridCols || 5);
     setGridRows(spreadDef.gridRows || 5);
@@ -842,6 +855,7 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
     const spreadDef = spreads.find(item => item.name === spreadName);
 
     if (spreadDef) {
+      setSpreadRevealRequest(value => value + 1);
       setFormData(prev => ({
         ...prev,
         spread: spreadDef.name,
@@ -1357,6 +1371,7 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
 
       <div
         data-required-field="cards"
+        ref={spreadDisplayRef}
         className={`rounded-[1.45rem] transition-all ${
           submitIssue?.field === 'cards'
             ? 'ring-2 ring-forest-pink/12'

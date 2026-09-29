@@ -1,13 +1,12 @@
 import type React from 'react';
-import { useState, useMemo, useEffect, useRef, useId } from 'react';
-import { useModalFocus } from '../hooks/useModalFocus';
+import { useState, useMemo, useEffect } from 'react';
+import { PageView } from './PageView';
 import { motion, AnimatePresence } from 'motion/react';
-import { X, Search, Save, RotateCcw, Star, Moon, Sun, Sparkles, ArrowLeft } from 'lucide-react';
+import { Search, Save, RotateCcw, Star, Moon, Sun, Sparkles, ArrowLeft } from 'lucide-react';
 import { TAROT_CARDS, getCardImageUrl } from '../constants';
 import { OFFICIAL_CARD_ANNOTATIONS } from '../constants/cardAnnotations';
 import { cardMatchesSearch } from '../lib/cardSearch';
 import { cardAnnotationService } from '../services/cardAnnotationService';
-import { useBodyScrollLock } from '../hooks/useBodyScrollLock';
 import { TarotCardImage } from './TarotCardImage';
 import { AutoResizeTextarea } from './ui/AutoResizeTextarea';
 import { readLocalDraft, useLocalDraft } from '../hooks/useLocalDraft';
@@ -45,7 +44,6 @@ export const CardAnnotationEditor: React.FC<CardAnnotationEditorProps> = ({
   initialCardId,
   onAnnotationsUpdated
 }) => {
-  useBodyScrollLock(isOpen);
 
   const [selectedCardId, setSelectedCardId] = useState<string | null>(initialCardId || null);
   const [filter, setFilter] = useState<FilterType>('all');
@@ -78,10 +76,6 @@ export const CardAnnotationEditor: React.FC<CardAnnotationEditorProps> = ({
     }
     onClose();
   };
-  const dialogRef = useRef<HTMLDivElement>(null);
-  const titleId = useId();
-  useModalFocus(isOpen, dialogRef, requestClose);
-
   useEffect(() => {
     if (!isOpen) return;
 
@@ -195,8 +189,6 @@ export const CardAnnotationEditor: React.FC<CardAnnotationEditorProps> = ({
     } catch { setSaveError('恢复失败，原注解已保留，请稍后重试。'); }
   };
 
-  if (!isOpen) return null;
-
   const getArcanaInfo = (cardId: string) => {
     if (cardId.startsWith('ar')) return { arcana: 'major', name: '大阿尔卡纳', icon: Sun };
     if (cardId.startsWith('wa')) return { arcana: 'minor', name: '权杖', suit: 'wands', icon: Sparkles };
@@ -207,38 +199,9 @@ export const CardAnnotationEditor: React.FC<CardAnnotationEditorProps> = ({
   };
 
   return (
-    <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-      className="fixed inset-0 z-[520] bg-black/50 backdrop-blur-sm overscroll-contain"
-      onClick={(e) => e.target === e.currentTarget && requestClose()}
-    >
-      <motion.div
-        initial={{ scale: 0.95, opacity: 0 }}
-        ref={dialogRef}
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby={titleId}
-        tabIndex={-1}
-        animate={{ scale: 1, opacity: 1 }}
-        exit={{ scale: 0.95, opacity: 0 }}
-        className="absolute inset-2 flex max-h-[calc(100vh-1rem)] flex-col overflow-hidden rounded-2xl bg-forest-bg shadow-2xl sm:inset-4 sm:max-h-[calc(100vh-2rem)] md:inset-8 md:max-h-[calc(100vh-4rem)]"
-      >
-        {/* Header */}
-        <div className="flex items-center justify-between border-b border-forest-accent/12 p-3 sm:p-4">
-          <h2 id={titleId} className="font-serif text-lg font-bold text-forest-ink sm:text-xl">编辑牌义</h2>
-          <button
-            onClick={requestClose}
-            className="min-h-11 min-w-11 p-2 hover:bg-forest-accent/10 rounded-lg transition-colors flex items-center justify-center"
-            aria-label="关闭编辑牌义"
-          >
-            <X size={20} />
-          </button>
-        </div>
-
+    <PageView isOpen={isOpen} onBack={requestClose} title="编辑牌义" width="wide" layout="workspace" backDisabled={isSaving}>
         {/* Content */}
-        <div className="flex-1 flex overflow-hidden">
+        <div className="min-h-0 flex-1 flex overflow-hidden">
           {/* Left Panel - Card List */}
           <div className={`${selectedCardId ? 'hidden md:flex' : 'flex'} w-full md:w-80 md:border-r border-forest-accent/20 flex-col`}>
             {/* Search and Filter */}
@@ -370,6 +333,7 @@ export const CardAnnotationEditor: React.FC<CardAnnotationEditorProps> = ({
           <div className={`${selectedCardId ? 'flex' : 'hidden md:flex'} flex-1 flex-col overflow-hidden`}>
             {selectedCardId ? (
               <>
+                <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
                 {/* Card Header */}
                 <div className="p-4 border-b border-forest-accent/20 bg-gradient-to-r from-forest-accent/5 to-forest-pink/5 shrink-0">
                   <button
@@ -425,7 +389,7 @@ export const CardAnnotationEditor: React.FC<CardAnnotationEditorProps> = ({
                 </div>
 
                 {/* Editor Form */}
-                <div className="flex-1 overflow-y-auto overscroll-contain p-4 space-y-4 pb-28 md:pb-6">
+                <div className="p-4 space-y-4 md:pb-6">
                   {/* Basic Info Grid */}
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
@@ -529,6 +493,7 @@ export const CardAnnotationEditor: React.FC<CardAnnotationEditorProps> = ({
                   </div>
                 </div>
 
+                </div>
                   {/* Action Buttons */}
                   <div className="shrink-0 border-t border-forest-accent/15 bg-forest-bg/95 p-4 pb-[calc(1rem+env(safe-area-inset-bottom,0px))] shadow-[0_-12px_28px_-24px_rgba(44,54,44,0.45)]">
                   {/* Success Message */}
@@ -549,7 +514,7 @@ export const CardAnnotationEditor: React.FC<CardAnnotationEditorProps> = ({
                     )}
                   </AnimatePresence>
                   
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div className="grid grid-cols-2 items-center gap-2 sm:flex sm:justify-between sm:gap-3">
                     <button
                       onClick={handleReset}
                       className="min-h-11 flex items-center justify-center gap-2 px-4 py-2 bg-white text-forest-muted rounded-lg border border-forest-accent/20 hover:bg-forest-accent/5 transition-colors"
@@ -565,7 +530,7 @@ export const CardAnnotationEditor: React.FC<CardAnnotationEditorProps> = ({
                       <button
                         onClick={handleSave}
                         disabled={isSaving}
-                        className={`min-h-11 flex items-center justify-center gap-2 px-6 py-2 rounded-lg font-bold text-sm transition-all ${
+                        className={`min-h-11 flex items-center justify-center gap-2 px-4 py-2 rounded-lg font-bold text-sm transition-all ${
                           isSaving
                             ? 'bg-forest-accent/50 text-white cursor-wait'
                             : 'bg-forest-accent text-white hover:bg-forest-accent/90'
@@ -589,7 +554,6 @@ export const CardAnnotationEditor: React.FC<CardAnnotationEditorProps> = ({
             )}
           </div>
         </div>
-      </motion.div>
-    </motion.div>
+    </PageView>
   );
 };

@@ -154,7 +154,7 @@ describe('CardMetadataManager', () => {
 
     await user.click(screen.getByRole('button', { name: '查看愚者研习资料' }));
 
-    expect(screen.getByRole('dialog', { name: '愚者研习资料' })).toBeInTheDocument();
+    expect(screen.getByRole('main', { name: '愚者研习资料' })).toBeInTheDocument();
     expect(screen.getByText('日运例证')).toBeInTheDocument();
     expect(screen.getAllByText(/想要跳出原来的规则/).length).toBeGreaterThan(0);
     expect(screen.getByText('日运历史')).toBeInTheDocument();

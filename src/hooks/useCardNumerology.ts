@@ -95,7 +95,7 @@ export function useCardNumerology(cardName: string, isLoggedIn: boolean, userId?
         meaning: customMeaning,
         keywords: customKeywords
       };
-      writeJsonWithBackup('tarot_user_numerology', parsed);
+      if (!writeJsonWithBackup('tarot_user_numerology', parsed).ok) return false;
     }
     setNumerology(value);
     setMeaning(customMeaning);
@@ -116,7 +116,7 @@ export function useCardNumerology(cardName: string, isLoggedIn: boolean, userId?
       const parsed = readJsonRecordWithBackup<LocalNumerologyMap>('tarot_user_numerology');
       if (parsed) {
         delete parsed[cardName];
-        writeJsonWithBackup('tarot_user_numerology', parsed);
+        if (!writeJsonWithBackup('tarot_user_numerology', parsed).ok) return false;
       }
     }
     setNumerology(defaultVal);

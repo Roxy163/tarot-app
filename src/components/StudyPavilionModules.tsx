@@ -1,5 +1,4 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { createPortal } from 'react-dom';
 import { AnimatePresence, motion } from 'motion/react';
 import {
   Archive,
@@ -16,8 +15,7 @@ import type { QuizMemoryAttempt, QuizMemoryEntry, TarotCardMetadata, TarotReadin
 import { cardAnnotationService } from '../services/cardAnnotationService';
 import { useAnnotationRevision } from '../hooks/useAnnotationSync';
 import { toLocalReadingDate } from '../lib/readingDate';
-import { useModalFocus } from '../hooks/useModalFocus';
-import { useBodyScrollLock } from '../hooks/useBodyScrollLock';
+import { PageView } from './PageView';
 import {
   buildQuizTrainingCards,
   createQuizQuestion,
@@ -152,9 +150,6 @@ export const StudyPavilionModules: React.FC<StudyPavilionModulesProps> = ({
   const [recentQuizAttempts, setRecentQuizAttempts] = useState<RecentQuizAttempt[]>([]);
   const lastCorrectOptionIndexRef = useRef<number | null>(null);
   const correctOptionSlotCountsRef = useRef([0, 0, 0, 0]);
-  const archiveDialogRef = useRef<HTMLDivElement>(null);
-  useBodyScrollLock(showArchive);
-  useModalFocus(showArchive, archiveDialogRef, () => setShowArchive(false));
 
   useEffect(() => {
     if (!showArchive) setShowArchiveSettings(false);
@@ -538,7 +533,6 @@ export const StudyPavilionModules: React.FC<StudyPavilionModulesProps> = ({
             });
             setShowArchive(true);
           }}
-          aria-haspopup="dialog"
           className="flex min-h-11 shrink-0 items-center gap-1.5 rounded-full border border-forest-accent/9 bg-white/32 px-2.5 text-xs font-medium text-forest-accent transition-all hover:border-forest-accent/22 hover:bg-white/58 active:scale-[0.97]"
         >
           <Archive size={14} />
@@ -546,47 +540,8 @@ export const StudyPavilionModules: React.FC<StudyPavilionModulesProps> = ({
         </button>
       </div>
 
-      {typeof document !== 'undefined' && createPortal(
-        <AnimatePresence initial={false}>
-        {showArchive && (
-          <motion.div
-            role="dialog"
-            ref={archiveDialogRef}
-            tabIndex={-1}
-            aria-modal="true"
-            aria-labelledby="quiz-archive-title"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            onClick={() => setShowArchive(false)}
-            className="fixed inset-0 z-[80] bg-forest-bg/88 px-3 py-3 backdrop-blur-sm sm:px-6 sm:py-6"
-          >
-            <motion.div
-              initial={{ opacity: 0, y: 16, scale: 0.985 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, y: 10, scale: 0.985 }}
-              transition={{ duration: 0.18, ease: 'easeOut' }}
-              onClick={event => event.stopPropagation()}
-              className="mx-auto flex h-full max-h-[calc(100dvh-1.5rem)] w-full max-w-2xl flex-col overflow-hidden rounded-[1.55rem] border border-forest-accent/10 bg-[#FFFCF7]/95 shadow-[0_24px_70px_-42px_rgba(62,58,54,0.52)]"
-            >
-              <div className="flex shrink-0 items-center justify-between gap-3 border-b border-forest-accent/8 px-4 py-3">
-                <div className="min-w-0">
-                  <p id="quiz-archive-title" className="font-serif text-base font-bold leading-tight text-forest-ink">
-                    小考档案
-                  </p>
-                  <p className="mt-0.5 truncate text-[11px] text-forest-muted">记录作答、待温习和专项设置。</p>
-                </div>
-                <button
-                  type="button"
-                  aria-label="关闭小考档案"
-                  onClick={() => setShowArchive(false)}
-                  className="flex min-h-11 w-11 shrink-0 items-center justify-center rounded-full border border-forest-accent/8 bg-white/42 text-xl leading-none text-forest-muted transition-all hover:bg-white/70 hover:text-forest-ink active:scale-[0.97]"
-                >
-                  ×
-                </button>
-              </div>
-
-              <div className="min-h-0 flex-1 overflow-y-auto p-3 sm:p-4">
+      <PageView isOpen={showArchive} onBack={() => setShowArchive(false)} title="小考档案">
+        <div>
 
             <div className="rounded-2xl border border-forest-accent/7 bg-white/30 px-2 py-1.5">
               <div className="grid grid-cols-4 divide-x divide-forest-accent/8 text-center">
@@ -866,12 +821,7 @@ export const StudyPavilionModules: React.FC<StudyPavilionModulesProps> = ({
               </AnimatePresence>
             </div>
               </div>
-            </motion.div>
-          </motion.div>
-        )}
-        </AnimatePresence>,
-        document.body,
-      )}
+      </PageView>
 
       <div className="relative mt-2 rounded-[1.35rem] border border-forest-accent/8 bg-white/20 p-1.5 sm:p-2.5">
         {activeDeck.length === 0 ? (

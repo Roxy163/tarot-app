@@ -1,5 +1,4 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   Archive,
@@ -12,7 +11,6 @@ import {
   Shuffle,
   Sparkles,
   Sun,
-  X,
 } from 'lucide-react';
 import { DailyFortune, DailyFortuneReflectionParts } from '../types';
 import { TAROT_CARDS, getCardImageUrl } from '../constants';
@@ -20,7 +18,6 @@ import { CardPicker } from './CardPicker';
 import { DailyFortuneArchiveModal } from './DailyFortuneArchiveModal';
 import { TarotCardImage } from './TarotCardImage';
 import { AutoResizeTextarea } from './ui/AutoResizeTextarea';
-import { useBodyScrollLock } from '../hooks/useBodyScrollLock';
 import {
   getDailyReflectionParts,
   hasDailyReflectionContent,
@@ -28,7 +25,7 @@ import {
 } from '../lib/dailyFortuneReflection';
 import { markPwaInstallPromptReady } from '../hooks/usePwaInstallPrompt';
 import { readLocalDraft, useLocalDraft } from '../hooks/useLocalDraft';
-import { useModalFocus } from '../hooks/useModalFocus';
+import { PageView } from './PageView';
 import { scrollFocusedFieldIntoView } from '../lib/mobileFocus';
 
 interface FortuneChoice {
@@ -187,11 +184,9 @@ export const DailyFortuneCard: React.FC<DailyFortuneCardProps> = ({
   const [isRedrawing, setIsRedrawing] = useState(false);
   const [saveError, setSaveError] = useState('');
   const [saveNotice, setSaveNotice] = useState('');
-  const archiveDialogRef = useRef<HTMLDivElement>(null);
   const shuffleIntervalRef = useRef<number | null>(null);
   const shuffleEndTimerRef = useRef<number | null>(null);
 
-  useBodyScrollLock(showArchiveDialog);
 
   const archivedFortunes = useMemo(
     () => fortunes
@@ -344,7 +339,14 @@ export const DailyFortuneCard: React.FC<DailyFortuneCardProps> = ({
     setArchiveDailyReview('');
   };
 
-  useModalFocus(showArchiveDialog, archiveDialogRef, closeArchiveDialog);
+  const requestCloseArchive = () => {
+    if (!draft.durable) {
+      setSaveError('暂存失败，请先复制文字或释放存储空间后保存。');
+      return;
+    }
+    closeArchiveDialog();
+  };
+
 
   const handleSaveArchive = () => {
     if (!editingFortune) return;
@@ -949,26 +951,10 @@ export const DailyFortuneCard: React.FC<DailyFortuneCardProps> = ({
         )}
       </AnimatePresence>
 
-      {typeof document !== 'undefined' && createPortal(
-      <AnimatePresence>
-        {showArchiveDialog && editingFortune && (
-          <div className="fixed inset-0 z-[950] flex items-center justify-center bg-[rgba(62,58,54,0.42)] p-3 backdrop-blur-[3px] overscroll-contain">
-            <motion.div
-              role="dialog"
-              ref={archiveDialogRef}
-              tabIndex={-1}
-              aria-modal="true"
-              aria-label="记录日运"
-              initial={{ opacity: 0, scale: 0.96, y: 16 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.96, y: 16 }}
-              className="max-h-[calc(100dvh-1.5rem)] w-full max-w-md overflow-y-auto rounded-[1.25rem] border border-forest-accent/8 bg-[#fffaf4] p-3.5 shadow-[0_20px_60px_-45px_rgba(62,58,54,0.62)] sm:rounded-[1.45rem] sm:p-5"
-            >
+      <PageView isOpen={showArchiveDialog && Boolean(editingFortune)} onBack={requestCloseArchive} title={editingFortune?.archivedAt ? '补写日运' : '记录日运'}>
+        {editingFortune && <>
               <div className="flex items-start justify-between gap-3">
                 <div>
-                  <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-forest-accent">
-                    {editingFortune.archivedAt ? '补写日运' : '记录日运'}
-                  </p>
                   <h3 className="mt-1 font-serif text-lg font-bold text-forest-ink">
                     {editingFortune.cardName} · {editingFortune.isReversed ? '逆位' : '正位'}
                   </h3>
@@ -976,14 +962,6 @@ export const DailyFortuneCard: React.FC<DailyFortuneCardProps> = ({
                     刚抽完先写第一直觉；晚上回来，再写今日回看。
                   </p>
                 </div>
-                <button
-                  type="button"
-                  onClick={closeArchiveDialog}
-                  className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-white/72 text-forest-muted transition-colors hover:bg-white hover:text-forest-accent"
-                  aria-label="关闭记录日运"
-                >
-                  <X size={18} />
-                </button>
               </div>
 
               <div className="mt-3 space-y-2.5 sm:mt-4 sm:space-y-3">
@@ -1031,7 +1009,7 @@ export const DailyFortuneCard: React.FC<DailyFortuneCardProps> = ({
               <div className="mt-4 flex gap-2">
                 <button
                   type="button"
-                  onClick={closeArchiveDialog}
+                  onClick={requestCloseArchive}
                   className="min-h-11 flex-1 rounded-xl px-4 text-xs font-semibold text-forest-muted hover:bg-forest-accent/5 hover:text-forest-ink"
                 >
                   稍后再写
@@ -1045,12 +1023,8 @@ export const DailyFortuneCard: React.FC<DailyFortuneCardProps> = ({
                   保存记录
                 </button>
               </div>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>,
-        document.body,
-      )}
+        </>}
+      </PageView>
 
       <DailyFortuneArchiveModal
         fortunes={archivedFortunes}

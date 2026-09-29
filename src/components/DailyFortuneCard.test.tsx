@@ -42,6 +42,20 @@ const renderCard = (props: Partial<React.ComponentProps<typeof DailyFortuneCard>
 };
 
 describe('DailyFortuneCard', () => {
+  it('keeps the writing page open on Back when the draft cannot be persisted', async () => {
+    const user = userEvent.setup();
+    renderCard({ fortune: baseFortune, fortunes: [baseFortune] });
+    await user.click(screen.getByRole('button', { name: '写下第一直觉' }));
+    const storage = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new Error('full'); });
+    try {
+      await user.type(screen.getByLabelText('第一直觉'), '这段文字还没存好');
+      await user.click(screen.getByRole('button', { name: '返回（记录日运）' }));
+      await user.keyboard('{Escape}');
+      expect(screen.getByRole('main', { name: '记录日运' })).toBeInTheDocument();
+      expect(screen.getByLabelText('第一直觉')).toHaveValue('这段文字还没存好');
+      expect(screen.getByRole('alert')).toHaveTextContent('暂存失败');
+    } finally { storage.mockRestore(); }
+  });
   beforeEach(() => {
     localStorage.clear();
     sessionStorage.clear();
@@ -135,16 +149,16 @@ describe('DailyFortuneCard', () => {
     await user.click(screen.getByRole('button', { name: '保存记录' }));
     expect(props.onArchive).toHaveBeenCalledWith(baseFortune.id, { initialImpression: '今天先慢下来。', dailyReview: '' });
     expect(readLocalDraft('tarot_daily_reflection_draft_user-a_fortune-1')).toBeNull();
-    expect(screen.getByRole('status')).toHaveTextContent('已保存到本机');
+    await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('已保存到本机'));
   });
 
-  it('keeps text and the dialog open when saving fails', async () => {
+  it('keeps text and the page open when saving fails', async () => {
     const user = userEvent.setup();
     renderCard({ fortune: baseFortune, fortunes: [baseFortune], onArchive: () => { throw new Error('本机保存失败'); } });
     await user.click(screen.getByRole('button', { name: '写下第一直觉' }));
     await user.type(screen.getByLabelText('第一直觉'), '不要丢掉这段话');
     await user.click(screen.getByRole('button', { name: '保存记录' }));
-    expect(screen.getByRole('dialog', { name: '记录日运' })).toBeInTheDocument();
+    expect(screen.getByRole('main', { name: '记录日运' })).toBeInTheDocument();
     expect(screen.getByRole('alert')).toHaveTextContent('本机保存失败');
     expect(screen.getByLabelText('第一直觉')).toHaveValue('不要丢掉这段话');
     expect(readLocalDraft('tarot_daily_reflection_draft_guest_fortune-1')).toMatchObject({ initialImpression: '不要丢掉这段话' });
@@ -158,23 +172,23 @@ describe('DailyFortuneCard', () => {
     await user.click(screen.getByRole('button', { name: '补写今日回看' }));
     await user.type(screen.getByLabelText('今日回看'), '晚上回来继续写');
     await user.click(screen.getByRole('button', { name: '稍后再写' }));
-    await waitFor(() => expect(screen.queryByRole('dialog', { name: '记录日运' })).not.toBeInTheDocument());
+    await waitFor(() => expect(screen.queryByRole('main', { name: '补写日运' })).not.toBeInTheDocument());
     await user.click(screen.getByRole('button', { name: '打开日运复盘' }));
     const editButton = screen.getByRole('button', { name: '补写日运手札' });
     await user.click(editButton);
     expect(screen.getByLabelText('第一直觉')).toHaveValue('原来的直觉');
     expect(screen.getByLabelText('今日回看')).toHaveValue('晚上回来继续写');
     await user.type(screen.getByLabelText('今日回看'), '，已经想明白');
-    const editor = screen.getByRole('dialog', { name: '补写日运' });
+    const editor = screen.getByRole('main', { name: '补写日运' });
     within(editor).getByRole('button', { name: '保存记录' }).focus();
     await user.tab();
-    expect(within(editor).getByRole('button', { name: '关闭补写日运' })).toHaveFocus();
+    expect(within(editor).getByRole('button', { name: '返回（补写日运）' })).toHaveFocus();
     await user.keyboard('{Escape}');
-    await waitFor(() => expect(screen.queryByRole('dialog', { name: '补写日运' })).not.toBeInTheDocument());
-    expect(screen.getByRole('dialog', { name: '日运复盘' })).toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByRole('main', { name: '补写日运' })).not.toBeInTheDocument());
+    expect(screen.getByRole('main', { name: '日运复盘' })).toBeInTheDocument();
     await waitFor(() => expect(editButton).toHaveFocus());
     await user.keyboard('{Escape}');
-    await waitFor(() => expect(screen.queryByRole('dialog', { name: '日运复盘' })).not.toBeInTheDocument());
+    await waitFor(() => expect(screen.queryByRole('main', { name: '日运复盘' })).not.toBeInTheDocument());
     await user.click(screen.getByRole('button', { name: '补写今日回看' }));
     expect(screen.getByLabelText('今日回看')).toHaveValue('晚上回来继续写，已经想明白');
     expect(readLocalDraft('tarot_daily_reflection_draft_guest_fortune-1')).toBeNull();
@@ -206,8 +220,8 @@ describe('DailyFortuneCard', () => {
     await user.click(screen.getByRole('button', { name: '保存记录' }));
     expect(onUpdateReflection).toHaveBeenLastCalledWith(baseFortune.id, { initialImpression: '', dailyReview: '补写内容不能丢' });
     expect(readLocalDraft('tarot_daily_reflection_draft_user-a_fortune-1')).toBeNull();
-    await waitFor(() => expect(screen.queryByRole('dialog', { name: '补写日运' })).not.toBeInTheDocument());
-    expect(screen.getByRole('dialog', { name: '日运复盘' })).toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByRole('main', { name: '补写日运' })).not.toBeInTheDocument());
+    expect(screen.getByRole('main', { name: '日运复盘' })).toBeInTheDocument();
   });
 
   it('shows archived status and opens the daily archive zone', async () => {
@@ -225,7 +239,7 @@ describe('DailyFortuneCard', () => {
     expect(screen.getByRole('button', { name: '继续补写' })).toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: '打开日运复盘' }));
-    expect(screen.getByRole('dialog', { name: '日运复盘' })).toBeInTheDocument();
+    expect(screen.getByRole('main', { name: '日运复盘' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /时间线/ })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /按牌/ })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /本月/ })).toBeInTheDocument();
@@ -344,7 +358,7 @@ describe('DailyFortuneCard', () => {
     renderCard({ fortune: reviewedFortune, fortunes: [reviewedFortune, pendingFortune] });
 
     await user.click(screen.getByRole('button', { name: '打开日运复盘' }));
-    const archiveDialog = screen.getByRole('dialog', { name: '日运复盘' });
+    const archiveDialog = screen.getByRole('main', { name: '日运复盘' });
 
     expect(within(archiveDialog).getByRole('button', { name: /导出/ })).toBeEnabled();
     expect(within(archiveDialog).queryByRole('button', { name: '导出PDF' })).not.toBeInTheDocument();

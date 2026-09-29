@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { Sparkles } from 'lucide-react';
 import { ReadingSlotData, SpreadDefinition } from '../types';
 import { ReadingSlot } from './ReadingSlot';
+import { getOfficialTabletopLayout } from '../lib/tabletopLayout';
 import {
   FREE_LAYOUT_CANVAS_HEIGHT,
   FREE_LAYOUT_CANVAS_WIDTH,
@@ -17,61 +18,35 @@ const getGridNumber = (position: string, type: 'col' | 'row') => {
   return match ? Number(match[1]) : 1;
 };
 
-const yearlyMobilePositions = [
-  { x: 7, y: 50 },
-  { x: 19, y: 70 },
-  { x: 34, y: 82 },
-  { x: 50, y: 86 },
-  { x: 66, y: 81 },
-  { x: 81, y: 70 },
-  { x: 93, y: 50 },
-  { x: 81, y: 30 },
-  { x: 66, y: 19 },
-  { x: 50, y: 14 },
-  { x: 34, y: 19 },
-  { x: 19, y: 30 },
-  { x: 50, y: 49 },
-];
-
-const celticDisplayPositions = [
-  { x: 38, y: 50 },
-  { x: 38, y: 50 },
-  { x: 38, y: 78 },
-  { x: 20, y: 50 },
-  { x: 38, y: 22 },
-  { x: 56, y: 50 },
-  { x: 78, y: 88 },
-  { x: 78, y: 63 },
-  { x: 78, y: 38 },
-  { x: 78, y: 13 },
-];
-
-const TABLETOP_BREAKPOINT = 640;
-const YEARLY_TABLETOP_SCALE = { mobile: 0.68, desktop: 1 };
-const CELTIC_TABLETOP_SCALE = { mobile: 0.66, desktop: 0.98 };
-
 const useElementWidth = <T extends HTMLElement>() => {
   const ref = useRef<T | null>(null);
   const [width, setWidth] = useState(0);
+  const [viewportHeight, setViewportHeight] = useState(() => window.innerHeight);
 
   useEffect(() => {
     const element = ref.current;
     if (!element) return;
 
-    const updateWidth = () => setWidth(element.getBoundingClientRect().width);
+    const updateWidth = () => {
+      setWidth(element.getBoundingClientRect().width);
+      setViewportHeight(window.innerHeight);
+    };
     updateWidth();
+    window.addEventListener('resize', updateWidth);
 
     if (typeof ResizeObserver === 'undefined') {
-      window.addEventListener('resize', updateWidth);
       return () => window.removeEventListener('resize', updateWidth);
     }
 
     const observer = new ResizeObserver(updateWidth);
     observer.observe(element);
-    return () => observer.disconnect();
+    return () => {
+      observer.disconnect();
+      window.removeEventListener('resize', updateWidth);
+    };
   }, []);
 
-  return { ref, width };
+  return { ref, width, viewportHeight };
 };
 
 interface ReadingSpreadDisplayProps {
@@ -116,15 +91,16 @@ export const ReadingSpreadDisplay: React.FC<ReadingSpreadDisplayProps> = ({
   onConfirmSync,
   onCancelSync
 }) => {
-  const { ref: spreadViewportRef, width: spreadViewportWidth } = useElementWidth<HTMLDivElement>();
+  const { ref: spreadViewportRef, width: spreadViewportWidth, viewportHeight } = useElementWidth<HTMLDivElement>();
   const complexGridScrollRef = useRef<HTMLDivElement | null>(null);
   const isFreeLayout = formData.layoutType === 'free';
   const freeLayoutFrame = isFreeLayout ? getCompactFreeLayoutDisplayFrame(cardSlots) : null;
   const isCustomGridLayout = formData.layoutType === 'custom';
   const customGridGapClass = cardSlots.length > 3 ? 'gap-2 sm:gap-4' : 'gap-3 sm:gap-4';
-  const isCelticCross = formData.layoutType === 'celtic' || formData.spread === '凯尔特十字牌阵';
+  const tabletop = getOfficialTabletopLayout(formData.spread, formData.layoutType, cardSlots, spreadViewportWidth ? spreadViewportWidth + 16 : 0, viewportHeight);
+  const isCelticCross = Boolean(tabletop && formData.layoutType === 'celtic');
   const isYearlyRadialLayout = formData.layoutType === 'yearly';
-  const isComplexGridLayout = isCustomGridLayout || isCelticCross;
+  const isComplexGridLayout = isCustomGridLayout || formData.layoutType === 'celtic' || isYearlyRadialLayout;
   const templateGapOverride = !isCelticCross && formData.layoutType !== 'yearly' && cardSlots.length > 3
     ? 'gap-2 sm:gap-4'
     : '';
@@ -304,26 +280,25 @@ export const ReadingSpreadDisplay: React.FC<ReadingSpreadDisplayProps> = ({
             </div>
           </div>
         </div>
-      ) : isYearlyRadialLayout ? (
-        <div className="w-full overflow-visible px-0 pb-3 sm:pb-4" data-testid="yearly-radial-spread">
+      ) : tabletop && !isCelticCross ? (
+        <div className="-mx-2 w-[calc(100%+1rem)] overflow-x-auto px-0 pb-1" data-testid={isYearlyRadialLayout ? 'yearly-radial-spread' : 'official-tabletop-spread'}>
           <div
-            className="relative mx-auto aspect-[4/3] w-full max-w-[390px] overflow-visible sm:max-w-[800px]"
-            data-testid="yearly-spread-canvas"
+            className="relative mx-auto overflow-visible"
+            style={{ width: tabletop.width, height: tabletop.height }}
+            data-spread-canvas
+            data-testid={isYearlyRadialLayout ? 'yearly-spread-canvas' : 'official-spread-canvas'}
           >
             {cardSlots.map((slot, index) => {
-              const point = yearlyMobilePositions[index] || yearlyMobilePositions[yearlyMobilePositions.length - 1];
-              const slotScale = spreadViewportWidth > 0 && spreadViewportWidth < TABLETOP_BREAKPOINT
-                ? YEARLY_TABLETOP_SCALE.mobile
-                : YEARLY_TABLETOP_SCALE.desktop;
+              const point = tabletop.points[index] || tabletop.points[tabletop.points.length - 1];
 
               return (
                 <div
                   key={`${slot.label || index}-${index}`}
                   className="absolute z-10"
                   style={{
-                    left: `${point.x}%`,
-                    top: `${point.y}%`,
-                    transform: `translate(-50%, -50%) scale(${slotScale})`,
+                    left: point.x,
+                    top: point.y,
+                    transform: 'translate(-50%, -50%)',
                     transformOrigin: 'center center',
                   }}
                 >
@@ -334,6 +309,7 @@ export const ReadingSpreadDisplay: React.FC<ReadingSpreadDisplayProps> = ({
                     isCelticCenter={false}
                     stackIndex={0}
                     isSmall
+                    cardWidth={tabletop.cardWidth}
                     showSlotNumbers={showSlotNumbers}
                     onSlotClick={onSlotClick}
                     onLongPressStart={handleLongPressStart}
@@ -347,19 +323,18 @@ export const ReadingSpreadDisplay: React.FC<ReadingSpreadDisplayProps> = ({
             })}
           </div>
         </div>
-      ) : isCelticCross ? (
-        <div className="w-full overflow-visible px-0 pb-3 sm:pb-4" data-testid="celtic-cross-spread">
+      ) : isCelticCross && tabletop ? (
+        <div className="-mx-2 w-[calc(100%+1rem)] overflow-x-auto px-0 pb-1" data-testid="celtic-cross-spread">
           <div
-            className="relative mx-auto aspect-[6/5] w-full max-w-[390px] overflow-visible sm:max-w-[680px]"
+            className="relative mx-auto overflow-visible"
+            style={{ width: tabletop.width, height: tabletop.height }}
             data-testid="celtic-spread-canvas"
+            data-spread-canvas
           >
             {cardSlots.map((slot, index) => {
               if (index === 1) return null;
 
-              const point = celticDisplayPositions[index] || celticDisplayPositions[0];
-              const slotScale = spreadViewportWidth > 0 && spreadViewportWidth < TABLETOP_BREAKPOINT
-                ? CELTIC_TABLETOP_SCALE.mobile
-                : CELTIC_TABLETOP_SCALE.desktop;
+              const point = tabletop.points[index] || tabletop.points[0];
               const slotsAtPoint = index === 0 && cardSlots[1]
                 ? [
                     { ...slot, idx: 0 },
@@ -379,9 +354,9 @@ export const ReadingSpreadDisplay: React.FC<ReadingSpreadDisplayProps> = ({
                   className="absolute z-10"
                   data-testid={celticSlotTestId}
                   style={{
-                    left: `${point.x}%`,
-                    top: `${point.y}%`,
-                    transform: `translate(-50%, -50%) scale(${slotScale})`,
+                    left: point.x,
+                    top: point.y,
+                    transform: 'translate(-50%, -50%)',
                     transformOrigin: 'center center',
                     zIndex: isCenterStack ? 40 : index === 2 ? 15 : 20,
                   }}
@@ -395,6 +370,7 @@ export const ReadingSpreadDisplay: React.FC<ReadingSpreadDisplayProps> = ({
                       isCelticCenter={isCenterStack}
                       stackIndex={stackIndex}
                       isSmall
+                      cardWidth={tabletop.cardWidth}
                       showSlotNumbers={showSlotNumbers}
                       onSlotClick={onSlotClick}
                       onLongPressStart={handleLongPressStart}

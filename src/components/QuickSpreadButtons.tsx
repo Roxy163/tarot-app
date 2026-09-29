@@ -31,6 +31,7 @@ export const QuickSpreadButtons: React.FC<QuickSpreadButtonsProps> = ({ onSelect
         {QUICK_SPREADS.map((item, index) => (
           <motion.button
             key={item.id}
+            type="button"
             initial={{ opacity: 0, scale: 0.9 }}
             animate={{ opacity: 1, scale: 1 }}
             transition={{ delay: index * 0.05 }}

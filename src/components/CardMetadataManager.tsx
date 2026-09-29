@@ -1,7 +1,7 @@
 import { downloadBlobFile, downloadTextFile } from '../lib/downloadFile';
 import React, { useCallback, useState, useMemo, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Search, Save, RotateCcw, ChevronRight, Book, Sparkles, History, Pencil, Hash, Plus, Edit3, Download, FileText, Table2, LayoutGrid, List } from 'lucide-react';
+import { Search, Save, RotateCcw, ChevronRight, Book, Sparkles, History, Pencil, Plus, Edit3, Download, FileText, Table2, LayoutGrid, List } from 'lucide-react';
 import { CardKeywordMemory, DailyFortune, TarotCardMetadata, TarotReading } from '../types';
 import { getCardImageUrl, TAROT_CARDS } from '../constants';
 import { useCardNumerology } from '../hooks/useCardNumerology';
@@ -30,8 +30,7 @@ import {
 } from '../lib/cardLibraryExport';
 import { createExportPdfBlobFromLines } from '../lib/pdfExport';
 import { useClickOutside } from '../hooks/useClickOutside';
-import { useBodyScrollLock } from '../hooks/useBodyScrollLock';
-import { useModalFocus } from '../hooks/useModalFocus';
+import { PageView } from './PageView';
 import { MysticWatermark } from './MysticWatermark';
 import { QuietEmptyState } from './ui/SoftUI';
 import { AutoResizeTextarea } from './ui/AutoResizeTextarea';
@@ -101,24 +100,29 @@ function CardNumerologyCard({ cardName, isLoggedIn, userId }: CardNumerologyCard
   const [tempMeaning, setTempMeaning] = useState<string>(meaning || '');
   const [tempKeywords, setTempKeywords] = useState<string>(keywords || '');
   const [showRestoreConfirm, setShowRestoreConfirm] = useState(false);
+  const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveError, setSaveError] = useState('');
+  const requestBack = () => {
+    if (isSaving) return;
+    if (String(tempVal) !== String(numerology ?? '') || tempMeaning !== meaning || tempKeywords !== keywords) {
+      setShowLeaveConfirm(true);
+    } else setIsEditing(false);
+  };
 
   useEffect(() => {
+    if (isEditing) return;
     if (numerology !== null) setTempVal(numerology);
     else setTempVal('');
     if (meaning !== null) setTempMeaning(meaning);
     if (keywords !== null) setTempKeywords(keywords);
-  }, [numerology, meaning, keywords]);
+  }, [numerology, meaning, keywords, isEditing]);
 
   const options = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 22, 33];
 
-  if (isEditing) {
-    return (
-      <div className="space-y-3 rounded-[1.2rem] border border-forest-accent/8 bg-white/46 p-3 sm:space-y-4 sm:rounded-[1.45rem] sm:p-5">
-        <div className="flex items-center justify-between">
-          <span className="flex items-center gap-1.5 text-[10px] font-medium uppercase tracking-widest text-forest-accent">
-            <Hash size={14} /> 编辑灵数注解
-          </span>
-        </div>
+  const editor = (
+      <PageView isOpen={isEditing} onBack={requestBack} title={`灵数注解 · ${cardName}`} backDisabled={isSaving}>
+        <fieldset disabled={isSaving} className="min-w-0 space-y-4">
         
         <div className="space-y-2">
           <label className="text-[9px] font-medium uppercase tracking-wider text-forest-muted">数字设定</label>
@@ -172,29 +176,37 @@ function CardNumerologyCard({ cardName, isLoggedIn, userId }: CardNumerologyCard
 
         <div className="flex gap-3 pt-2">
           <button
+            disabled={isSaving}
             onClick={async () => {
+              setIsSaving(true);
+              setSaveError('');
               const valToSave = tempVal === '' ? 0 : Number(tempVal);
-              await saveNumerology(valToSave, tempMeaning, tempKeywords);
-              setIsEditing(false);
+              try {
+                if (await saveNumerology(valToSave, tempMeaning, tempKeywords)) setIsEditing(false);
+                else setSaveError('保存失败，内容仍在此页，请稍后重试。');
+              } finally { setIsSaving(false); }
             }}
             className="min-h-11 flex-1 rounded-xl bg-forest-accent py-2 text-xs font-medium text-white transition-opacity hover:opacity-90"
           >
-            保存
+            {isSaving ? '保存中…' : '保存'}
           </button>
           <button
-            onClick={() => setIsEditing(false)}
+            onClick={requestBack}
+            disabled={isSaving}
             className="min-h-11 flex-1 rounded-xl border border-forest-accent/8 bg-white/46 py-2 text-xs font-medium text-forest-muted transition-colors hover:bg-forest-bg"
           >
             取消
           </button>
           <button
             onClick={() => setShowRestoreConfirm(true)}
+            disabled={isSaving}
             className="min-h-11 min-w-11 px-3 py-2 text-red-400 hover:text-red-500 transition-colors flex items-center justify-center"
             title="恢复默认"
           >
             <RotateCcw size={16} />
           </button>
         </div>
+        {saveError && <p role="alert" className="text-sm text-forest-ink">{saveError}</p>}
 
         <ConfirmDialog
           isOpen={showRestoreConfirm}
@@ -203,19 +215,26 @@ function CardNumerologyCard({ cardName, isLoggedIn, userId }: CardNumerologyCard
           confirmText="恢复"
           destructive
           onConfirm={async () => {
-            await restoreDefault();
-            setIsEditing(false);
+            if (isSaving) return;
+            setIsSaving(true);
+            setSaveError('');
+            try {
+              if (await restoreDefault()) setIsEditing(false);
+              else setSaveError('恢复失败，原注解和当前输入已保留，请稍后重试。');
+            } finally { setIsSaving(false); }
           }}
-          onClose={() => setShowRestoreConfirm(false)}
+          onClose={() => { if (!isSaving) setShowRestoreConfirm(false); }}
         />
-      </div>
+        <ConfirmDialog isOpen={showLeaveConfirm} title="离开灵数注解" message="还有未保存的修改。" confirmText="放弃修改并返回" cancelText="继续编辑" onConfirm={() => setIsEditing(false)} onClose={() => setShowLeaveConfirm(false)} />
+        </fieldset>
+      </PageView>
     );
-  }
 
   return (
+    <>
     <div className="group relative rounded-[1.2rem] border border-forest-accent/8 bg-forest-accent/5 p-3 sm:rounded-[1.45rem] sm:p-5">
       <button 
-        onClick={() => setIsEditing(true)}
+        onClick={() => { setSaveError(''); setIsEditing(true); }}
         className="absolute top-3 right-3 min-h-11 min-w-11 p-2 text-forest-muted hover:text-forest-accent transition-colors opacity-100 sm:opacity-0 sm:group-hover:opacity-100 flex items-center justify-center rounded-xl hover:bg-white/70"
         aria-label="编辑灵数注解"
       >
@@ -260,6 +279,8 @@ function CardNumerologyCard({ cardName, isLoggedIn, userId }: CardNumerologyCard
         </div>
       </div>
     </div>
+    {editor}
+    </>
   );
 }
 
@@ -273,7 +294,7 @@ export function CardMetadataManager({ metadata, onUpdate, readings, dailyFortune
   const annotationRevision = useAnnotationRevision();
   const personalDraftKey = `tarot_personal_meaning_draft_${userId || 'guest'}`;
   const [personalMeaningDrafts, setPersonalMeaningDrafts] = useState<Record<string, string>>(() => readLocalDraft(personalDraftKey) || {});
-  useLocalDraft(personalDraftKey, personalMeaningDrafts);
+  const personalDraft = useLocalDraft(personalDraftKey, personalMeaningDrafts);
   const personalMeanings = useMemo(() => ({
     ...Object.fromEntries(TAROT_CARDS.map(card => [card.name, cardAnnotationService.getUserAnnotation(card.id)?.personalMeaning || ''])),
     ...personalMeaningDrafts,
@@ -283,7 +304,6 @@ export function CardMetadataManager({ metadata, onUpdate, readings, dailyFortune
   const [exportStatus, setExportStatus] = useState('');
   const exportMenuRef = useRef<HTMLDivElement | null>(null);
   const detailScrollYRef = useRef(0);
-  const detailDialogRef = useRef<HTMLElement>(null);
   const [showAnnotationEditor, setShowAnnotationEditor] = useState(false);
   const [annotationEditorCardId, setAnnotationEditorCardId] = useState<string | undefined>(undefined);
   const [modifiedCount, setModifiedCount] = useState(0);
@@ -465,12 +485,14 @@ export function CardMetadataManager({ metadata, onUpdate, readings, dailyFortune
   const detailDailyFortuneExamples = getSavedDailyFortuneExamples(detailDailyFortuneGroup?.fortunes || []);
   const detailDailyFortuneHistory = detailDailyFortuneGroup?.fortunes || [];
   const closeCardDetail = useCallback(() => {
+    if (!personalDraft.durable) {
+      onShowSnackbar?.('暂存失败，请先复制个人注疏或释放存储空间后保存。');
+      return;
+    }
     setIsDetailSheetOpen(false);
-  }, []);
+  }, [personalDraft.durable, onShowSnackbar]);
 
-  useBodyScrollLock(Boolean(detailCardId));
 
-  useModalFocus(Boolean(detailCard) && isDetailSheetOpen, detailDialogRef, closeCardDetail);
 
   const appendKeywordToPersonalMeaning = (cardName: string, keyword: string) => {
     setPersonalMeaningDrafts(prev => {
@@ -872,46 +894,18 @@ export function CardMetadataManager({ metadata, onUpdate, readings, dailyFortune
         />
       )}
 
-      <AnimatePresence
+      <PageView
+        isOpen={Boolean(detailCard) && isDetailSheetOpen}
+        onBack={closeCardDetail}
+        backDisabled={isSaving}
+        title={`${detailCard?.name || ''}研习资料`}
         onExitComplete={() => {
           if (isDetailSheetOpen) return;
           setDetailCardId(null);
           restoreDetailScrollPosition();
         }}
       >
-        {detailCard && isDetailSheetOpen && (
-          <motion.div
-            className="fixed inset-0 z-[500] flex items-end justify-center p-0 sm:items-center sm:p-4 lg:items-stretch lg:justify-end lg:p-3"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.16, ease: 'easeOut' }}
-          >
-            <motion.button
-              type="button"
-              aria-label="关闭牌义详情"
-              className="absolute inset-0 cursor-default bg-forest-ink/16 backdrop-blur-[2px]"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 0.14, ease: 'easeOut' }}
-              onMouseDown={event => event.preventDefault()}
-              onClick={closeCardDetail}
-            />
-            <motion.section
-              ref={detailDialogRef}
-              tabIndex={-1}
-              role="dialog"
-              aria-modal="true"
-              aria-label={`${detailCard.name}研习资料`}
-              initial={{ y: 28, opacity: 0, scale: 0.99 }}
-              animate={{ y: 0, opacity: 1, scale: 1 }}
-              exit={{ y: 18, opacity: 0, scale: 0.99 }}
-              transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
-              className="relative flex max-h-[86dvh] w-full flex-col overflow-hidden rounded-t-[1.55rem] border border-forest-accent/10 bg-[#FFFCF7]/96 shadow-[0_24px_70px_-40px_rgba(62,58,54,0.62)] backdrop-blur-md sm:max-h-[90dvh] sm:w-[min(460px,calc(100vw-2rem))] sm:rounded-[1.65rem] lg:h-full lg:max-h-none lg:w-[min(460px,calc(100vw-2rem))] lg:rounded-[1.7rem]"
-            >
-              <div className="mx-auto mt-2 h-1 w-10 rounded-full bg-forest-accent/16 sm:hidden" aria-hidden="true" />
-
+        {detailCard && <>
               <div className="flex items-start justify-between gap-3 border-b border-forest-accent/8 bg-[#FFFCF7]/90 p-3 pt-2 sm:p-4">
                 <div className="flex min-w-0 items-center gap-3">
                   <div className="h-20 w-14 shrink-0 overflow-hidden rounded-xl border border-forest-accent/12 bg-forest-bg shadow-inner">
@@ -939,23 +933,14 @@ export function CardMetadataManager({ metadata, onUpdate, readings, dailyFortune
                     </div>
                   </div>
                 </div>
-                <button
-                  type="button"
-                  onClick={closeCardDetail}
-                  aria-label="关闭牌义详情"
-                  className="flex min-h-11 min-w-11 items-center justify-center rounded-full text-forest-muted transition-colors hover:bg-forest-accent/8 hover:text-forest-ink"
-                >
-                  ×
-                </button>
               </div>
 
-              <div className="custom-scrollbar flex-1 space-y-3 overflow-y-auto p-3 pb-[max(1rem,env(safe-area-inset-bottom))] sm:space-y-4 sm:p-4">
+              <div className="space-y-3 pt-3 sm:space-y-4 sm:pt-4">
                 <button
                   type="button"
                   onClick={() => {
                     setAnnotationEditorCardId(detailCard.id);
                     setShowAnnotationEditor(true);
-                    closeCardDetail();
                   }}
                   className="flex min-h-11 w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-forest-accent/9 to-forest-pink/9 text-xs font-medium text-forest-accent transition-colors hover:from-forest-accent/14 hover:to-forest-pink/14"
                 >
@@ -1169,13 +1154,16 @@ export function CardMetadataManager({ metadata, onUpdate, readings, dailyFortune
                   )}
                 </section>
               </div>
-            </motion.section>
-          </motion.div>
-        )}
-      </AnimatePresence>
+          <CardAnnotationEditor
+            isOpen={showAnnotationEditor}
+            onClose={() => { setShowAnnotationEditor(false); refreshModifiedCount(); }}
+            initialCardId={annotationEditorCardId}
+            onAnnotationsUpdated={refreshModifiedCount}
+          />
+        </>}
+      </PageView>
 
-      {/* Card Annotation Editor Modal */}
-      <CardAnnotationEditor 
+      {!detailCard && <CardAnnotationEditor
         isOpen={showAnnotationEditor}
         onClose={() => {
           setShowAnnotationEditor(false);
@@ -1183,7 +1171,7 @@ export function CardMetadataManager({ metadata, onUpdate, readings, dailyFortune
         }}
         initialCardId={annotationEditorCardId}
         onAnnotationsUpdated={refreshModifiedCount}
-      />
+      />}
     </div>
   );
 }

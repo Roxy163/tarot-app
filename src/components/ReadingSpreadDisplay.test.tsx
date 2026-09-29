@@ -4,6 +4,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ReadingSpreadDisplay } from './ReadingSpreadDisplay';
 import { LAYOUT_TEMPLATES } from '../constants';
 import { ReadingSlotData } from '../types';
+import { getTabletopLayout } from '../lib/tabletopLayout';
+import { ReadingSlot } from './ReadingSlot';
 
 const createSlots = (): ReadingSlotData[] => (
   LAYOUT_TEMPLATES.celtic.defaultSlots.map((label, index) => ({
@@ -19,7 +21,25 @@ describe('ReadingSpreadDisplay', () => {
     vi.restoreAllMocks();
   });
 
-  it('keeps the Celtic cross center stack above the lower card on mobile-scaled layouts', async () => {
+  it('uses one unobtrusive control to switch either card of a compact Celtic center', async () => {
+    const user = userEvent.setup();
+    const onCycle = vi.fn();
+    const stack = (active: number) => <>{createSlots().slice(0, 2).map((slot, index) => (
+      <ReadingSlot key={index} slot={slot} index={index} stackIndex={index}
+        isActive={active === index} isCelticCenter cardWidth={32} showSlotNumbers
+        onSlotClick={vi.fn()} onLongPressStart={vi.fn()} onLongPressEnd={vi.fn()}
+        onRemove={vi.fn()} allowRemove={false} onCycle={onCycle} />
+    ))}</>;
+    const { rerender } = render(stack(0));
+    expect(screen.getAllByRole('button', { name: '切换交叉牌层级' })).toHaveLength(1);
+    await user.click(screen.getByRole('button', { name: '切换交叉牌层级' }));
+    expect(onCycle).toHaveBeenLastCalledWith(0, expect.any(Object));
+    rerender(stack(1));
+    await user.click(screen.getByRole('button', { name: '切换交叉牌层级' }));
+    expect(onCycle).toHaveBeenLastCalledWith(1, expect.any(Object));
+  });
+
+  it('keeps the Celtic center selectable without shrinking the card controls', async () => {
     vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({
       x: 0,
       y: 0,
@@ -61,21 +81,19 @@ describe('ReadingSpreadDisplay', () => {
     const canvas = screen.getByTestId('celtic-spread-canvas');
 
     expect(screen.getByTestId('celtic-cross-spread')).toBeInTheDocument();
-    expect(canvas).toHaveClass('aspect-[6/5]', 'sm:max-w-[680px]', 'overflow-visible');
+    expect(canvas).toHaveClass('overflow-visible');
     expect(canvas).not.toHaveClass('rounded-3xl', 'border', 'bg-forest-bg/20');
     expect(canvas.children).toHaveLength(9);
-    expect(screen.getByTestId('celtic-slot-4')).toHaveStyle({ left: '20%', top: '50%' });
-    expect(screen.getByTestId('celtic-slot-6')).toHaveStyle({ left: '56%', top: '50%' });
-    expect(screen.getByTestId('celtic-slot-7')).toHaveStyle({ left: '78%', top: '88%' });
-    expect(screen.getByTestId('celtic-slot-10')).toHaveStyle({ left: '78%', top: '13%' });
     expect(screen.getByTestId('spread-overview-status')).toHaveTextContent('已填 0/10');
     expect(centerCell).toHaveStyle({ zIndex: '40' });
     expect(lowerCell).toHaveStyle({ zIndex: '15' });
     expect(centerCell).toContainElement(centerButton);
     expect(centerCell).toContainElement(challengeButton);
     await waitFor(() => {
-      expect(centerCell).toHaveStyle({ transform: 'translate(-50%, -50%) scale(0.66)' });
+      expect(centerButton).toHaveStyle({ width: `${Math.max(44, getTabletopLayout('celtic', 376, window.innerHeight).cardWidth)}px` });
     });
+    expect(centerCell).toHaveStyle({ transform: 'translate(-50%, -50%)' });
+    expect(parseFloat(centerButton.style.width)).toBeGreaterThanOrEqual(44);
   });
 
   it('uses a dedicated centered yearly layout across viewport widths', async () => {
@@ -120,7 +138,7 @@ describe('ReadingSpreadDisplay', () => {
 
     expect(screen.getByTestId('yearly-radial-spread')).toBeInTheDocument();
     const yearlyCanvas = screen.getByTestId('yearly-spread-canvas');
-    expect(yearlyCanvas).toHaveClass('aspect-[4/3]', 'sm:max-w-[800px]', 'overflow-visible');
+    expect(yearlyCanvas).toHaveClass('overflow-visible');
     expect(yearlyCanvas).not.toHaveClass('rounded-3xl', 'border', 'bg-forest-bg/20');
     expect(yearlyCanvas.children).toHaveLength(13);
     expect(Array.from(yearlyCanvas.children).every(child => child.classList.contains('absolute'))).toBe(true);
@@ -130,11 +148,12 @@ describe('ReadingSpreadDisplay', () => {
     expect(screen.getByTestId('spread-overview-status')).toHaveTextContent('已填 0/13');
     expect(screen.getByRole('button', { name: /底牌/ })).toBeInTheDocument();
     await waitFor(() => {
-      expect(yearlyCanvas.children[0]).toHaveStyle({ transform: 'translate(-50%, -50%) scale(0.68)' });
+      expect(screen.getByRole('button', { name: /底牌/ })).toHaveStyle({ width: '44px' });
     });
+    expect(yearlyCanvas.children[0]).toHaveStyle({ transform: 'translate(-50%, -50%)' });
   });
 
-  it('uses the natural card-grid layout for the choice spread', () => {
+  it('fits the official choice silhouette on a bounded canvas without empty grid rows', () => {
     const choiceSlots = LAYOUT_TEMPLATES.choice.defaultSlots.map((label, index) => ({
       name: '',
       isReversed: false,
@@ -164,6 +183,8 @@ describe('ReadingSpreadDisplay', () => {
     );
 
     expect(screen.queryByTestId('choice-spread')).not.toBeInTheDocument();
+    expect(screen.getByTestId('official-spread-canvas').children).toHaveLength(5);
+    expect(parseFloat(screen.getByTestId('official-spread-canvas').style.height)).toBeLessThanOrEqual(380);
     expect(screen.getByTestId('spread-overview-status')).toHaveTextContent('已填 0/5');
     expect(screen.getByRole('button', { name: /A近期发展/ })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /B近期发展/ })).toBeInTheDocument();

@@ -11,6 +11,7 @@ interface ReadingSlotProps {
   isCelticCenter: boolean;
   stackIndex: number;
   isSmall?: boolean;
+  cardWidth?: number;
   showSlotNumbers: boolean;
   onSlotClick: (idx: number) => void;
   onLongPressStart: (idx: number) => void;
@@ -22,7 +23,7 @@ interface ReadingSlotProps {
 }
 
 export const ReadingSlot: React.FC<ReadingSlotProps> = ({
-  slot, index, isActive, isCelticCenter, stackIndex, isSmall, showSlotNumbers,
+  slot, index, isActive, isCelticCenter, stackIndex, isSmall, cardWidth, showSlotNumbers,
   onSlotClick, onLongPressStart, onLongPressEnd, onRemove, allowRemove = true, onToggleReverse, onCycle
 }) => {
   const cardData = TAROT_CARDS.find(c => 
@@ -56,8 +57,14 @@ export const ReadingSlot: React.FC<ReadingSlotProps> = ({
           e.stopPropagation();
           onSlotClick(index);
         }} 
-        className={`${baseClasses} ${isActive ? activeClasses : ''} ${sizeClasses}`}
+        className={cardWidth ? 'relative flex min-h-11 min-w-11 items-center justify-center select-none cursor-pointer' : `${baseClasses} ${isActive ? activeClasses : ''} ${sizeClasses}`}
+        style={cardWidth ? { width: Math.max(44, cardWidth), height: Math.max(56, cardWidth * 1.75) } : undefined}
       >
+        <span
+          className={cardWidth ? `${baseClasses} ${isActive ? activeClasses : ''} relative shrink-0 ${cardWidth < 44 ? '!rounded-md !border !p-0.5' : ''}` : 'contents'}
+          style={cardWidth ? { width: cardWidth, height: cardWidth * 1.75 } : undefined}
+          data-card-face
+        >
         {slot.name ? (
           <div className={`w-full h-full relative rounded-lg overflow-hidden pointer-events-none ${slot.isReversed ? 'rotate-180' : ''}`}>
             {showSlotNumbers && (
@@ -76,20 +83,24 @@ export const ReadingSlot: React.FC<ReadingSlotProps> = ({
             <div className="absolute inset-x-0 bottom-0 bg-forest-text/60 text-white text-[7px] py-0.5 text-center font-sans">{slot.name}</div>
           </div>
         ) : (
-          <div className="flex flex-col items-center gap-1.5 pointer-events-none">
+          <div className={`flex flex-col items-center pointer-events-none ${cardWidth && cardWidth < 44 ? 'gap-0.5 pt-2' : 'gap-1.5'}`}>
+            {showSlotNumbers && cardWidth && cardWidth < 44 && (
+              <span className="absolute top-0.5 left-1/2 -translate-x-1/2 rounded-sm bg-forest-text/40 px-0.5 text-[7px] font-black leading-none text-white">{index + 1}</span>
+            )}
             <div className="relative">
-              {showSlotNumbers && (
+              {showSlotNumbers && !(cardWidth && cardWidth < 44) && (
                 <span className="absolute -top-3 left-1/2 -translate-x-1/2 bg-forest-text/40 text-white text-[8px] px-1 rounded-sm z-20 font-black whitespace-nowrap">
                   {index + 1}
                 </span>
               )}
-              <Plus className="text-forest-accent opacity-40" size={isCelticCenter ? 14 : 20} />
+              <Plus className="text-forest-accent opacity-40" size={isCelticCenter || (cardWidth && cardWidth < 44) ? 12 : 20} />
             </div>
-            <span className={`text-forest-accent font-bold text-center px-1 leading-tight drop-shadow-sm ${isCelticCenter ? 'text-[8px]' : 'text-[10px]'}`}>
+            <span className={`text-forest-accent font-bold text-center ${cardWidth ? 'px-0' : 'px-1'} leading-tight drop-shadow-sm ${isCelticCenter || (cardWidth && cardWidth < 44) ? 'text-[8px]' : 'text-[10px]'}`}>
               {slot.label || `第${index + 1}张`}
             </span>
           </div>
         )}
+        </span>
       </button>
       {slot.name && (
         <button
@@ -115,13 +126,15 @@ export const ReadingSlot: React.FC<ReadingSlotProps> = ({
           <X size={14} />
         </button>
       )}
-      {onCycle && (
+      {onCycle && (!cardWidth || stackIndex === 0) && (
         <button 
           type="button" 
-          onClick={(e) => onCycle(index, e)} 
-          className="absolute -top-3 -left-3 bg-white text-forest-accent hover:text-forest-accent/80 rounded-full w-11 h-11 shadow-sm border border-forest-accent/10 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity z-10 flex items-center justify-center"
+          onClick={(e) => onCycle(cardWidth && !isActive ? index + 1 : index, e)}
+          className={cardWidth
+            ? 'absolute -top-11 -left-11 flex h-11 w-11 items-center justify-center text-forest-accent hover:text-forest-accent/80 transition-colors z-10'
+            : 'absolute -top-3 -left-3 bg-white text-forest-accent hover:text-forest-accent/80 rounded-full w-11 h-11 shadow-sm border border-forest-accent/10 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity z-10 flex items-center justify-center'}
           title="切换层级"
-          aria-label={`切换第 ${index + 1} 个位置层级`}
+          aria-label={cardWidth ? '切换交叉牌层级' : `切换第 ${index + 1} 个位置层级`}
         >
           <Layers size={14} />
         </button>
