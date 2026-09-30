@@ -2,7 +2,7 @@
 
 ## 状态与范围
 
-2026-09-29 完成本地实现与浏览器验收，尚未提交或部署。生产网站仍为设置与辅助页面发布版本。本轮不修改数据库规则、账号权限或公开数据范围。
+2026-09-29 完成本地实现与浏览器验收，2026-09-30 随 `ab24214` 发布到正式网站。完整发布与线上验收记录见 [核心页面与牌阵发布记录](core-pages-and-spreads-release-2026-09-30.md)。本轮不修改数据库规则、账号权限或公开数据范围。
 
 用户要求日运、牌义和牌阵的持续填写、阅读与编辑使用完整页面，并将这一原则用于后续新功能。实现复用 `PageView`，保留森林主题与原有业务功能，不以放大弹窗代替页面。
 
@@ -34,4 +34,4 @@
 - 浏览器使用隔离的游客配置，仅操作本机验收数据，未写入真实账号的云端记录。
 - 截图：`output/playwright/core-daily-entry-mobile.png`、`core-annotation-small.png`、`core-annotation-desktop.png`、`core-spread-mobile.png`、`core-spread-desktop.png`。
 
-本地预览：<http://127.0.0.1:4173/>。上线仍需用户明确要求部署。
+本地预览：<http://127.0.0.1:4173/>。正式网站：<https://tarot-pavilion.pages.dev/>。
