@@ -1,7 +1,8 @@
 import { downloadBlobFile, downloadTextFile } from '../lib/downloadFile';
 import React, { useCallback, useState, useMemo, useEffect, useRef } from 'react';
-import { motion, AnimatePresence } from 'motion/react';
-import { Search, Save, RotateCcw, ChevronRight, Book, Sparkles, History, Pencil, Plus, Edit3, Download, FileText, Table2, LayoutGrid, List } from 'lucide-react';
+import { createPortal } from 'react-dom';
+import { motion } from 'motion/react';
+import { Search, Save, RotateCcw, ChevronRight, Book, Sparkles, History, Pencil, Plus, Edit3, Download, FileText, Table2, LayoutGrid, List, MoreHorizontal } from 'lucide-react';
 import { CardKeywordMemory, DailyFortune, TarotCardMetadata, TarotReading } from '../types';
 import { getCardImageUrl, TAROT_CARDS } from '../constants';
 import { useCardNumerology } from '../hooks/useCardNumerology';
@@ -29,12 +30,12 @@ import {
   getCardLibraryScopeLabel,
 } from '../lib/cardLibraryExport';
 import { createExportPdfBlobFromLines } from '../lib/pdfExport';
-import { useClickOutside } from '../hooks/useClickOutside';
 import { PageView } from './PageView';
 import { MysticWatermark } from './MysticWatermark';
 import { QuietEmptyState } from './ui/SoftUI';
 import { AutoResizeTextarea } from './ui/AutoResizeTextarea';
 import { trackEvent } from '../lib/analytics';
+import { Modal } from './Modal';
 
 interface CardMetadataManagerProps {
   metadata: TarotCardMetadata[];
@@ -47,6 +48,8 @@ interface CardMetadataManagerProps {
   userId?: string;
   initialCardId?: string;
   ownerName?: string;
+  detailOnly?: boolean;
+  onClose?: () => void;
 }
 
 interface CardNumerologyCardProps {
@@ -284,7 +287,7 @@ function CardNumerologyCard({ cardName, isLoggedIn, userId }: CardNumerologyCard
   );
 }
 
-export function CardMetadataManager({ metadata, onUpdate, readings, dailyFortunes = [], cardKeywordMemory = [], onShowSnackbar, isLoggedIn, userId, initialCardId, ownerName = '见习阁主' }: CardMetadataManagerProps) {
+export function CardMetadataManager({ metadata, onUpdate, readings, dailyFortunes = [], cardKeywordMemory = [], onShowSnackbar, isLoggedIn, userId, initialCardId, ownerName = '见习阁主', detailOnly = false, onClose }: CardMetadataManagerProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [detailCardId, setDetailCardId] = useState<string | null>(null);
   const [isDetailSheetOpen, setIsDetailSheetOpen] = useState(false);
@@ -301,15 +304,15 @@ export function CardMetadataManager({ metadata, onUpdate, readings, dailyFortune
   }), [annotationRevision, personalMeaningDrafts]);
   const [isSaving, setIsSaving] = useState(false);
   const [isExportMenuOpen, setIsExportMenuOpen] = useState(false);
+  const [isToolsMenuOpen, setIsToolsMenuOpen] = useState(false);
+  const hasUnsavedMetadata = useMemo(() => JSON.stringify(localMetadata) !== JSON.stringify(buildCardLibrary(metadata)), [localMetadata, metadata]);
   const [exportStatus, setExportStatus] = useState('');
-  const exportMenuRef = useRef<HTMLDivElement | null>(null);
   const detailScrollYRef = useRef(0);
   const [showAnnotationEditor, setShowAnnotationEditor] = useState(false);
   const [annotationEditorCardId, setAnnotationEditorCardId] = useState<string | undefined>(undefined);
   const [modifiedCount, setModifiedCount] = useState(0);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
   const closeExportMenu = useCallback(() => setIsExportMenuOpen(false), []);
-  useClickOutside(exportMenuRef, closeExportMenu, isExportMenuOpen);
   const currentMonthKey = getCurrentMonthKey();
   const dailyFortuneGroups = useMemo(
     () => getDailyFortunesByCard(dailyFortunes, currentMonthKey),
@@ -343,10 +346,14 @@ export function CardMetadataManager({ metadata, onUpdate, readings, dailyFortune
 
   useEffect(() => {
     if (!initialCardId) return;
-
-    setAnnotationEditorCardId(initialCardId);
-    setShowAnnotationEditor(true);
-  }, [initialCardId]);
+    if (detailOnly) {
+      setDetailCardId(initialCardId);
+      setIsDetailSheetOpen(true);
+    } else {
+      setAnnotationEditorCardId(initialCardId);
+      setShowAnnotationEditor(true);
+    }
+  }, [initialCardId, detailOnly]);
 
   const refreshModifiedCount = () => {
     setModifiedCount(cardAnnotationService.getModifiedCardIds().length);
@@ -584,7 +591,17 @@ export function CardMetadataManager({ metadata, onUpdate, readings, dailyFortune
   };
 
   return (
-    <div className="space-y-3 pb-12 sm:space-y-5 sm:pb-20">
+    <div hidden={detailOnly} className="space-y-3 pb-12 sm:space-y-5 sm:pb-20">
+      {createPortal(<Modal isOpen={isToolsMenuOpen} onClose={() => setIsToolsMenuOpen(false)} title="牌库操作">
+        <div className="space-y-1">
+          <button type="button" aria-label="批量编辑单牌牌义" onClick={() => {
+            setIsToolsMenuOpen(false);
+            setAnnotationEditorCardId(undefined);
+            setShowAnnotationEditor(true);
+          }} className="flex min-h-11 w-full items-center gap-2 rounded-lg px-3 text-left text-forest-ink hover:bg-forest-accent/6"><Edit3 size={16} />批量编辑单牌牌义</button>
+          <button type="button" onClick={() => { setIsToolsMenuOpen(false); resetAll(); }} className="flex min-h-11 w-full items-center gap-2 rounded-lg px-3 text-left text-forest-muted hover:bg-forest-accent/6"><RotateCcw size={16} />重置本地编辑</button>
+        </div>
+      </Modal>, document.body)}
       <ConfirmDialog
         isOpen={showResetConfirm}
         title="重置本地编辑"
@@ -614,24 +631,14 @@ export function CardMetadataManager({ metadata, onUpdate, readings, dailyFortune
           </div>
         </div>
 
-        <div className="relative grid grid-cols-4 gap-1 sm:flex sm:items-center sm:justify-end sm:gap-2">
-            <button 
-              onClick={() => {
-                setAnnotationEditorCardId(undefined);
-                setShowAnnotationEditor(true);
-              }}
-              aria-label="批量编辑单牌牌义"
-                className="flex min-h-11 items-center justify-center gap-1 rounded-xl bg-forest-accent/86 px-2 text-[11px] font-medium text-white transition-colors hover:bg-forest-accent sm:px-4 sm:text-sm"
-            >
-              <Edit3 size={14} /> 批量
-            </button>
-            <div ref={exportMenuRef} className="relative">
+        <div className="relative flex items-center justify-end gap-2">
+            <div>
               <button
                 type="button"
                 onClick={() => setIsExportMenuOpen(prev => !prev)}
                 className="flex min-h-11 w-full items-center justify-center gap-1 rounded-xl bg-forest-pink/80 px-2 text-[11px] font-medium text-white transition-all hover:bg-forest-pink sm:w-auto sm:gap-2 sm:rounded-full sm:px-5 sm:text-sm"
                 aria-expanded={isExportMenuOpen}
-                aria-haspopup="menu"
+                aria-haspopup="dialog"
                 aria-label="成册：导出 PDF / 表格 / Markdown"
                 title="导出 PDF / 表格 / Markdown"
               >
@@ -643,13 +650,9 @@ export function CardMetadataManager({ metadata, onUpdate, readings, dailyFortune
                   </span>
                 </span>
               </button>
-              <AnimatePresence>
-                {isExportMenuOpen && (
-                  <motion.div
-                    initial={{ opacity: 0, y: 8, scale: 0.98 }}
-                    animate={{ opacity: 1, y: 0, scale: 1 }}
-                    exit={{ opacity: 0, y: 8, scale: 0.98 }}
-                    className="absolute right-0 z-30 mt-2 w-[min(22rem,calc(100vw-2rem))] rounded-[1.2rem] border border-forest-accent/7 bg-white/88 p-3 text-left shadow-[0_16px_44px_-36px_rgba(62,58,54,0.52)] backdrop-blur-md"
+              {createPortal(<Modal isOpen={isExportMenuOpen} onClose={closeExportMenu} title="成册">
+                  <div
+                    className="text-left"
                     role="menu"
                   >
                     <div className="mb-2">
@@ -692,22 +695,16 @@ export function CardMetadataManager({ metadata, onUpdate, readings, dailyFortune
                         </div>
                       </div>
                     ))}
-                  </motion.div>
-                )}
-              </AnimatePresence>
+                  </div>
+              </Modal>, document.body)}
             </div>
-            <button 
-              onClick={resetAll}
-              className="flex min-h-11 items-center justify-center gap-1 rounded-xl border border-forest-accent/7 bg-white/36 px-2 text-[11px] font-medium text-forest-muted transition-colors hover:bg-forest-accent/5 hover:text-forest-accent sm:gap-2 sm:px-4 sm:text-sm"
-            >
-              <RotateCcw size={14} /> 重置
-            </button>
-            <button 
+            <button type="button" onClick={() => setIsToolsMenuOpen(true)} aria-label="牌库更多操作" title="更多操作" className="grid h-11 w-11 shrink-0 place-items-center rounded-xl text-forest-muted hover:bg-forest-accent/6"><MoreHorizontal size={18} /></button>
+            {hasUnsavedMetadata && <button
               onClick={saveAll}
               className="flex min-h-11 items-center justify-center gap-1 rounded-xl border border-forest-accent/8 bg-white/56 px-2 text-[11px] font-medium text-forest-accent transition-colors hover:bg-forest-accent/5 sm:gap-2 sm:px-4 sm:text-sm"
             >
               <Save size={14} /> 保存
-            </button>
+            </button>}
         </div>
         {exportStatus && (
           <p className="rounded-2xl border border-forest-accent/8 bg-white/42 px-3 py-2 text-xs text-forest-muted">
@@ -902,7 +899,8 @@ export function CardMetadataManager({ metadata, onUpdate, readings, dailyFortune
         onExitComplete={() => {
           if (isDetailSheetOpen) return;
           setDetailCardId(null);
-          restoreDetailScrollPosition();
+          if (detailOnly) onClose?.();
+          else restoreDetailScrollPosition();
         }}
       >
         {detailCard && <>

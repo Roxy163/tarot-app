@@ -14,6 +14,7 @@ import {
   List,
   PencilLine,
   Search,
+  Sun,
   Table2,
   Tag,
   Trash2,
@@ -76,6 +77,9 @@ interface PrivateTabProps {
   onConfirmKeywordCandidates: (id: string, candidates: ReadingKeywordCandidate[]) => void;
   cardMetadata: TarotCardMetadata[];
   highlightedReadingId?: string | null;
+  dailyFortuneCount?: number;
+  onOpenDailyArchive?: () => void;
+  onOpenCardHistory?: (cardName: string) => void;
 }
 
 export const PrivateTab: React.FC<PrivateTabProps> = ({
@@ -96,6 +100,9 @@ export const PrivateTab: React.FC<PrivateTabProps> = ({
   onConfirmKeywordCandidates,
   cardMetadata,
   highlightedReadingId,
+  dailyFortuneCount = 0,
+  onOpenDailyArchive,
+  onOpenCardHistory,
 }) => {
   const [reviewFilter, setReviewFilter] = useState<'all' | 'incomplete' | 'reviewed' | 'unreviewed'>('all');
   const [audienceFilter, setAudienceFilter] = useState<'all' | 'self' | 'client'>('all');
@@ -115,6 +122,8 @@ export const PrivateTab: React.FC<PrivateTabProps> = ({
   const indexDialogRef = useRef<HTMLElement>(null);
   const longPressTimerRef = useRef<number | null>(null);
   const hasRealReadings = useMemo(() => readings.some(reading => !reading.isExample), [readings]);
+  const recentCard = useMemo(() => readings.filter(item => !item.isExample)
+    .sort((a, b) => getReadingSortTime(b) - getReadingSortTime(a))[0]?.cards.find(card => card.name)?.name, [readings]);
   const archiveIndex = useMemo(() => buildReadingArchiveIndex(readings), [readings]);
   const cardLookupByName = useMemo(() => {
     const lookup = new Map<string, TarotCardMetadata>();
@@ -419,7 +428,15 @@ export const PrivateTab: React.FC<PrivateTabProps> = ({
             <span className="text-[10px] font-sans font-normal text-forest-muted/70 bg-white/30 px-2 py-0.5 rounded-full ring-1 ring-forest-accent/8">研精覃思，洞见未来</span>
           </h2>
         </div>
+        {onOpenDailyArchive && (
+          <div className="inline-flex w-fit items-center gap-1 rounded-xl border border-forest-accent/8 bg-white/36 p-0.5" aria-label="典籍内容">
+            <span className="inline-flex min-h-11 items-center gap-1.5 rounded-lg bg-forest-accent/10 px-3 text-xs text-forest-accent"><BookOpen size={14} />手记 {readings.filter(item => !item.isExample).length}</span>
+            <button type="button" onClick={onOpenDailyArchive} className="inline-flex min-h-11 items-center gap-1.5 rounded-lg px-3 text-xs text-forest-ink transition-colors hover:bg-forest-accent/8"><Sun size={14} />日运 {dailyFortuneCount}</button>
+          </div>
+        )}
       </div>
+
+      {recentCard && onOpenCardHistory && <button type="button" onClick={() => onOpenCardHistory(recentCard)} className="flex min-h-11 items-center gap-2 px-1 text-xs text-forest-accent hover:underline"><BookOpen size={14} />查看「{recentCard}」的记录</button>}
 
       <div className="flex flex-wrap items-center gap-1.5 sm:flex-nowrap sm:gap-2">
         <div className="relative group min-w-0 basis-full sm:flex-1 sm:basis-0">

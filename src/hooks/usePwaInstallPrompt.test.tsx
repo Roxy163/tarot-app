@@ -6,6 +6,7 @@ describe('usePwaInstallPrompt', () => {
   afterEach(() => {
     vi.unstubAllGlobals();
     vi.restoreAllMocks();
+    vi.useRealTimers();
     localStorage.clear();
   });
 
@@ -118,6 +119,25 @@ describe('usePwaInstallPrompt', () => {
     expect(banner.result.current.canInstall).toBe(false);
     expect(banner.result.current.reminderPreference).toBe('installed');
     expect(guide.result.current.isStandalone).toBe(false);
+  });
+
+  it('snoozes across pages and remounts without disabling future reminders', () => {
+    vi.useFakeTimers();
+    const first = renderHook(() => usePwaInstallPrompt());
+    const second = renderHook(() => usePwaInstallPrompt());
+    act(() => markPwaInstallPromptReady());
+    act(() => first.result.current.snooze());
+    expect(first.result.current.reminderPreference).toBe('auto');
+    expect(second.result.current.shouldShow).toBe(false);
+    first.unmount();
+    const next = renderHook(() => usePwaInstallPrompt());
+    act(() => markPwaInstallPromptReady());
+    expect(next.result.current.shouldShow).toBe(false);
+    act(() => vi.advanceTimersByTime(24 * 60 * 60 * 1000));
+    expect(next.result.current.shouldShow).toBe(true);
+    act(() => next.result.current.snooze());
+    act(() => second.result.current.setReminderPreference('auto'));
+    expect(next.result.current.shouldShow).toBe(true);
   });
 
   it('suppresses reminders in the current page and reports when persistence fails', () => {

@@ -81,6 +81,8 @@ describe('CardMetadataManager', () => {
 
     expect(screen.queryByText(/已自定义 \d+ 张牌的注解/)).not.toBeInTheDocument();
 
+    expect(screen.queryByRole('button', { name: '保存' })).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: '牌库更多操作' }));
     await user.click(screen.getByRole('button', { name: '批量编辑单牌牌义' }));
     await user.click(screen.getByRole('button', { name: '模拟保存' }));
 
@@ -100,6 +102,16 @@ describe('CardMetadataManager', () => {
     );
 
     expect(screen.getByText('正在编辑 ar00')).toBeInTheDocument();
+  });
+
+  it('opens record history as a reading page and returns to its source without opening the editor', async () => {
+    const onClose = vi.fn();
+    render(<CardMetadataManager metadata={[]} onUpdate={vi.fn()} readings={[]} initialCardId="ar00" detailOnly onClose={onClose} />);
+    expect(screen.getByRole('main', { name: '愚者研习资料' })).toBeInTheDocument();
+    expect(screen.queryByText('正在编辑 ar00')).not.toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: '塔罗牌库' })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: '返回（愚者研习资料）' }));
+    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
   });
 
   it('shows saved daily fortune examples and full daily history for each card', async () => {
@@ -187,7 +199,7 @@ describe('CardMetadataManager', () => {
     expect(onShowSnackbar).toHaveBeenCalledWith('已开始下载当前筛选 78 张的表格。');
   });
 
-  it('closes the booklet export menu when clicking outside', async () => {
+  it('closes the booklet export dialog with Escape', async () => {
     const user = userEvent.setup();
 
     render(
@@ -202,7 +214,8 @@ describe('CardMetadataManager', () => {
     await user.click(screen.getByRole('button', { name: '成册：导出 PDF / 表格 / Markdown' }));
     expect(screen.getByRole('menu')).toBeInTheDocument();
 
-    await user.click(screen.getByText('塔罗牌库'));
+    expect(screen.getByRole('dialog', { name: '成册' })).toBeInTheDocument();
+    await user.keyboard('{Escape}');
 
     await waitFor(() => {
       expect(screen.queryByRole('menu')).not.toBeInTheDocument();

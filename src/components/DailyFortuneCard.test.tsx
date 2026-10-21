@@ -42,6 +42,53 @@ const renderCard = (props: Partial<React.ComponentProps<typeof DailyFortuneCard>
 };
 
 describe('DailyFortuneCard', () => {
+  it('can draw once directly while keeping the number-selection shuffle available', async () => {
+    const onGenerateWithNumber = vi.fn();
+    renderCard({ embedded: true, onGenerateWithNumber });
+    await userEvent.click(screen.getByRole('button', { name: '随机一张' }));
+    expect(onGenerateWithNumber).toHaveBeenCalledTimes(1);
+    const [number, index, replacing] = onGenerateWithNumber.mock.calls[0];
+    expect(number).toBeGreaterThanOrEqual(1);
+    expect(number).toBeLessThanOrEqual(78);
+    expect(index).toBeGreaterThanOrEqual(0);
+    expect(index).toBeLessThan(78);
+    expect(replacing).toBe(false);
+  });
+
+  it('lets users inspect the reversed card while writing without losing their text or changing the card', async () => {
+    const props = renderCard({ fortune: { ...baseFortune, isReversed: true }, fortunes: [baseFortune] });
+    await userEvent.click(screen.getByRole('button', { name: '写下第一直觉' }));
+    await userEvent.type(screen.getByRole('textbox', { name: '第一直觉' }), '边看牌边写');
+    await userEvent.click(screen.getByRole('button', { name: '放大女祭司牌面' }));
+    expect(screen.getByRole('dialog', { name: '女祭司 · 逆位' })).toBeInTheDocument();
+    await userEvent.keyboard('{Escape}');
+    expect(screen.getByRole('textbox', { name: '第一直觉' })).toHaveValue('边看牌边写');
+    expect(props.onUpdateCard).not.toHaveBeenCalled();
+    expect(props.onArchive).not.toHaveBeenCalled();
+  });
+
+  it('opens the most recent past unreviewed record, saves to that record, and links its card history', async () => {
+    const previous = { ...baseFortune, id: 'older', date: '2020-01-02', archivedAt: '2020-01-02T20:00:00Z', initialImpression: '上次的想法' };
+    const onOpenCardHistory = vi.fn();
+    const props = renderCard({ fortunes: [previous], onOpenCardHistory });
+    await userEvent.click(screen.getByRole('button', { name: /上次的「女祭司」还没回看/ }));
+    await userEvent.type(screen.getByRole('textbox', { name: '今日回看' }), '补上后来的观察');
+    await userEvent.click(screen.getByRole('button', { name: '保存记录' }));
+    expect(props.onUpdateReflection).toHaveBeenCalledWith('older', { initialImpression: '上次的想法', dailyReview: '补上后来的观察' });
+    await userEvent.click(await screen.findByRole('button', { name: '查看「女祭司」的记录' }));
+    expect(onOpenCardHistory).toHaveBeenCalledWith('女祭司');
+  });
+
+  it('can skip a past review across remounts without editing or deleting it', async () => {
+    const props = { ...defaultProps, fortunes: [{ ...baseFortune, archivedAt: baseFortune.createdAt }], ownerScope: 'skip-user' };
+    const first = render(<DailyFortuneCard {...props} />);
+    await userEvent.click(screen.getByRole('button', { name: '暂时略过日运回看' }));
+    first.unmount();
+    render(<DailyFortuneCard {...props} />);
+    expect(screen.queryByRole('button', { name: /上次的/ })).not.toBeInTheDocument();
+    expect(props.onUpdateReflection).not.toHaveBeenCalled();
+    expect(props.onDeleteFortunes).not.toHaveBeenCalled();
+  });
   it('keeps the writing page open on Back when the draft cannot be persisted', async () => {
     const user = userEvent.setup();
     renderCard({ fortune: baseFortune, fortunes: [baseFortune] });

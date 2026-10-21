@@ -21,6 +21,7 @@ interface HomeTabProps {
   isAuthLoading?: boolean;
   onNavigate: (tab: string) => void;
   onOpenCardLibrary?: (cardId?: string) => void;
+  onOpenCardHistory?: (cardName: string) => void;
   onSearch: (query: string) => void;
   onSelectSpread: (spread: string, category?: string) => void;
   dailyFortune: ReturnType<typeof useDailyFortune>;
@@ -35,6 +36,7 @@ export const HomeTab: React.FC<HomeTabProps> = ({
   onUpdateQuizMemory,
   onNavigate,
   onOpenCardLibrary,
+  onOpenCardHistory,
   onSearch,
   dailyFortune,
 }) => {
@@ -71,6 +73,10 @@ export const HomeTab: React.FC<HomeTabProps> = ({
   );
   const annotationRevision = useAnnotationRevision();
   const modifiedAnnotationCount = useMemo(() => cardAnnotationService.getModifiedCardIds().length, [annotationRevision]);
+  const recordedCardCount = useMemo(() => new Set([
+    ...realReadings.flatMap(reading => reading.cards.map(card => card.name).filter(Boolean)),
+    ...fortunes.map(item => item.cardName),
+  ]).size, [realReadings, fortunes]);
   return (
     <motion.div
       key="home"
@@ -114,6 +120,7 @@ export const HomeTab: React.FC<HomeTabProps> = ({
             onUpdateReflection={updateDailyFortuneReflection}
             onSaveToCardAnnotation={saveDailyFortuneToCardAnnotation}
             onDeleteFortunes={deleteDailyFortunes}
+            onOpenCardHistory={onOpenCardHistory}
           />
         </div>
 
@@ -184,7 +191,7 @@ export const HomeTab: React.FC<HomeTabProps> = ({
             <span className="min-w-0">
               <span className="block truncate text-xs font-medium text-forest-ink sm:text-sm sm:font-semibold">牌义注疏</span>
               <span className="mt-1 block text-xs leading-relaxed text-forest-muted">
-                已自定义 {modifiedAnnotationCount} 张
+                {recordedCardCount > 0 ? `有记录 ${recordedCardCount} 张 · 自定义 ${modifiedAnnotationCount} 张` : `已自定义 ${modifiedAnnotationCount} 张`}
               </span>
             </span>
           </div>

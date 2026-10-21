@@ -42,6 +42,7 @@ import { ConfirmDialog } from './ConfirmDialog';
 import { readLocalDraft, useLocalDraft } from '../hooks/useLocalDraft';
 import { PageView } from './PageView';
 import { scrollFocusedFieldIntoView } from '../lib/mobileFocus';
+import { DailyReflectionCard } from './DailyReflectionCard';
 
 interface DailyFortuneArchiveModalProps {
   fortunes: DailyFortune[];
@@ -1052,16 +1053,7 @@ export const DailyFortuneArchiveModal: React.FC<DailyFortuneArchiveModalProps> =
               </div>
           <PageView isOpen={Boolean(editingFortune)} onBack={requestCloseEdit} title="补写日运">
             {editingFortune && <>
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <h3 className="mt-1 font-serif text-lg font-bold text-forest-ink">
-                        {editingFortune.cardName} · {editingFortune.isReversed ? '逆位' : '正位'}
-                      </h3>
-                      <p className="mt-1 text-xs leading-relaxed text-forest-muted">
-                        先保留第一眼的感受，再温和地回看今天。
-                      </p>
-                    </div>
-                  </div>
+                  <DailyReflectionCard fortune={editingFortune} description="先保留第一眼的感受，再回看这一天。" />
 
                   <div className="mt-3 space-y-2.5 sm:mt-4 sm:space-y-3">
                     <label className="block">

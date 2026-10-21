@@ -3,12 +3,12 @@ import { motion, AnimatePresence } from 'motion/react';
 import { usePwaInstallPrompt } from '../hooks/usePwaInstallPrompt';
 
 export function PwaInstallPrompt({ onOpenGuide, hidden = false }: { onOpenGuide: () => void; hidden?: boolean }) {
-  const { canInstall, dismiss, install, isIos, shouldShow } = usePwaInstallPrompt();
+  const { canInstall, dismiss, snooze, install, isIos, shouldShow } = usePwaInstallPrompt();
   const promptText = canInstall
-    ? '放到桌面后，下次可以直接打开。安装方法和提醒设置都在菜单的“添加到桌面”里。'
+    ? '下次可以从桌面直接打开，记录仍会保留。'
     : isIos
-      ? '在 Safari 点分享，再选“添加到主屏幕”。也可在菜单的“添加到桌面”里关闭提醒。'
-      : '安装方法和提醒设置都在菜单的“添加到桌面”里；已有图标可以选择不再提醒。';
+      ? '在 Safari 点分享，再选“添加到主屏幕”。'
+      : '下次可以从桌面直接打开，添加方法可随时在设置中查看。';
 
   return (
     <AnimatePresence>
@@ -35,6 +35,7 @@ export function PwaInstallPrompt({ onOpenGuide, hidden = false }: { onOpenGuide:
             <button type="button" onClick={dismiss} className="min-h-11 rounded-full px-3.5 text-xs font-medium text-forest-muted transition-colors hover:bg-forest-accent/5 hover:text-forest-ink">
               不再提醒
             </button>
+            <button type="button" onClick={snooze} className="min-h-11 rounded-full px-3 text-xs text-forest-muted hover:bg-forest-accent/5">稍后</button>
             {canInstall ? (
               <button
                 type="button"

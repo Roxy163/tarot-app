@@ -34,6 +34,7 @@ import { readJsonArrayWithBackup, writeJsonWithBackup } from '../../lib/safeLoca
 import { formatReadingDateTime } from '../../lib/dateFormat';
 import { getCardImageUrl } from '../../constants';
 import { trackEvent } from '../../lib/analytics';
+import { StudyExamples } from '../StudyExamples';
 import {
   buildPublicCardExampleGroups,
   buildPublicSpreadGroups,
@@ -1002,6 +1003,7 @@ export const PublicTab: React.FC<PublicTabProps> = ({
         className="space-y-3 sm:space-y-4"
       >
         {renderSquareHeader()}
+        {(activeView === 'readings' || activeView === 'practice') && <StudyExamples />}
         {activeView === 'readings' && renderReadingFilters()}
         {activeView === 'readings' && renderReadingsView()}
         {activeView === 'cards' && renderCardsView()}

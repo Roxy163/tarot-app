@@ -12,6 +12,8 @@ const PROMPT_REQUEST_EVENT = 'tarot:pwa-install-prompt-requested';
 const PREFERENCE_KEY = 'tarot_pwa_install_reminder';
 const PREFERENCE_EVENT = 'tarot:pwa-install-preference-changed';
 const INSTALL_USED_EVENT = 'tarot:pwa-install-event-used';
+const SNOOZE_KEY = 'tarot_pwa_install_snoozed_until';
+const SNOOZE_EVENT = 'tarot:pwa-install-snoozed';
 export type InstallReminderPreference = 'auto' | 'never' | 'installed';
 
 interface PromptRequestDetail {
@@ -55,6 +57,11 @@ const hasPromptBeenRequested = () => {
   }
 };
 
+const readSnoozedUntil = () => {
+  try { return Number(localStorage.getItem(SNOOZE_KEY)) || 0; }
+  catch { return 0; }
+};
+
 const rememberPromptRequested = () => {
   try {
     if (!localStorage.getItem(READY_KEY)) {
@@ -96,6 +103,7 @@ export function usePwaInstallPrompt() {
   const installSourceRef = useRef<string>('unknown');
   const [reminderPreference, setPreferenceState] = useState(readReminderPreference);
   const [promptRequested, setPromptRequested] = useState(() => hasPromptBeenRequested());
+  const [snoozedUntil, setSnoozedUntil] = useState(readSnoozedUntil);
   const [isStandalone, setIsStandalone] = useState(() => (
     typeof window !== 'undefined' ? isStandaloneDisplay() : false
   ));
@@ -108,10 +116,27 @@ export function usePwaInstallPrompt() {
     try { localStorage.setItem(PREFERENCE_KEY, preference); }
     catch { persisted = false; }
     setPreferenceState(preference);
+    if (preference === 'auto') {
+      try { localStorage.removeItem(SNOOZE_KEY); } catch { /* The current page still updates. */ }
+      setSnoozedUntil(0);
+      window.dispatchEvent(new CustomEvent(SNOOZE_EVENT, { detail: 0 }));
+    }
     window.dispatchEvent(new CustomEvent(PREFERENCE_EVENT, { detail: preference }));
     return persisted;
   }, []);
   const dismiss = useCallback(() => setReminderPreference('never'), [setReminderPreference]);
+  const snooze = useCallback(() => {
+    const until = Date.now() + 24 * 60 * 60 * 1000;
+    try { localStorage.setItem(SNOOZE_KEY, String(until)); } catch { /* Keep the reminder quiet in this page. */ }
+    setSnoozedUntil(until);
+    window.dispatchEvent(new CustomEvent(SNOOZE_EVENT, { detail: until }));
+  }, []);
+
+  useEffect(() => {
+    if (snoozedUntil <= Date.now()) return;
+    const timer = window.setTimeout(() => setSnoozedUntil(0), snoozedUntil - Date.now());
+    return () => window.clearTimeout(timer);
+  }, [snoozedUntil]);
 
   const install = useCallback(async () => {
     const event = installEventRef.current;
@@ -170,6 +195,7 @@ export function usePwaInstallPrompt() {
     const handlePreference = (event: Event) => {
       setPreferenceState((event as CustomEvent<InstallReminderPreference>).detail);
     };
+    const handleSnooze = (event: Event) => setSnoozedUntil((event as CustomEvent<number>).detail);
 
     const handleBeforeInstallPrompt = (event: Event) => {
       event.preventDefault();
@@ -200,12 +226,14 @@ export function usePwaInstallPrompt() {
       if (event.key === DISMISS_KEY || event.key === PREFERENCE_KEY || event.key === null) {
         setPreferenceState(readReminderPreference());
       }
+      if (event.key === SNOOZE_KEY || event.key === null) setSnoozedUntil(readSnoozedUntil());
     };
 
     window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
     window.addEventListener('appinstalled', handleInstalled);
     window.addEventListener(PREFERENCE_EVENT, handlePreference);
     window.addEventListener(INSTALL_USED_EVENT, clearInstallEvent);
+    window.addEventListener(SNOOZE_EVENT, handleSnooze);
     window.addEventListener(PROMPT_REQUEST_EVENT, handlePromptRequest);
     window.addEventListener('storage', handleStorage);
     syncStandalone();
@@ -216,6 +244,7 @@ export function usePwaInstallPrompt() {
       window.removeEventListener('appinstalled', handleInstalled);
       window.removeEventListener(PREFERENCE_EVENT, handlePreference);
       window.removeEventListener(INSTALL_USED_EVENT, clearInstallEvent);
+      window.removeEventListener(SNOOZE_EVENT, handleSnooze);
       window.removeEventListener(PROMPT_REQUEST_EVENT, handlePromptRequest);
       window.removeEventListener('storage', handleStorage);
     };
@@ -224,11 +253,12 @@ export function usePwaInstallPrompt() {
   return {
     canInstall: Boolean(installEvent) && !isStandalone,
     dismiss,
+    snooze,
     install,
     isIos,
     isStandalone,
     reminderPreference,
     setReminderPreference,
-    shouldShow: !isStandalone && reminderPreference === 'auto' && promptRequested,
+    shouldShow: !isStandalone && reminderPreference === 'auto' && promptRequested && snoozedUntil <= Date.now(),
   };
 }

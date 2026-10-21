@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import { X, User, ChevronRight, LogOut, Database, ShieldCheck, ArrowRight, LogIn, CheckCircle, AlertTriangle, Mail, Eye, EyeOff, Settings } from 'lucide-react';
 import { TarotReading, SpreadDefinition, UserProfile } from './types';
-import { OFFICIAL_SPREADS, PAVILION_PROVERBS } from './constants';
+import { OFFICIAL_SPREADS, PAVILION_PROVERBS, TAROT_CARDS } from './constants';
 import { Modal } from './components/Modal';
 import { PageView } from './components/PageView';
 import { AuthProvider, useAuth } from './context/AuthContext';
@@ -12,6 +12,7 @@ import { getCachedUserProfile, getOrCreateUserProfile, getUserModeratorStatus, h
 import { clearDeletedAccountLocalData } from './lib/accountDeletion';
 import { isValidPassword } from './lib/utils';
 import { HomeTab } from './components/tabs/HomeTab';
+import { DailyFortuneArchiveModal } from './components/DailyFortuneArchiveModal';
 import { SettingsTab } from './components/tabs/SettingsTab';
 import { MainLayout } from './components/layouts/MainLayout';
 import { SplashScreen } from './components/SplashScreen';
@@ -125,6 +126,7 @@ function AppContent() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isFeedbackModalOpen, setIsFeedbackModalOpen] = useState(false);
   const [isInstallGuideOpen, setIsInstallGuideOpen] = useState(false);
+  const [isDailyArchiveOpen, setIsDailyArchiveOpen] = useState(false);
   const [legalModal, setLegalModal] = useState<{ isOpen: boolean; tab: LegalTab }>({ isOpen: false, tab: 'privacy' });
   const [isSecurityModalOpen, setIsSecurityModalOpen] = useState(false);
   const [showAuthPage, setShowAuthPage] = useState(false);
@@ -164,6 +166,7 @@ function AppContent() {
   const [dailyProverb, setDailyProverb] = useState('');
   const [highlightedReadingId, setHighlightedReadingId] = useState<string | null>(null);
   const [metadataInitialCardId, setMetadataInitialCardId] = useState<string | undefined>(undefined);
+  const [historyCardId, setHistoryCardId] = useState<string | undefined>();
   const highlightTimerRef = useRef<number | null>(null);
   const snackbarTimerRef = useRef<number | null>(null);
   const activeTabRef = useRef<AppTab>(activeTab);
@@ -443,6 +446,8 @@ function AppContent() {
     setEditingReading(null);
     setShowLogoutConfirm(false);
     setIsSecurityModalOpen(false);
+    setIsDailyArchiveOpen(false);
+    setHistoryCardId(undefined);
     setActiveTab(current => (forceHome || current === 'profile' ? 'home' : current));
   }, [setEditingReading]);
 
@@ -540,6 +545,13 @@ function AppContent() {
     setMetadataInitialCardId(cardId);
     navigateToTab('metadata');
   }, [navigateToTab]);
+  const handleOpenCardHistory = useCallback((cardName: string) => {
+    const card = TAROT_CARDS.find(item => item.name === cardName);
+    if (card) {
+      setHistoryCardId(card.id);
+      trackEvent('card_history_opened', { source: activeTabRef.current });
+    }
+  }, []);
 
   const handleManualCloudSyncWithProfile = useCallback(async () => {
     await handleManualCloudSync();
@@ -1697,6 +1709,7 @@ function AppContent() {
               navigateToTab(tab);
             }}
             onOpenCardLibrary={handleOpenCardLibrary}
+            onOpenCardHistory={handleOpenCardHistory}
             onSearch={setSearchQuery}
             onSelectSpread={(spread: string, category?: string) => {
               const spreadDef = spreads.find(s => s.name === spread);
@@ -1731,6 +1744,9 @@ function AppContent() {
           <Suspense fallback={<SuspenseFallback />}>
             <PrivateTab
               readings={readings}
+              dailyFortuneCount={dailyFortune.fortunes.filter(item => item.archivedAt).length}
+              onOpenDailyArchive={() => { setIsDailyArchiveOpen(true); trackEvent('daily_archive_opened', { source: 'library' }); }}
+              onOpenCardHistory={handleOpenCardHistory}
               ownerName={ownAuthorName}
               searchQuery={searchQuery}
               setSearchQuery={setSearchQuery}
@@ -1870,13 +1886,38 @@ function AppContent() {
       </AnimatePresence>
       </div>
 
-      <Suspense fallback={null}>
+      <Suspense fallback={historyCardId ? <PageView isOpen onBack={() => setHistoryCardId(undefined)} title="研习资料"><p role="status">正在加载…</p></PageView> : null}>
+        {historyCardId && <CardMetadataManager
+          metadata={cardMetadata}
+          onUpdate={setCardMetadata}
+          readings={readings}
+          dailyFortunes={dailyFortune.fortunes}
+          cardKeywordMemory={cardKeywordMemory}
+          userId={session?.uid}
+          isLoggedIn={Boolean(session)}
+          initialCardId={historyCardId}
+          detailOnly
+          onClose={() => setHistoryCardId(undefined)}
+          onShowSnackbar={message => setSnackbar({ isOpen: true, message })}
+          ownerName={ownAuthorName}
+        />}
         <ReadingDetailModal
           reading={selectedReadingDetail}
           onClose={() => setSelectedReadingDetail(null)}
           onEdit={handleEditReadingNavigate}
         />
       </Suspense>
+      <DailyFortuneArchiveModal
+        key={session?.uid || 'guest'}
+        isOpen={isDailyArchiveOpen}
+        onClose={() => setIsDailyArchiveOpen(false)}
+        fortunes={dailyFortune.fortunes.filter(item => Boolean(item.archivedAt))}
+        onUpdateReflection={dailyFortune.updateDailyFortuneReflection}
+        onSaveToCardAnnotation={dailyFortune.saveDailyFortuneToCardAnnotation}
+        onDeleteFortunes={dailyFortune.deleteDailyFortunes}
+        ownerName={ownAuthorName}
+        ownerScope={session?.uid || 'guest'}
+      />
       </MainLayout>
     </div>
     </>

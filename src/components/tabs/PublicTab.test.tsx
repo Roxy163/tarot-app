@@ -30,6 +30,20 @@ const createReading = (overrides: Partial<TarotReading> = {}): TarotReading => (
 });
 
 describe('PublicTab', () => {
+  it('keeps fictional study examples separate from real public posts and returns to the same square view', async () => {
+    vi.mocked(getPublicReadings).mockResolvedValueOnce([]);
+    render(<PublicTab readings={[]} cardMetadata={[]} onTagClick={vi.fn()} onAuthorClick={vi.fn()} onProcessAi={vi.fn()} />);
+    await userEvent.click(screen.getByRole('button', { name: '示范案例' }));
+    expect(screen.getByText(/以下为虚构情境/)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: /今天怎样安排学习/ }));
+    expect(screen.getByRole('main', { name: '隐士 · 记录示范' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: '回看示例（虚构）' })).toBeInTheDocument();
+    await userEvent.keyboard('{Escape}');
+    await userEvent.click(await screen.findByRole('button', { name: '返回（示范案例）' }));
+    await waitFor(() => expect(screen.getByRole('tab', { name: '手记' })).toHaveAttribute('aria-selected', 'true'));
+    expect(screen.queryByRole('button', { name: /查看手记：今天怎样安排学习/ })).not.toBeInTheDocument();
+    expect(setPublicReadingLike).not.toHaveBeenCalled();
+  });
   beforeEach(() => {
     localStorage.clear();
     vi.mocked(getPublicReadings).mockReset();
