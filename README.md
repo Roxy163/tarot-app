@@ -113,6 +113,8 @@ FEEDBACK_TO_EMAIL=roxy163@outlook.com
 
 反馈与建议功能使用 Resend 从 Cloudflare Pages Functions 发送到作者邮箱。`RESEND_API_KEY` 建议设置为 Cloudflare Secret；`RESEND_FROM_EMAIL` 必须是 Resend 已验证的发件地址。未配置时，前端会保留草稿并提供手动邮箱兜底。
 
+Netlify 正式站点及其预览站点共用 `https://tarot-pavilion.pages.dev/api/feedback`，文字和附件直接发送到现有邮件接口，无需在 Netlify 重复填写邮件密钥。旧版 Netlify `/api/feedback` 保留同目标的 307 转发；不再使用早期 FormSubmit 接口。两站使用相同 Firebase 项目，但浏览器本机资料按域名隔离，游客换站前应导出备份。
+
 访问统计建议：
 
 - Cloudflare Web Analytics 看站点访问、设备、地区与性能。

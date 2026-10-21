@@ -11,6 +11,19 @@ describe('FeedbackModal', () => {
   });
   afterEach(() => vi.unstubAllGlobals());
 
+  it('keeps attachments when reopening during this app session but clears them on account changes', async () => {
+    const callbacks = { onClose: vi.fn(), onSent: vi.fn() };
+    const view = render(<FeedbackModal {...callbacks} isOpen />);
+    await userEvent.upload(screen.getByLabelText('上传反馈附件'), new File([PNG_BYTES], '保留.png', { type: 'image/png' }));
+    expect(await screen.findByText('保留.png')).toBeInTheDocument();
+    view.rerender(<FeedbackModal {...callbacks} isOpen={false} />);
+    view.rerender(<FeedbackModal {...callbacks} isOpen />);
+    expect(await screen.findByText('保留.png')).toBeInTheDocument();
+    expect(screen.getByText(/刷新或关闭浏览器后需重新添加/)).toBeInTheDocument();
+    view.rerender(<FeedbackModal {...callbacks} isOpen userContext={{ authState: 'signed-in', uid: 'another' }} />);
+    await waitFor(() => expect(screen.queryByText('保留.png')).not.toBeInTheDocument());
+  });
+
   it('保留简洁表单，按需展开发送说明和联系方式', async () => {
     const user = userEvent.setup();
     render(<FeedbackModal isOpen onClose={vi.fn()} onSent={vi.fn()} />);

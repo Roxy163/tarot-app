@@ -5,6 +5,8 @@ import {
   readJsonArrayWithBackup,
   readJsonRecordWithBackup,
   writeJsonWithBackup,
+  commitLocalRestore,
+  recoverLocalRestore,
 } from './safeLocalStorage';
 
 describe('safeLocalStorage', () => {
@@ -23,7 +25,8 @@ describe('safeLocalStorage', () => {
       const setItem = vi.spyOn(Storage.prototype, 'setItem');
 
       expect(read('record')).toEqual(JSON.parse(valid));
-      expect(getItem).toHaveBeenCalledTimes(1);
+      expect(getItem).toHaveBeenCalledTimes(2);
+      expect(getItem).toHaveBeenCalledWith('tarot_restore_transaction');
       expect(getItem).toHaveBeenCalledWith('record');
       expect(setItem).not.toHaveBeenCalled();
     });
@@ -46,6 +49,56 @@ describe('safeLocalStorage', () => {
       });
       expect(read('record')).toBeNull();
     });
+  });
+
+  it('commits all restore stores and their latest mirrors together', () => {
+    localStorage.setItem('tarot_guest_data', '["old"]');
+    commitLocalRestore({ tarot_guest_data: ['new'], tarot_daily_fortunes: ['day'] });
+    expect(readJsonArrayWithBackup('tarot_guest_data')).toEqual(['new']);
+    expect(readJsonArrayWithBackup('tarot_daily_fortunes')).toEqual(['day']);
+    expect(localStorage.getItem('tarot_restore_transaction')).toBeNull();
+    expect(localStorage.getItem('tarot_guest_data__backup')).toBe('["old"]');
+  });
+
+  it('rolls back every primary on a partial failure without polluting mirrors', () => {
+    localStorage.setItem('tarot_guest_data', '["old"]');
+    localStorage.setItem('tarot_guest_data__latest', '["old"]');
+    const original = Storage.prototype.setItem;
+    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(function(key, value) {
+      if (key === 'tarot_daily_fortunes' && value === '["new"]') throw new DOMException('full', 'QuotaExceededError');
+      original.call(this, key, value);
+    });
+    expect(() => commitLocalRestore({ tarot_guest_data: ['new'], tarot_daily_fortunes: ['new'] })).toThrow('恢复未完成');
+    expect(localStorage.getItem('tarot_guest_data')).toBe('["old"]');
+    expect(localStorage.getItem('tarot_guest_data__latest')).toBe('["old"]');
+    expect(localStorage.getItem('tarot_daily_fortunes')).toBeNull();
+    expect(localStorage.getItem('tarot_restore_transaction')).toBeNull();
+  });
+
+  it('recovers an interrupted restore before returning saved data', () => {
+    localStorage.setItem('tarot_restore_transaction', JSON.stringify([['tarot_guest_data', '["old"]'], ['tarot_daily_fortunes', null]]));
+    localStorage.setItem('tarot_guest_data', '["partial"]');
+    localStorage.setItem('tarot_daily_fortunes', '["partial"]');
+    expect(readJsonArrayWithBackup('tarot_guest_data')).toEqual(['old']);
+    expect(localStorage.getItem('tarot_daily_fortunes')).toBeNull();
+  });
+
+  it('keeps existing data and gives a readable error when the journal cannot fit', () => {
+    localStorage.setItem('tarot_guest_data', '["old"]');
+    const original = Storage.prototype.setItem;
+    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(function(key, value) {
+      if (key === 'tarot_restore_transaction') throw new DOMException('full', 'QuotaExceededError');
+      original.call(this, key, value);
+    });
+    expect(() => commitLocalRestore({ tarot_guest_data: ['new'] })).toThrow('恢复未完成');
+    expect(readJsonArrayWithBackup('tarot_guest_data')).toEqual(['old']);
+  });
+
+  it('does not allow a recovery journal to change authentication data', () => {
+    localStorage.setItem('auth', 'retained');
+    localStorage.setItem('tarot_restore_transaction', JSON.stringify([['auth', 'tampered']]));
+    expect(recoverLocalRestore).toThrow('异常');
+    expect(localStorage.getItem('auth')).toBe('retained');
   });
 
   it('saves the primary record even when the previous backup cannot fit', () => {

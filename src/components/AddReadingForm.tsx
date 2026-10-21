@@ -3,8 +3,8 @@ import { revealReadingSpread } from '../lib/revealReadingSpread';
 import React, { useState, useEffect, FormEvent, useRef, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'motion/react';
-import { Sparkles, Layers, User, MessageSquare, BookOpen, Settings, Save, Hash, Orbit, Home, Wind, Info, Copy, X } from 'lucide-react';
-import { CardKeywordMemory, SpreadDefinition, TarotCardMetadata, ReadingSlotData, TarotReading, ReadingFormData, ReadingEditorDraft, ReadingEditorFields } from '../types';
+import { Sparkles, Layers, User, MessageSquare, BookOpen, Settings, Save, Hash, Orbit, Home, Wind, Info, Copy, X, Undo2 } from 'lucide-react';
+import { CardKeywordMemory, SpreadDefinition, TarotCardMetadata, ReadingSlotData, TarotReading, ReadingFormData, ReadingEditorDraft, ReadingEditorFields, ReadingSpreadSnapshot, ReadingSpreadSwitch } from '../types';
 import { readLocalDraft, useLocalDraft } from '../hooks/useLocalDraft';
 import { useModalFocus } from '../hooks/useModalFocus';
 import { toLocalReadingDate } from '../lib/readingDate';
@@ -51,6 +51,7 @@ import { convertGridSlotsToFreeLayout, ensureFreeLayoutSlots } from '../lib/free
 import { useBodyScrollLock } from '../hooks/useBodyScrollLock';
 import { ReadingAiPromptMode, buildReadingAiPrompt, getGentleAiPromptNotice } from '../lib/readingAiPrompt';
 import { applyTagSuggestionToInput, buildReadingTagSuggestions } from '../lib/readingTagSuggestions';
+import { buildSpreadSwitch, countRemovedSpreadContent, spreadSnapshotContent } from '../lib/readingSpreadSwitch';
 
 interface AddReadingFormProps {
   onSubmit: (data: Partial<ReadingFormData>) => void | boolean | Promise<void | boolean>;
@@ -278,6 +279,9 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
     return [{ name: '', isReversed: false }];
   });
   const [history, setHistory] = useState<ReadingSlotData[][]>(restoredDraft?.history || []);
+  const [spreadSwitchHistory, setSpreadSwitchHistory] = useState<ReadingSpreadSwitch[]>(restoredDraft?.spreadSwitchHistory || []);
+  const [pendingSpreadSwitch, setPendingSpreadSwitch] = useState<{ spread: SpreadDefinition; category?: string } | null>(null);
+  const [confirmSpreadUndo, setConfirmSpreadUndo] = useState(false);
   const [showSpreadManager, setShowSpreadManager] = useState(false);
   const [showPicker, setShowPicker] = useState(false);
   const [newSpreadName, setNewSpreadName] = useState('');
@@ -334,9 +338,14 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
   const initialFields = useRef(JSON.stringify(formData));
   const draftStarted = useRef(Boolean(restoredDraft || initialData?.id));
   if (JSON.stringify(formData) !== initialFields.current || cardSlots.some(slot => slot.name) || isEditingSession) draftStarted.current = true;
+  const contentRevision = JSON.stringify({ formData, cardSlots, cardInterpretations, cardQuestions, gridCols, gridRows, isEditingSession });
+  const initialContentRevision = useRef(contentRevision);
+  const draftUpdatedAt = useMemo(() => new Date().toISOString(), [contentRevision]);
   const draft = useLocalDraft<ReadingEditorDraft>(draftKey, {
     formData, cardSlots, cardInterpretations, cardQuestions, history,
     activeSlotIndex, readingDetailSlotIndex, gridCols, gridRows, isEditingSession,
+    spreadSwitchHistory, updatedAt: draftUpdatedAt,
+    hasUnsavedChanges: Boolean((restoredDraft && restoredDraft.hasUnsavedChanges !== false) || contentRevision !== initialContentRevision.current || !initialData?.id),
   }, draftStarted.current);
 
   const {
@@ -488,23 +497,6 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
     document.body.removeChild(textarea);
     if (!copied) throw new Error('Copy command failed');
   };
-
-  useEffect(() => {
-    if (skipRestoredEffect('daily')) return;
-    if (isDailyMode && !initialData) {
-      setFormData(prev => ({
-        ...prev,
-        spread: '单牌阵',
-        category: '日运',
-        layoutType: 'horizontal'
-      }));
-      setCardSlots([{ name: '', isReversed: false, label: '今日日运' }]);
-      setReadingDetailSlotIndex(0);
-    } else if (!isDailyMode && formData.spread === '单牌阵' && !initialData) {
-      setCardSlots([{ name: '', isReversed: false, label: '单牌解读' }]);
-      setReadingDetailSlotIndex(0);
-    }
-  }, [isDailyMode, formData.spread]);
 
   // Track spread changes to prompt for re-ordering
   useEffect(() => {
@@ -841,36 +833,55 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
     setIsEditingSession(true);
   };
 
-  const handleSpreadSelection = (spreadDef: SpreadDefinition) => {
+  const currentSpreadSnapshot = (): ReadingSpreadSnapshot => ({
+    question: formData.question, category: formData.category, spread: formData.spread, layoutType: formData.layoutType,
+    cardSlots, cardInterpretations, cardQuestions, history, activeSlotIndex, readingDetailSlotIndex,
+    gridCols, gridRows, isEditingSession,
+  });
+  const applySpreadSnapshot = (snapshot: ReadingSpreadSnapshot) => {
+    savedSpreadDefinition.current = { name: snapshot.spread, signature: JSON.stringify(spreads.find(spread => spread.name === snapshot.spread)) };
+    setFormData(prev => ({ ...prev, question: snapshot.question, category: snapshot.category, spread: snapshot.spread, layoutType: snapshot.layoutType }));
+    setCardSlots(snapshot.cardSlots); setCardInterpretations(snapshot.cardInterpretations); setCardQuestions(snapshot.cardQuestions);
+    setGridCols(snapshot.gridCols); setGridRows(snapshot.gridRows); setHistory(snapshot.history);
+    setActiveSlotIndex(snapshot.activeSlotIndex); setReadingDetailSlotIndex(snapshot.readingDetailSlotIndex); setIsEditingSession(snapshot.isEditingSession);
     setSpreadRevealRequest(value => value + 1);
-    setFormData(prev => ({ ...prev, spread: spreadDef.name, layoutType: spreadDef.layout }));
-    setGridCols(spreadDef.gridCols || 5);
-    setGridRows(spreadDef.gridRows || 5);
-    
-    const nextSlots = mapSlotsToSpread(cardSlots, spreadDef);
-    setCardSlots(spreadDef.layout === 'free' ? ensureFreeLayoutSlots(nextSlots) : nextSlots);
+  };
+  const confirmSpreadSelection = (spread: SpreadDefinition, category?: string) => {
+    const before = currentSpreadSnapshot();
+    const after = buildSpreadSwitch(before, spread, category);
+    if (spreadSnapshotContent(before) === spreadSnapshotContent(after)) {
+      setSpreadRevealRequest(value => value + 1);
+      return;
+    }
+    setSpreadSwitchHistory(previous => [...previous, { before, after }].slice(-5));
+    applySpreadSnapshot(after);
+    setPendingSpreadSwitch(null);
+  };
+  const handleSpreadSelection = (spread: SpreadDefinition, category?: string) => {
+    if (countRemovedSpreadContent(currentSpreadSnapshot(), spread)) setPendingSpreadSwitch({ spread, category });
+    else confirmSpreadSelection(spread, category);
+  };
+  const undoSpreadSwitch = () => {
+    const entry = spreadSwitchHistory.at(-1);
+    if (!entry) return;
+    applySpreadSnapshot(entry.before);
+    setSpreadSwitchHistory(previous => previous.slice(0, -1));
+    setConfirmSpreadUndo(false);
   };
 
   const handleQuickThemeSelect = (spreadName: string, category?: string) => {
     const spreadDef = spreads.find(item => item.name === spreadName);
 
     if (spreadDef) {
-      setSpreadRevealRequest(value => value + 1);
-      setFormData(prev => ({
-        ...prev,
-        spread: spreadDef.name,
-        layoutType: spreadDef.layout,
-        category: category || prev.category,
-      }));
-      setGridCols(spreadDef.gridCols || 5);
-      setGridRows(spreadDef.gridRows || 5);
-      const nextSlots = mapSlotsToSpread(cardSlots, spreadDef);
-      setCardSlots(spreadDef.layout === 'free' ? ensureFreeLayoutSlots(nextSlots) : nextSlots);
-      setActiveSlotIndex(0);
+      handleSpreadSelection(spreadDef, category);
       return;
     }
 
-    setFormData(prev => ({ ...prev, category: category || prev.category }));
+    setFormData(prev => ({
+      ...prev,
+      category: category || prev.category,
+      question: category === '日运' && !prev.question.trim() ? '今日抽牌记录' : prev.question,
+    }));
   };
 
   const shiftSlots = (dx: number, dy: number) => {
@@ -1198,6 +1209,18 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
             : null
         }
       />
+
+      {spreadSwitchHistory.length > 0 && <div className="flex justify-end border-b border-forest-accent/7">
+        <button type="button" aria-label="撤销牌阵切换" title="恢复上一个牌阵及其牌面、解读和布局" onClick={() => {
+          const last = spreadSwitchHistory.at(-1)!;
+          if (spreadSnapshotContent(currentSpreadSnapshot()) !== spreadSnapshotContent(last.after)) setConfirmSpreadUndo(true);
+          else undoSpreadSwitch();
+        }} className="inline-flex min-h-11 items-center gap-1.5 px-2 text-xs text-forest-accent"><Undo2 size={15} />撤销切换</button>
+      </div>}
+      <ConfirmDialog isOpen={Boolean(pendingSpreadSwitch)} title="切换牌阵" message={`切换到“${pendingSpreadSwitch?.spread.name || ''}”会移除 ${pendingSpreadSwitch ? countRemovedSpreadContent(currentSpreadSnapshot(), pendingSpreadSwitch.spread) : 0} 个已有牌面或解读的位置。原内容会保留在撤销记录中。`} confirmText="切换牌阵" cancelText="保留当前牌阵" onConfirm={() => {
+        if (pendingSpreadSwitch) confirmSpreadSelection(pendingSpreadSwitch.spread, pendingSpreadSwitch.category);
+      }} onClose={() => setPendingSpreadSwitch(null)} />
+      <ConfirmDialog isOpen={confirmSpreadUndo} title="撤销牌阵切换" message="切换后又修改过内容，撤销将恢复切换前的牌面、解读和布局。确定撤销吗？" confirmText="恢复切换前" cancelText="保留当前内容" onConfirm={undoSpreadSwitch} onClose={() => setConfirmSpreadUndo(false)} />
 
       {shouldShowChoicePathFields && (
         <section

@@ -259,6 +259,7 @@ export const useDailyFortune = (
     isReversed: boolean,
     source: DailyFortune['source'] = 'app-draw'
   ) => {
+    if (isAuthLoading || loadedDataKey !== activeDataKey) throw new Error('账号正在恢复，请稍后再抽牌。');
     const today = toLocalReadingDate();
     const now = new Date().toISOString();
     
@@ -276,17 +277,16 @@ export const useDailyFortune = (
       isRevealed: true
     };
 
-    setFortunes(prev => {
-      const filtered = prev.filter(f => f.date !== today);
-      return [...filtered, fortune];
-    });
+    const next = [...latestFortunesRef.current.filter(f => f.date !== today), fortune];
+    requireLocalSave(storageKey, next);
+    setFortunes(next);
     trackEvent('daily_fortune_saved', {
       source,
       is_reversed: isReversed,
       auth_state: session?.uid ? 'signed_in' : 'guest',
     });
     return fortune;
-  }, [session?.uid]);
+  }, [session?.uid, isAuthLoading, loadedDataKey, activeDataKey, storageKey, setFortunes]);
 
   const generateDailyFortune = useCallback(() => {
     const existing = getToday();
@@ -449,7 +449,7 @@ export const useDailyFortune = (
 
   const getArchivedFortunes = useCallback(() => (
     fortunes
-      .filter(f => Boolean(f.archivedAt))
+      .slice()
       .sort((a, b) => b.date.localeCompare(a.date) || b.createdAt.localeCompare(a.createdAt))
   ), [fortunes]);
 
@@ -622,6 +622,8 @@ export const useDailyFortune = (
 
   return {
     fortunes,
+    restoreFortunes: setFortunes,
+    isDataReady: !isAuthLoading && loadedDataKey === activeDataKey,
     shuffledDeck,
     shuffleDeck,
     getToday,

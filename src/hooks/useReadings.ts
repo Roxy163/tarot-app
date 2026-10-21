@@ -910,6 +910,8 @@ export const useReadings = (
     cardMetadata,
     setCardMetadata,
     cardKeywordMemory,
+    setCardKeywordMemory,
+    isDataReady: !isAuthLoading && loadedDataKey === activeDataKey,
     quizMemory,
     setQuizMemory,
     searchQuery,

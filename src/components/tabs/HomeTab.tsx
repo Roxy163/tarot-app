@@ -1,6 +1,6 @@
 import React, { useMemo } from 'react';
 import { motion } from 'motion/react';
-import { BookOpen, CheckCircle2, Edit3, Library, Sparkles, Sun } from 'lucide-react';
+import { ArrowRight, BookOpen, CheckCircle2, Edit3, Library, Sparkles, Sun } from 'lucide-react';
 import { QuizMemoryEntry, TarotReading, TarotCardMetadata } from '../../types';
 import { StudyPavilionModules } from '../StudyPavilionModules';
 import { DailyFortuneCard } from '../DailyFortuneCard';
@@ -9,6 +9,7 @@ import { useDailyFortune } from '../../hooks/useDailyFortune';
 import { cardAnnotationService } from '../../services/cardAnnotationService';
 import { getDailyReflectionParts } from '../../lib/dailyFortuneReflection';
 import { useAnnotationRevision } from '../../hooks/useAnnotationSync';
+import { findResumableReading } from '../../lib/resumableReading';
 
 interface HomeTabProps {
   session: { uid?: string; email?: string } | null;
@@ -22,6 +23,8 @@ interface HomeTabProps {
   onNavigate: (tab: string) => void;
   onOpenCardLibrary?: (cardId?: string) => void;
   onOpenCardHistory?: (cardName: string) => void;
+  onOpenDailyArchive?: () => void;
+  onResumeReading?: (id: string) => void;
   onSearch: (query: string) => void;
   onSelectSpread: (spread: string, category?: string) => void;
   dailyFortune: ReturnType<typeof useDailyFortune>;
@@ -37,6 +40,9 @@ export const HomeTab: React.FC<HomeTabProps> = ({
   onNavigate,
   onOpenCardLibrary,
   onOpenCardHistory,
+  onOpenDailyArchive,
+  onResumeReading,
+  isAuthLoading,
   onSearch,
   dailyFortune,
 }) => {
@@ -53,13 +59,14 @@ export const HomeTab: React.FC<HomeTabProps> = ({
   } = dailyFortune;
   
   const todayFortune = getToday();
+  const resumable = useMemo(() => isAuthLoading ? null : findResumableReading(session?.uid || 'guest', readings), [session?.uid, readings, isAuthLoading]);
   const realReadings = useMemo(() => readings.filter(reading => !reading.isExample), [readings]);
   const reviewedReadings = useMemo(
     () => realReadings.filter(reading => Boolean(reading.userFeedback?.trim())),
     [realReadings],
   );
   const archivedDailyFortuneCount = useMemo(
-    () => fortunes.filter(fortune => Boolean(fortune.archivedAt)).length,
+    () => fortunes.length,
     [fortunes],
   );
   const reviewedDailyFortuneCount = useMemo(
@@ -85,6 +92,11 @@ export const HomeTab: React.FC<HomeTabProps> = ({
       exit={{ opacity: 0, y: -20 }}
       className="space-y-2.5 sm:space-y-4"
     >
+      {resumable && onResumeReading && <button type="button" aria-label="继续上次记录" onClick={() => onResumeReading(resumable.id)} className="flex min-h-11 w-full items-center gap-3 border-y border-forest-accent/15 py-3 text-left text-forest-accent">
+        <Edit3 size={19} className="shrink-0" />
+        <span className="min-w-0 flex-1"><span className="block text-sm font-semibold">继续上次记录</span><span className="mt-0.5 block truncate text-xs text-forest-muted">{resumable.question} · 已填 {resumable.filled}/{resumable.total} 张</span></span>
+        <ArrowRight size={18} className="shrink-0" />
+      </button>}
       <section className="relative overflow-hidden rounded-[1.45rem] border border-forest-accent/10 bg-[linear-gradient(145deg,rgba(255,255,255,0.66),rgba(253,248,240,0.44)_55%,rgba(232,165,152,0.08))] p-2 shadow-[0_14px_42px_-36px_rgba(62,58,54,0.38)] backdrop-blur-sm sm:rounded-[1.65rem] sm:p-3.5">
         <MysticWatermark variant="sun" className="-right-10 -top-12 h-32 w-32 text-forest-accent opacity-[0.04] sm:h-40 sm:w-40" />
         <div className="absolute inset-x-5 top-0 h-px bg-gradient-to-r from-transparent via-forest-accent/16 to-transparent" />
@@ -121,6 +133,7 @@ export const HomeTab: React.FC<HomeTabProps> = ({
             onSaveToCardAnnotation={saveDailyFortuneToCardAnnotation}
             onDeleteFortunes={deleteDailyFortunes}
             onOpenCardHistory={onOpenCardHistory}
+            onOpenArchive={onOpenDailyArchive}
           />
         </div>
 

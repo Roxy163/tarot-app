@@ -144,6 +144,32 @@ export interface UserAnnotationData {
   lastUpdated: string;
 }
 
+export interface BackupNumerologySetting {
+  numerology: number;
+  meaning: string;
+  keywords: string;
+}
+
+export interface TarotBackupData {
+  readings: TarotReading[];
+  fortunes: DailyFortune[];
+  spreads: SpreadDefinition[];
+  cardMetadata: TarotCardMetadata[];
+  cardKeywordMemory: CardKeywordMemory[];
+  quizMemory: QuizMemoryEntry[];
+  annotations: Record<string, Partial<CardAnnotation>>;
+  numerology: Record<string, BackupNumerologySetting>;
+}
+
+export interface TarotBackup {
+  format: 'tarot-pavilion-backup';
+  version: 1;
+  exportedAt: string;
+  data: TarotBackupData;
+  numerologyCoverage?: 'local' | 'cached';
+  numerologyCheckedAt?: string;
+}
+
 export interface TarotReading {
   id: string;
   userId: string;
@@ -284,6 +310,30 @@ export interface ReadingEditorDraft {
   gridCols: number;
   gridRows: number;
   isEditingSession: boolean;
+  spreadSwitchHistory?: ReadingSpreadSwitch[];
+  updatedAt?: string;
+  hasUnsavedChanges?: boolean;
+}
+
+export interface ReadingSpreadSnapshot {
+  question: string;
+  category: string;
+  spread: string;
+  layoutType: string;
+  cardSlots: ReadingSlotData[];
+  cardInterpretations: string[];
+  cardQuestions: string[];
+  history: ReadingSlotData[][];
+  activeSlotIndex: number;
+  readingDetailSlotIndex: number;
+  gridCols: number;
+  gridRows: number;
+  isEditingSession: boolean;
+}
+
+export interface ReadingSpreadSwitch {
+  before: ReadingSpreadSnapshot;
+  after: ReadingSpreadSnapshot;
 }
 
 export interface DailyFortune {

@@ -125,6 +125,8 @@ export function FeedbackModal({ isOpen, onClose, onSent, userContext }: Feedback
   const [isSending, setIsSending] = useState(false);
   const [isReadingAttachments, setIsReadingAttachments] = useState(false);
   const attachmentReadVersion = useRef(0);
+  const attachmentOwner = userContext?.uid || 'guest';
+  const previousAttachmentOwner = useRef(attachmentOwner);
   const [errorMessage, setErrorMessage] = useState('');
   const [noticeMessage, setNoticeMessage] = useState('');
   const [showContactDetails, setShowContactDetails] = useState(false);
@@ -134,7 +136,8 @@ export function FeedbackModal({ isOpen, onClose, onSent, userContext }: Feedback
   useEffect(() => {
     if (!isOpen) return;
     setDraft(loadFeedbackDraft() || EMPTY_DRAFT);
-    setAttachments([]);
+    if (previousAttachmentOwner.current !== attachmentOwner) setAttachments([]);
+    previousAttachmentOwner.current = attachmentOwner;
     setHoneypot('');
     setErrorMessage('');
     setNoticeMessage('');
@@ -142,7 +145,7 @@ export function FeedbackModal({ isOpen, onClose, onSent, userContext }: Feedback
     setIsReadingAttachments(false);
     setShowContactDetails(false);
     return () => { attachmentReadVersion.current += 1; };
-  }, [isOpen]);
+  }, [isOpen, attachmentOwner]);
 
   const updateDraft = (patch: Partial<FeedbackDraft>) => {
     setDraft(current => {
@@ -214,6 +217,7 @@ export function FeedbackModal({ isOpen, onClose, onSent, userContext }: Feedback
   };
 
   const handleSubmit = async () => {
+    const version = attachmentReadVersion.current;
     setIsSending(true);
     setErrorMessage('');
     setNoticeMessage('');
@@ -226,6 +230,7 @@ export function FeedbackModal({ isOpen, onClose, onSent, userContext }: Feedback
         deviceType: getDeviceType(),
         userContext,
       });
+      if (version !== attachmentReadVersion.current) return;
 
       if (result.deliveryState === 'needs-configuration' || result.deliveryState === 'needs-activation') {
         setNoticeMessage('暂时无法直接发送，草稿已保留。你可以打开邮箱，附上文字和附件发送。');
@@ -238,13 +243,14 @@ export function FeedbackModal({ isOpen, onClose, onSent, userContext }: Feedback
       onClose();
       onSent('反馈已发送到作者邮箱，谢谢你帮研习阁变得更好。');
     } catch (error) {
+      if (version !== attachmentReadVersion.current) return;
       setErrorMessage(
         error instanceof FeedbackSubmissionError
           ? error.message
           : '暂时没能送出，内容已保存在本机。',
       );
     } finally {
-      setIsSending(false);
+      if (version === attachmentReadVersion.current) setIsSending(false);
     }
   };
 
@@ -256,6 +262,7 @@ export function FeedbackModal({ isOpen, onClose, onSent, userContext }: Feedback
       title="支持与反馈"
     >
       <div className="space-y-5">
+        <p className="text-xs text-forest-muted">文字会自动暂存；附件仅在本次打开软件期间保留，刷新或关闭浏览器后需重新添加。</p>
         <div className="grid grid-cols-3 gap-1 rounded-full border border-forest-accent/7 bg-white/32 p-1" aria-label="反馈类型">
           {FEEDBACK_CATEGORIES.map(category => {
             const isActive = draft.category === category.value;
@@ -420,7 +427,7 @@ export function FeedbackModal({ isOpen, onClose, onSent, userContext }: Feedback
             发送说明与联系作者
           </button>
           {showContactDetails && <motion.div id="feedback-contact-details" initial={{ opacity: 0, y: -3 }} animate={{ opacity: 1, y: 0 }} className="space-y-2 pb-1">
-            <p>会附带登录状态和用户识别信息；不会自动附带账号密码、手记或牌阵数据。文字自动暂存在本机，附件仅在本次打开时保留。</p>
+            <p>会附带登录状态和用户识别信息；不会自动附带账号密码、手记或牌阵数据。文字自动暂存在本机，附件仅在本次使用软件期间保留。</p>
             <p>支持 PNG、JPG、WebP、GIF、PDF 和 UTF-8 编码的 TXT。最多 {FEEDBACK_ATTACHMENT_MAX_COUNT} 个附件，每个不超过 3MB，总计不超过 {formatFileSize(FEEDBACK_ATTACHMENT_TOTAL_MAX_BYTES)}。</p>
             <p className="select-text">邮箱：{FEEDBACK_EMAIL} · 微信：{FEEDBACK_WECHAT_ID}</p>
             <a href={emailHref} onClick={handleOpenEmail} className="inline-flex min-h-11 items-center text-forest-accent">用邮箱联系作者</a>

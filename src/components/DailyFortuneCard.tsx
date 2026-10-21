@@ -56,6 +56,7 @@ interface DailyFortuneCardProps {
   onSaveToCardAnnotation: (id: string, note?: string) => void;
   onDeleteFortunes: (ids: string[]) => void;
   onOpenCardHistory?: (cardName: string) => void;
+  onOpenArchive?: () => void;
 }
 
 const FortuneCardBack = ({
@@ -175,6 +176,7 @@ export const DailyFortuneCard: React.FC<DailyFortuneCardProps> = ({
   onSaveToCardAnnotation,
   onDeleteFortunes,
   onOpenCardHistory,
+  onOpenArchive,
 }) => {
   const [cardNumber, setCardNumber] = useState('');
   const [showNumberInput, setShowNumberInput] = useState(false);
@@ -203,7 +205,7 @@ export const DailyFortuneCard: React.FC<DailyFortuneCardProps> = ({
 
   const archivedFortunes = useMemo(
     () => fortunes
-      .filter(item => Boolean(item.archivedAt))
+      .slice()
       .sort((a, b) => b.date.localeCompare(a.date) || b.createdAt.localeCompare(a.createdAt)),
     [fortunes]
   );
@@ -293,10 +295,15 @@ export const DailyFortuneCard: React.FC<DailyFortuneCardProps> = ({
 
   const handleReveal = () => {
     if (fortuneChoice) {
-      setFortuneChoice({ ...fortuneChoice, isRevealed: true });
-      setShufflePhase('revealed');
-      onGenerateWithNumber(fortuneChoice.cardNumber, fortuneChoice.cardIndex, isRedrawing);
-      setIsRedrawing(false);
+      setDrawError('');
+      try {
+        onGenerateWithNumber(fortuneChoice.cardNumber, fortuneChoice.cardIndex, isRedrawing);
+        setFortuneChoice({ ...fortuneChoice, isRevealed: true });
+        setShufflePhase('revealed');
+        setIsRedrawing(false);
+      } catch (error) {
+        setDrawError(error instanceof Error ? error.message : '抽牌暂未保存，请重试。');
+      }
     }
   };
 
@@ -335,15 +342,20 @@ export const DailyFortuneCard: React.FC<DailyFortuneCardProps> = ({
 
   const handlePhysicalCardSelect = (card: typeof TAROT_CARDS[0], isReversed: boolean) => {
     clearShuffleTimers();
-    setIsRedrawing(false);
-    if (cardPickerMode === 'replace' && fortune) {
-      onUpdateCard(fortune.id, card.id, isReversed);
-    } else {
-      onCreateFromCard(card.id, isReversed, 'physical-draw');
+    setDrawError('');
+    try {
+      if (cardPickerMode === 'replace' && fortune) {
+        onUpdateCard(fortune.id, card.id, isReversed);
+      } else {
+        onCreateFromCard(card.id, isReversed, 'physical-draw');
+      }
+      setIsRedrawing(false);
+      setCardPickerMode(null);
+      setShufflePhase('revealed');
+      setFortuneChoice(null);
+    } catch (error) {
+      setDrawError(error instanceof Error ? error.message : '抽牌暂未保存，请重试。');
     }
-    setCardPickerMode(null);
-    setShufflePhase('revealed');
-    setFortuneChoice(null);
   };
 
   const handleTogglePhysicalDirection = () => {
@@ -528,7 +540,7 @@ export const DailyFortuneCard: React.FC<DailyFortuneCardProps> = ({
                   </button>
                   <button
                     type="button"
-                    onClick={() => setShowArchiveZone(true)}
+                    onClick={() => onOpenArchive ? onOpenArchive() : setShowArchiveZone(true)}
                     data-tour="daily-review"
                     className="flex min-h-11 items-center justify-center gap-1.5 rounded-full border border-forest-accent/8 bg-white/42 px-3 text-xs font-bold text-forest-accent hover:border-forest-accent/25 hover:bg-white/70"
                     aria-label="打开日运复盘"
@@ -659,7 +671,7 @@ export const DailyFortuneCard: React.FC<DailyFortuneCardProps> = ({
                 </button>
                 <button
                   type="button"
-                  onClick={() => setShowArchiveZone(true)}
+                  onClick={() => onOpenArchive ? onOpenArchive() : setShowArchiveZone(true)}
                   className={`flex min-h-10 w-full items-center justify-center gap-2 rounded-full px-4 text-xs font-bold transition-all ${
                     fortune.archivedAt
                       ? 'bg-forest-accent text-white shadow-lg shadow-forest-accent/15 hover:bg-forest-accent/90'
@@ -776,7 +788,7 @@ export const DailyFortuneCard: React.FC<DailyFortuneCardProps> = ({
                       <button type="button" onClick={handleShuffle} aria-label={isRedrawing ? '重新洗牌' : '洗牌'} title="洗牌后选数字或随机一张" className="grid h-11 w-11 place-items-center rounded-xl border border-forest-accent/8 bg-white/42 text-forest-accent hover:bg-white/66"><Shuffle size={15} /></button>
                       <button
                         type="button"
-                        onClick={() => setShowArchiveZone(true)}
+                        onClick={() => onOpenArchive ? onOpenArchive() : setShowArchiveZone(true)}
                         data-tour="daily-review"
                         className="flex min-h-11 min-w-11 items-center justify-center gap-1 rounded-xl border border-forest-accent/8 bg-white/42 px-2.5 text-[11px] font-medium text-forest-accent hover:border-forest-accent/25 hover:bg-white/66"
                         aria-label="打开日运复盘"
@@ -843,7 +855,7 @@ export const DailyFortuneCard: React.FC<DailyFortuneCardProps> = ({
 
                   <button
                     type="button"
-                    onClick={() => setShowArchiveZone(true)}
+                    onClick={() => onOpenArchive ? onOpenArchive() : setShowArchiveZone(true)}
                     className="group flex min-h-full flex-col justify-between rounded-2xl border border-forest-accent/8 bg-white/42 p-2.5 text-left shadow-none transition-colors hover:border-forest-accent/25 hover:bg-white/66 sm:p-3"
                     aria-label="打开日运复盘"
                   >
@@ -980,7 +992,7 @@ export const DailyFortuneCard: React.FC<DailyFortuneCardProps> = ({
         )}
       </motion.div>
 
-      {drawError && <p role="alert" className="mt-2 text-xs text-red-600">{drawError}</p>}
+      {drawError && !cardPickerMode && <p role="alert" className="mt-2 text-xs text-red-600">{drawError}</p>}
 
       {saveNotice && (
         <div className="mt-2 px-2 text-xs leading-relaxed text-forest-accent">
@@ -997,6 +1009,7 @@ export const DailyFortuneCard: React.FC<DailyFortuneCardProps> = ({
               ? '更正今天现实抽到的牌或正逆位，已写的第一直觉和今日回看会继续保留。'
               : '选中后会作为今日日运记录，也可以用来练习这张单牌的含义。'}
             initialIsReversed={cardPickerMode === 'replace' ? fortune?.isReversed : false}
+            error={drawError}
             onSelect={handlePhysicalCardSelect}
             onClose={() => setCardPickerMode(null)}
           />

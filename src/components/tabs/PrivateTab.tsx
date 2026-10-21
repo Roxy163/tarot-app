@@ -42,6 +42,7 @@ import {
   readingMatchesArchiveIndexFilter,
 } from '../../lib/readingArchiveIndex';
 import { isReadingIncomplete } from '../../lib/readingCompletion';
+import { readingMatchesSearch } from '../../lib/readingSearch';
 import { trackEvent } from '../../lib/analytics';
 import type { ReadingArchiveIndexFilter } from '../../lib/readingArchiveIndex';
 import { useModalFocus } from '../../hooks/useModalFocus';
@@ -177,13 +178,7 @@ export const PrivateTab: React.FC<PrivateTabProps> = ({
 
     if (!searchQuery && searchTags.length === 0) return true;
     
-    const q = searchQuery.toLowerCase();
-    const matchesQuery = !q || 
-      r.id.toLowerCase().includes(q) ||
-      r.question.toLowerCase().includes(q) ||
-      r.keywords.some(k => k.toLowerCase().includes(q)) ||
-      r.authorName.toLowerCase().includes(q) ||
-      (r.clientName || '').toLowerCase().includes(q);
+    const matchesQuery = readingMatchesSearch(r, searchQuery);
     
     const manualTags = getReadingManualTags(r);
     const matchesTags = searchTags.length === 0 || 

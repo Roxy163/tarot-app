@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { motion, useReducedMotion } from 'motion/react';
-import { ArrowLeft, ChevronRight, Download, FileText, MessageSquareText, ShieldCheck } from 'lucide-react';
+import { ArrowLeft, ChevronRight, Download, FileText, MessageSquareText, ShieldCheck, Archive } from 'lucide-react';
 
 interface SettingsTabProps {
   onBack: () => void;
@@ -8,10 +8,11 @@ interface SettingsTabProps {
   onOpenFeedback: () => void;
   onOpenLegal: () => void;
   onOpenModeration?: () => void;
+  onOpenBackup?: () => void;
   remindersEnabled: boolean;
 }
 
-export function SettingsTab({ onBack, onOpenInstallGuide, onOpenFeedback, onOpenLegal, onOpenModeration, remindersEnabled }: SettingsTabProps) {
+export function SettingsTab({ onBack, onOpenInstallGuide, onOpenFeedback, onOpenLegal, onOpenModeration, onOpenBackup, remindersEnabled }: SettingsTabProps) {
   const headingRef = useRef<HTMLHeadingElement>(null);
   const reducedMotion = useReducedMotion();
 
@@ -22,6 +23,7 @@ export function SettingsTab({ onBack, onOpenInstallGuide, onOpenFeedback, onOpen
 
   const entries = [
     { label: '添加到桌面', detail: remindersEnabled ? '安装方法 · 提醒设置' : '安装方法 · 提醒已关闭', icon: Download, onClick: onOpenInstallGuide },
+    ...(onOpenBackup ? [{ label: '备份与恢复', icon: Archive, onClick: onOpenBackup }] : []),
     { label: '支持与反馈', icon: MessageSquareText, onClick: onOpenFeedback },
     { label: '隐私与条款', detail: '数据与公开说明', icon: FileText, onClick: onOpenLegal },
     ...(onOpenModeration ? [{ label: '作者管理', detail: '举报与下架', icon: ShieldCheck, onClick: onOpenModeration }] : []),

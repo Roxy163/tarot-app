@@ -6,6 +6,7 @@ import { AddReadingForm } from './AddReadingForm';
 import { readLocalDraft, resetDraftMemory } from '../hooks/useLocalDraft';
 import { SpreadDefinition, TarotReading } from '../types';
 import * as spreadReveal from '../lib/revealReadingSpread';
+import { findResumableReading } from '../lib/resumableReading';
 
 const renderForm = (overrides: {
   spreads?: SpreadDefinition[];
@@ -77,6 +78,85 @@ describe('AddReadingForm spread designer flow', () => {
       value: 1024,
     });
     vi.restoreAllMocks();
+  });
+
+  it('confirms shrinking a filled spread and restores every card and note after reopening and undoing', async () => {
+    const user = userEvent.setup();
+    const initialData = makeReading('switch-protection', [], '2026-10-21', {
+      spread: '无牌阵三张', layoutType: 'horizontal',
+      cards: [{ name: '愚者', isReversed: false }, { name: '魔术师', isReversed: true }, { name: '女祭司', isReversed: false }],
+      cardInterpretations: ['保留第一段', '保留第二段', '保留第三段'], cardQuestions: ['', '', '第三张的问题'],
+    });
+    const first = renderForm({ initialData });
+    await user.selectOptions(screen.getByRole('combobox'), '单牌阵');
+    await user.click(screen.getByRole('button', { name: '保留当前牌阵' }));
+    expect(screen.getByRole('combobox')).toHaveValue('无牌阵三张');
+    expect(readLocalDraft<any>('tarot_reading_draft_guest_switch-protection').cardSlots).toHaveLength(3);
+    await user.selectOptions(screen.getByRole('combobox'), '单牌阵');
+    await user.click(screen.getByRole('button', { name: '切换牌阵' }));
+    expect(readLocalDraft<any>('tarot_reading_draft_guest_switch-protection').cardSlots).toHaveLength(1);
+    first.unmount();
+    renderForm({ initialData });
+    await user.click(screen.getByRole('button', { name: '撤销牌阵切换' }));
+    const draft = readLocalDraft<any>('tarot_reading_draft_guest_switch-protection');
+    expect(draft.cardSlots.map((card: any) => card.name)).toEqual(['愚者', '魔术师', '女祭司']);
+    expect(draft.cardSlots[1].isReversed).toBe(true);
+    expect(draft.cardInterpretations).toEqual(initialData.cardInterpretations);
+    expect(draft.cardQuestions).toEqual(initialData.cardQuestions);
+    expect(screen.getByRole('combobox')).toHaveValue('无牌阵三张');
+  });
+
+  it('protects edits made after a switch before restoring the previous snapshot', async () => {
+    const user = userEvent.setup();
+    renderForm();
+    await user.selectOptions(screen.getByRole('combobox'), '无牌阵三张');
+    expect(screen.queryByRole('dialog', { name: '切换牌阵' })).not.toBeInTheDocument();
+    await user.type(screen.getByPlaceholderText('占卜的问题是什么？'), '切换后新增的问题');
+    await user.click(screen.getByRole('button', { name: '撤销牌阵切换' }));
+    expect(screen.getByRole('dialog', { name: '撤销牌阵切换' })).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: '保留当前内容' }));
+    expect(screen.getByPlaceholderText('占卜的问题是什么？')).toHaveValue('切换后新增的问题');
+  });
+
+  it('does not mark an existing reading as changed merely by opening it', () => {
+    renderForm({ initialData: makeReading('unchanged', [], '2026-10-21') });
+    expect(readLocalDraft<any>('tarot_reading_draft_guest_unchanged').hasUnsavedChanges).toBe(false);
+  });
+
+  it('keeps an older edited draft resumable after opening it without further changes', async () => {
+    const user = userEvent.setup();
+    const initialData = makeReading('legacy-edit', [], '2026-10-21');
+    const first = renderForm({ initialData });
+    await user.type(screen.getByPlaceholderText('占卜的问题是什么？'), ' 之前未保存的修改');
+    first.unmount();
+    const key = 'tarot_reading_draft_guest_legacy-edit';
+    const legacy = readLocalDraft<any>(key);
+    delete legacy.hasUnsavedChanges;
+    sessionStorage.clear();
+    resetDraftMemory();
+    localStorage.setItem(key, JSON.stringify(legacy));
+    expect(findResumableReading('guest', [initialData])?.id).toBe(initialData.id);
+    const second = renderForm({ initialData });
+    expect(screen.getByPlaceholderText('占卜的问题是什么？')).toHaveValue(legacy.formData.question);
+    second.unmount();
+    expect(findResumableReading('guest', [initialData])?.id).toBe(initialData.id);
+    expect(readLocalDraft<any>(key).hasUnsavedChanges).toBe(true);
+  });
+
+  it('restores exact custom coordinates, rotation and scale when undoing a spread switch', async () => {
+    const user = userEvent.setup();
+    const cards = [
+      { name: '愚者', isReversed: false, x: -110, y: 50, rotation: 17, scale: 0.8 },
+      { name: '隐士', isReversed: true, x: 300, y: 220, rotation: -12, scale: 1.2 },
+    ];
+    const custom: SpreadDefinition = { name: '自由坐标回归', layout: 'free', slots: ['左', '右'], freePositions: cards };
+    renderForm({ spreads: [...OFFICIAL_SPREADS, custom], initialData: makeReading('custom-undo', [], '2026-10-21', { spread: custom.name, layoutType: 'free', cards }) });
+    await user.selectOptions(screen.getByRole('combobox'), '单牌阵');
+    await user.click(screen.getByRole('button', { name: '切换牌阵' }));
+    await user.click(screen.getByRole('button', { name: '撤销牌阵切换' }));
+    const restored = readLocalDraft<any>('tarot_reading_draft_guest_custom-undo');
+    expect(restored.formData.layoutType).toBe('free');
+    cards.forEach((card, index) => expect(restored.cardSlots[index]).toMatchObject(card));
   });
 
   it('reveals the complete cloth after selecting a spread but not while writing', async () => {
@@ -557,6 +637,42 @@ describe('AddReadingForm spread designer flow', () => {
         expect.objectContaining({ name: '愚者' }),
       ]),
       cardInterpretations: ['', '', ''],
+    }));
+  });
+
+  it('keeps the daily question editable and saves the quick theme with a default title', async () => {
+    const user = userEvent.setup();
+    const props = renderForm();
+    await user.click(screen.getByRole('button', { name: '日运' }));
+    expect(screen.getByRole('textbox', { name: '占卜问题' })).toHaveValue('今日抽牌记录');
+    await user.click(screen.getByRole('button', { name: /1 主牌/ }));
+    await user.click(screen.getByRole('button', { name: '隐士 隐士' }));
+    await user.click(screen.getByRole('button', { name: '保存手记' }));
+    expect(props.onSubmit).toHaveBeenCalledWith(expect.objectContaining({
+      question: '今日抽牌记录', category: '日运',
+      cards: expect.arrayContaining([expect.objectContaining({ name: '隐士' })]),
+    }));
+  });
+
+  it('never clears cards, spread, question or notes when adding and removing the daily tag', async () => {
+    const user = userEvent.setup();
+    const props = renderForm();
+    await user.type(screen.getByRole('textbox', { name: '占卜问题' }), '保留我的记录');
+    await user.selectOptions(screen.getByRole('combobox'), '无牌阵三张');
+    await user.click(screen.getByRole('button', { name: '1 第一张' }));
+    await user.click(screen.getByRole('button', { name: '隐士 隐士' }));
+    await user.type(screen.getByRole('textbox', { name: /灵见注疏/ }), '已经写好的解读');
+    const tag = screen.getByPlaceholderText('添加标签...');
+    await user.type(tag, '日运');
+    expect(screen.getByRole('combobox')).toHaveValue('无牌阵三张');
+    expect(screen.getByRole('textbox', { name: '占卜问题' })).toHaveValue('保留我的记录');
+    await user.clear(tag);
+    await user.type(tag, '学习');
+    await user.click(screen.getByRole('button', { name: '保存手记' }));
+    expect(props.onSubmit).toHaveBeenCalledWith(expect.objectContaining({
+      question: '保留我的记录', spread: '无牌阵三张',
+      cards: expect.arrayContaining([expect.objectContaining({ name: '隐士' })]),
+      cardInterpretations: ['已经写好的解读', '', ''],
     }));
   });
 

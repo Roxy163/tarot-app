@@ -30,6 +30,13 @@ const createReading = (overrides: Partial<TarotReading> = {}): TarotReading => (
 });
 
 describe('PublicTab', () => {
+  it('lets the empty square open the reading editor', async () => {
+    vi.mocked(getPublicReadings).mockResolvedValueOnce([]);
+    const create = vi.fn();
+    render(<PublicTab readings={[]} cardMetadata={[]} onTagClick={vi.fn()} onAuthorClick={vi.fn()} onProcessAi={vi.fn()} onCreateReading={create} />);
+    await userEvent.click(await screen.findByRole('button', { name: '去记录一条' }));
+    expect(create).toHaveBeenCalledOnce();
+  });
   it('keeps fictional study examples separate from real public posts and returns to the same square view', async () => {
     vi.mocked(getPublicReadings).mockResolvedValueOnce([]);
     render(<PublicTab readings={[]} cardMetadata={[]} onTagClick={vi.fn()} onAuthorClick={vi.fn()} onProcessAi={vi.fn()} />);

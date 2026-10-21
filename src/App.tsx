@@ -2,7 +2,7 @@ import { Suspense, lazy, useCallback, useMemo, useState, useEffect, useRef } fro
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import { X, User, ChevronRight, LogOut, Database, ShieldCheck, ArrowRight, LogIn, CheckCircle, AlertTriangle, Mail, Eye, EyeOff, Settings } from 'lucide-react';
-import { TarotReading, SpreadDefinition, UserProfile } from './types';
+import { TarotReading, SpreadDefinition, UserProfile, TarotBackup, TarotBackupData } from './types';
 import { OFFICIAL_SPREADS, PAVILION_PROVERBS, TAROT_CARDS } from './constants';
 import { Modal } from './components/Modal';
 import { PageView } from './components/PageView';
@@ -13,6 +13,7 @@ import { clearDeletedAccountLocalData } from './lib/accountDeletion';
 import { isValidPassword } from './lib/utils';
 import { HomeTab } from './components/tabs/HomeTab';
 import { DailyFortuneArchiveModal } from './components/DailyFortuneArchiveModal';
+import { isDailyReading } from './lib/readingSearch';
 import { SettingsTab } from './components/tabs/SettingsTab';
 import { MainLayout } from './components/layouts/MainLayout';
 import { SplashScreen } from './components/SplashScreen';
@@ -42,9 +43,13 @@ import { PwaInstallGuideModal } from './components/PwaInstallGuideModal';
 import { LegalModal } from './components/LegalModal';
 import type { LegalTab } from './components/LegalModal';
 import type { PublicSquareView } from './components/tabs/PublicTab';
-import { LOCAL_SAVE_ERROR } from './lib/safeLocalStorage';
+import { LOCAL_SAVE_ERROR, commitLocalRestore } from './lib/safeLocalStorage';
 import { clearLocalDraft } from './hooks/useLocalDraft';
 import { useAnnotationSync } from './hooks/useAnnotationSync';
+import { BackupPage } from './components/BackupPage';
+import { backupStorageEntries, createTarotBackup, mergeTarotBackup, readLocalBackupData } from './lib/tarotBackup';
+import { getBackupNumerology, getLocalBackupNumerology, getNumerologyCacheInfo, NUMEROLOGY_RESTORED, syncRestoredNumerology } from './lib/backupNumerology';
+import { cardAnnotationService } from './services/cardAnnotationService';
 
 const loadCardMetadataManager = () => import('./components/CardMetadataManager');
 const loadReadingDetailModal = () => import('./components/ReadingDetailModal');
@@ -123,10 +128,12 @@ function AppContent() {
   const contentTab = activeTab === 'settings' ? settingsSourceTabRef.current : activeTab;
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [selectedReadingDetail, setSelectedReadingDetail] = useState<TarotReading | null>(null);
+  const returnToDailyArchive = useRef<'home' | 'private' | null>(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isFeedbackModalOpen, setIsFeedbackModalOpen] = useState(false);
   const [isInstallGuideOpen, setIsInstallGuideOpen] = useState(false);
   const [isDailyArchiveOpen, setIsDailyArchiveOpen] = useState(false);
+  const [isBackupOpen, setIsBackupOpen] = useState(false);
   const [legalModal, setLegalModal] = useState<{ isOpen: boolean; tab: LegalTab }>({ isOpen: false, tab: 'privacy' });
   const [isSecurityModalOpen, setIsSecurityModalOpen] = useState(false);
   const [showAuthPage, setShowAuthPage] = useState(false);
@@ -189,6 +196,8 @@ function AppContent() {
     cardMetadata,
     setCardMetadata,
     cardKeywordMemory,
+    setCardKeywordMemory,
+    isDataReady: readingsReady,
     quizMemory,
     setQuizMemory,
     searchQuery,
@@ -226,6 +235,52 @@ function AppContent() {
     }
   };
   const dailyFortune = useDailyFortune(session, isAuthLoading, isLocalFallback);
+  const backupScope = session?.uid || 'guest';
+  const backupReady = !isAuthLoading && annotationSync.ready;
+  const backupRestoreReady = backupReady && readingsReady && dailyFortune.isDataReady
+    && !isProcessing && readingsCloudSyncInfo.status !== 'syncing';
+  const backupSnapshot = { scope: backupScope, ready: backupReady, restoreReady: backupRestoreReady, readingsReady,
+    fortunesReady: dailyFortune.isDataReady, readings, spreads, cardMetadata, cardKeywordMemory, quizMemory, fortunes: dailyFortune.fortunes };
+  const backupSource = useRef(backupSnapshot);
+  backupSource.current = backupSnapshot;
+  const collectBackupData = async (): Promise<TarotBackupData> => {
+    const scope = backupScope;
+    const latest = backupSource.current;
+    if (!latest.ready || latest.scope !== scope || cardAnnotationService.getScope() !== scope) throw new Error('正在读取当前账号的本机资料，请稍后重试。');
+    const local = readLocalBackupData(scope);
+    return { readings: latest.readingsReady ? latest.readings : local.readings,
+      spreads: latest.readingsReady ? latest.spreads : local.spreads,
+      cardMetadata: latest.readingsReady ? latest.cardMetadata : local.cardMetadata,
+      cardKeywordMemory: latest.readingsReady ? latest.cardKeywordMemory : local.cardKeywordMemory,
+      quizMemory: latest.readingsReady ? latest.quizMemory : local.quizMemory,
+      fortunes: latest.fortunesReady ? latest.fortunes : local.fortunes,
+      annotations: cardAnnotationService.getAllUserAnnotations(), numerology: getLocalBackupNumerology(scope === 'guest' ? undefined : scope) };
+  };
+  const restoreBackup = async (backup: TarotBackup) => {
+    const current = await collectBackupData();
+    if (backupSource.current.scope !== backupScope || !backupSource.current.restoreReady) throw new Error('请等待当前账号读取或同步完成，再合并恢复。本机备份仍可导出。');
+    const merged = mergeTarotBackup(current, backup.data, backupScope, getAuthorDisplayName(profile));
+    commitLocalRestore(backupStorageEntries(merged, backupScope));
+    setReadings(merged.readings); setSpreads(merged.spreads); setCardMetadata(merged.cardMetadata);
+    setCardKeywordMemory(merged.cardKeywordMemory); setQuizMemory(merged.quizMemory);
+    dailyFortune.restoreFortunes(merged.fortunes);
+    cardAnnotationService.reloadAfterRestore(backupScope);
+    window.dispatchEvent(new Event(NUMEROLOGY_RESTORED));
+  };
+  useEffect(() => {
+    if (!returnToDailyArchive.current || activeTab === 'add') return;
+    returnToDailyArchive.current = null;
+    if (activeTab === 'private' || activeTab === 'home') setIsDailyArchiveOpen(true);
+  }, [activeTab]);
+  useEffect(() => {
+    if (!session?.uid || isAuthLoading || isLocalFallback) return;
+    let active = true;
+    const sync = () => { void syncRestoredNumerology(session.uid, () => active); };
+    sync();
+    window.addEventListener('online', sync);
+    window.addEventListener(NUMEROLOGY_RESTORED, sync);
+    return () => { active = false; window.removeEventListener('online', sync); window.removeEventListener(NUMEROLOGY_RESTORED, sync); };
+  }, [session?.uid, isAuthLoading, isLocalFallback]);
   useEffect(() => {
     let lastNotice = 0;
     const onFailure = () => {
@@ -447,6 +502,8 @@ function AppContent() {
     setShowLogoutConfirm(false);
     setIsSecurityModalOpen(false);
     setIsDailyArchiveOpen(false);
+    setIsBackupOpen(false);
+    returnToDailyArchive.current = null;
     setHistoryCardId(undefined);
     setActiveTab(current => (forceHome || current === 'profile' ? 'home' : current));
   }, [setEditingReading]);
@@ -999,11 +1056,18 @@ function AppContent() {
       }, 5200);
     }
 
+    const archiveSource = returnToDailyArchive.current;
     setEditingReading(null);
-    setSearchQuery('');
-    setSearchTags([]);
+    if (!archiveSource) {
+      setSearchQuery('');
+      setSearchTags([]);
+    }
     setSelectedReadingDetail(null);
-    navigateToTab('private');
+    navigateToTab(archiveSource || 'private');
+    if (archiveSource) {
+      returnToDailyArchive.current = null;
+      setIsDailyArchiveOpen(true);
+    }
     return true;
   };
 
@@ -1687,6 +1751,7 @@ function AppContent() {
             onOpenInstallGuide={openInstallGuideFromSettings}
             onOpenFeedback={() => setIsFeedbackModalOpen(true)}
             onOpenLegal={() => openLegalModal('privacy')}
+            onOpenBackup={() => setIsBackupOpen(true)}
             onOpenModeration={isPublicModerator ? openPublicModerationFromSidebar : undefined}
             remindersEnabled={reminderPreference === 'auto'}
           />
@@ -1710,6 +1775,17 @@ function AppContent() {
             }}
             onOpenCardLibrary={handleOpenCardLibrary}
             onOpenCardHistory={handleOpenCardHistory}
+            onOpenDailyArchive={() => setIsDailyArchiveOpen(true)}
+            onResumeReading={id => {
+              if (id === 'new') {
+                removeLocalStorageValue(`tarot_editing_reading_${backupScope}`);
+                setEditingReading(null);
+                navigateToTab('add');
+              } else {
+                const reading = readings.find(item => item.id === id && !item.isExample);
+                if (reading) handleEditReadingNavigate(reading);
+              }
+            }}
             onSearch={setSearchQuery}
             onSelectSpread={(spread: string, category?: string) => {
               const spreadDef = spreads.find(s => s.name === spread);
@@ -1718,7 +1794,7 @@ function AppContent() {
                   id: '',
                   userId: '',
                   date: new Date().toISOString(),
-                  question: '',
+                  question: category === '日运' ? '今日抽牌记录' : '',
                   cards: [],
                   interpretation: { singleCard: '', combination: '', summary: '' },
                   keywords: [],
@@ -1744,7 +1820,7 @@ function AppContent() {
           <Suspense fallback={<SuspenseFallback />}>
             <PrivateTab
               readings={readings}
-              dailyFortuneCount={dailyFortune.fortunes.filter(item => item.archivedAt).length}
+              dailyFortuneCount={dailyFortune.fortunes.length + readings.filter(isDailyReading).length}
               onOpenDailyArchive={() => { setIsDailyArchiveOpen(true); trackEvent('daily_archive_opened', { source: 'library' }); }}
               onOpenCardHistory={handleOpenCardHistory}
               ownerName={ownAuthorName}
@@ -1781,6 +1857,7 @@ function AppContent() {
               onCollectSpread={handleCollectPublicSpread}
               onNotice={(message) => setSnackbar({ isOpen: true, message })}
               onLoginRequest={() => setShowAuthPage(true)}
+              onCreateReading={() => navigateToTab('add')}
               initialPublicReadings={publicReadingsCache}
               onPublicReadingsLoaded={setPublicReadingsCache}
               currentUserId={session?.uid}
@@ -1810,7 +1887,11 @@ function AppContent() {
                 const wasEditing = !!editingReading;
                 removeLocalStorageValue(`tarot_editing_reading_${session?.uid || 'guest'}`);
                 setEditingReading(null);
-                navigateToTab(wasEditing ? 'private' : 'home');
+                navigateToTab(returnToDailyArchive.current || (wasEditing ? 'private' : 'home'));
+                if (returnToDailyArchive.current) {
+                  returnToDailyArchive.current = null;
+                  setIsDailyArchiveOpen(true);
+                }
               }}
             />
           </Suspense>
@@ -1911,13 +1992,29 @@ function AppContent() {
         key={session?.uid || 'guest'}
         isOpen={isDailyArchiveOpen}
         onClose={() => setIsDailyArchiveOpen(false)}
-        fortunes={dailyFortune.fortunes.filter(item => Boolean(item.archivedAt))}
+        fortunes={dailyFortune.fortunes}
         onUpdateReflection={dailyFortune.updateDailyFortuneReflection}
         onSaveToCardAnnotation={dailyFortune.saveDailyFortuneToCardAnnotation}
         onDeleteFortunes={dailyFortune.deleteDailyFortunes}
         ownerName={ownAuthorName}
         ownerScope={session?.uid || 'guest'}
+        readings={readings}
+        onEditReading={reading => {
+          returnToDailyArchive.current = activeTab === 'home' ? 'home' : 'private';
+          setIsDailyArchiveOpen(false);
+          handleEditReadingNavigate(reading);
+        }}
       />
+      <BackupPage key={`backup-${backupScope}`} isOpen={isBackupOpen} onBack={() => setIsBackupOpen(false)} ready={backupReady}
+        restoreReady={backupRestoreReady}
+        getBackup={async () => createTarotBackup(await collectBackupData(), {
+          numerologyCoverage: session?.uid ? 'cached' : 'local',
+          ...(session?.uid && getNumerologyCacheInfo(session.uid).checkedAt ? { numerologyCheckedAt: getNumerologyCacheInfo(session.uid).checkedAt } : {}),
+        })}
+        onRefreshNumerology={session?.uid ? async () => {
+          await getBackupNumerology(session.uid, () => backupSource.current.scope === session.uid && backupSource.current.ready);
+        } : undefined}
+        onRestore={restoreBackup} />
       </MainLayout>
     </div>
     </>

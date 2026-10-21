@@ -9,12 +9,14 @@ import { MysticWatermark } from './MysticWatermark';
 import { formatReadingDateTime } from '../lib/dateFormat';
 import { isReadingIncomplete } from '../lib/readingCompletion';
 import { useModalFocus } from '../hooks/useModalFocus';
+import { PageView } from './PageView';
 
 interface ReadingDetailModalProps {
   reading: TarotReading | null;
   onClose: () => void;
   onEdit?: (reading: TarotReading) => void;
   isPublicView?: boolean;
+  asPage?: boolean;
 }
 
 export const ReadingDetailModal: React.FC<ReadingDetailModalProps> = ({
@@ -22,11 +24,12 @@ export const ReadingDetailModal: React.FC<ReadingDetailModalProps> = ({
   onClose,
   onEdit,
   isPublicView = false,
+  asPage = false,
 }) => {
-  useBodyScrollLock(Boolean(reading));
+  useBodyScrollLock(Boolean(reading) && !asPage);
   const dialogRef = React.useRef<HTMLDivElement>(null);
   const titleId = React.useId();
-  useModalFocus(Boolean(reading), dialogRef, onClose);
+  useModalFocus(Boolean(reading) && !asPage, dialogRef, onClose);
 
   if (!reading) return null;
 
@@ -76,26 +79,17 @@ export const ReadingDetailModal: React.FC<ReadingDetailModalProps> = ({
     { label: '复盘验证', value: feedbackText ? '已补写' : '待回看', done: Boolean(feedbackText) },
   ];
 
-  return (
-    <AnimatePresence>
-      <div className="fixed inset-0 z-[260] flex items-center justify-center p-2.5 overscroll-contain sm:p-5">
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          onClick={onClose}
-          className="absolute inset-0 bg-forest-text/14 backdrop-blur-[2px]"
-        />
+  const content = (
         <motion.div
           initial={{ opacity: 0, y: 18, scale: 0.98 }}
           ref={dialogRef}
-          role="dialog"
-          aria-modal="true"
+          role={asPage ? undefined : 'dialog'}
+          aria-modal={asPage ? undefined : true}
           aria-labelledby={titleId}
           tabIndex={-1}
           animate={{ opacity: 1, y: 0, scale: 1 }}
           exit={{ opacity: 0, y: 18, scale: 0.98 }}
-          className="relative flex max-h-[92dvh] w-full max-w-5xl flex-col overflow-hidden rounded-[1.5rem] border border-forest-accent/7 bg-white/76 shadow-[0_22px_70px_-56px_rgba(62,58,54,0.66)] backdrop-blur-md"
+          className={asPage ? 'relative w-full' : 'relative flex max-h-[92dvh] w-full max-w-5xl flex-col overflow-hidden rounded-[1.5rem] border border-forest-accent/7 bg-white/76 shadow-[0_22px_70px_-56px_rgba(62,58,54,0.66)] backdrop-blur-md'}
         >
           <MysticWatermark variant="book" className="-right-8 -top-10 h-44 w-44 text-forest-accent opacity-[0.035]" />
           <div className="sticky top-0 z-10 flex shrink-0 items-start justify-between gap-3 border-b border-forest-accent/7 bg-white/64 px-3.5 py-3 backdrop-blur-md sm:px-5">
@@ -144,7 +138,7 @@ export const ReadingDetailModal: React.FC<ReadingDetailModalProps> = ({
                 <PencilLine size={14} />
                 编辑
               </button>}
-              <button
+              {!asPage && <button
                 type="button"
                 onClick={onClose}
                 aria-label="关闭手记详情"
@@ -152,7 +146,7 @@ export const ReadingDetailModal: React.FC<ReadingDetailModalProps> = ({
                 title="关闭"
               >
                 <X size={18} />
-              </button>
+              </button>}
             </div>
           </div>
 
@@ -320,6 +314,12 @@ export const ReadingDetailModal: React.FC<ReadingDetailModalProps> = ({
             )}
           </div>
         </motion.div>
+  );
+  return asPage ? <PageView isOpen onBack={onClose} title="手记详情" width="wide">{content}</PageView> : (
+    <AnimatePresence>
+      <div className="fixed inset-0 z-[260] flex items-center justify-center p-2.5 overscroll-contain sm:p-5">
+        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={onClose} className="absolute inset-0 bg-forest-text/14 backdrop-blur-[2px]" />
+        {content}
       </div>
     </AnimatePresence>
   );

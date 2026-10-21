@@ -1,4 +1,5 @@
 import { clearAccountDrafts } from '../hooks/useLocalDraft';
+import { recoverLocalRestore } from './safeLocalStorage';
 
 const USER_STORAGE_PREFIXES = [
   'tarot_readings',
@@ -11,6 +12,8 @@ const USER_STORAGE_PREFIXES = [
   'tarot_pending_profile_update',
   'tarot_last_cloud_sync_at',
   'tarot_user_annotations',
+  'tarot_numerology_restore',
+  'tarot_numerology_cache',
   'tarot_editing_reading',
 ];
 
@@ -18,6 +21,7 @@ const STORAGE_SUFFIXES = ['', '__backup', '__latest', '__backup_at', '__latest_a
 
 export const clearDeletedAccountLocalData = (uid: string, email?: string | null): boolean => {
   try {
+    recoverLocalRestore();
     clearAccountDrafts(uid);
     for (const prefix of USER_STORAGE_PREFIXES) {
       const key = `${prefix}_${uid}`;

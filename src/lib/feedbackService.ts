@@ -18,7 +18,11 @@ const FEEDBACK_DRAFT_KEY = 'tarot_feedback_draft_v1';
 const FEEDBACK_LAST_SENT_KEY = 'tarot_feedback_last_sent_at';
 const FEEDBACK_GUEST_ID_KEY = 'tarot_feedback_guest_id_v1';
 const FEEDBACK_COOLDOWN_MS = 30_000;
-const FEEDBACK_ENDPOINT = '/api/feedback';
+export const getFeedbackEndpoint = (hostname = window.location.hostname) => (
+  hostname === 'tarot-pavilion.netlify.app' || hostname.endsWith('--tarot-pavilion.netlify.app')
+    ? 'https://tarot-pavilion.pages.dev/api/feedback'
+    : '/api/feedback'
+);
 
 export const FEEDBACK_CATEGORIES = [
   { value: 'feature', label: '产品建议' },
@@ -240,7 +244,7 @@ const postFeedback = async (payload: Record<string, unknown>) => {
   const timeout = window.setTimeout(() => controller.abort(), 12_000);
 
   try {
-    return await fetch(FEEDBACK_ENDPOINT, {
+    return await fetch(getFeedbackEndpoint(), {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

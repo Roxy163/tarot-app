@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { TAROT_CARDS } from '../constants';
 import { deleteNumerologySetting, getNumerologySetting, saveNumerologySetting } from '../lib/firebaseData';
 import { readJsonRecordWithBackup, writeJsonWithBackup } from '../lib/safeLocalStorage';
+import { cacheNumerologySetting, clearRestoredNumerology, getLocalBackupNumerology, NUMEROLOGY_RESTORED, readRestoredNumerology } from '../lib/backupNumerology';
 
 type LocalNumerologyValue = number | {
   numerology: number;
@@ -22,11 +23,16 @@ export function useCardNumerology(cardName: string, isLoggedIn: boolean, userId?
   const defaultVal = cardMeta ? cardMeta.default_numerology : 1;
 
   useEffect(() => {
+    let active = true;
+    let request = 0;
     const loadNumerology = async () => {
+      const ticket = ++request;
       setLoading(true);
       if (isLoggedIn && userId) {
         try {
-          const setting = await getNumerologySetting(userId, cardName);
+          const setting = readRestoredNumerology(userId)[cardName] || await getNumerologySetting(userId, cardName);
+          if (!active || ticket !== request) return;
+          cacheNumerologySetting(userId, cardName, setting);
           if (setting) {
             setNumerology(setting.numerology);
             setMeaning(setting.meaning || '');
@@ -39,11 +45,13 @@ export function useCardNumerology(cardName: string, isLoggedIn: boolean, userId?
             setIsCustom(false);
           }
         } catch (error) {
+          if (!active || ticket !== request) return;
           console.error('Error loading numerology:', error);
-          setNumerology(defaultVal);
-          setMeaning('');
-          setKeywords('');
-          setIsCustom(false);
+          const cached = getLocalBackupNumerology(userId)[cardName];
+          setNumerology(cached?.numerology ?? defaultVal);
+          setMeaning(cached?.meaning || '');
+          setKeywords(cached?.keywords || '');
+          setIsCustom(Boolean(cached));
         }
       } else {
         const parsed = readJsonRecordWithBackup<LocalNumerologyMap>('tarot_user_numerology');
@@ -70,10 +78,12 @@ export function useCardNumerology(cardName: string, isLoggedIn: boolean, userId?
           setIsCustom(false);
         }
       }
-      setLoading(false);
+      if (active && ticket === request) setLoading(false);
     };
 
     loadNumerology();
+    window.addEventListener(NUMEROLOGY_RESTORED, loadNumerology);
+    return () => { active = false; window.removeEventListener(NUMEROLOGY_RESTORED, loadNumerology); };
   }, [cardName, isLoggedIn, userId, defaultVal]);
 
   const saveNumerology = async (value: number, customMeaning: string, customKeywords: string) => {
@@ -84,6 +94,8 @@ export function useCardNumerology(cardName: string, isLoggedIn: boolean, userId?
           meaning: customMeaning,
           keywords: customKeywords,
         });
+        if (!cacheNumerologySetting(userId, cardName, { numerology: value, meaning: customMeaning, keywords: customKeywords }).ok) return false;
+        clearRestoredNumerology(userId, cardName);
       } catch (error) {
         console.error('Error saving numerology:', error);
         return false;
@@ -108,6 +120,8 @@ export function useCardNumerology(cardName: string, isLoggedIn: boolean, userId?
     if (isLoggedIn && userId) {
       try {
         await deleteNumerologySetting(userId, cardName);
+        if (!cacheNumerologySetting(userId, cardName, null).ok) return false;
+        clearRestoredNumerology(userId, cardName);
       } catch (error) {
         console.error('Error deleting numerology:', error);
         return false;

@@ -63,6 +63,7 @@ interface PublicTabProps {
   onCollectSpread?: (spread: SpreadDefinition) => void;
   onNotice?: (message: string) => void;
   onLoginRequest?: () => void;
+  onCreateReading?: () => void;
   onPublicReadingsLoaded?: (readings: TarotReading[]) => void;
   initialPublicReadings?: TarotReading[];
   currentUserId?: string;
@@ -157,6 +158,7 @@ export const PublicTab: React.FC<PublicTabProps> = ({
   onCollectSpread,
   onNotice,
   onLoginRequest,
+  onCreateReading,
   onPublicReadingsLoaded,
   initialPublicReadings = [],
   currentUserId,
@@ -508,10 +510,10 @@ export const PublicTab: React.FC<PublicTabProps> = ({
           title="还没有公开手记"
           description="完成手记时勾选公开，就会出现在这里。"
           action={(
-            <div className="inline-flex min-h-10 items-center gap-2 rounded-full bg-forest-accent/6 px-4 text-sm font-medium text-forest-accent">
+            <button type="button" onClick={onCreateReading} className="inline-flex min-h-11 items-center gap-2 rounded-full bg-forest-accent/6 px-4 text-sm font-medium text-forest-accent">
               <Sparkles size={14} />
               <span>去记录一条</span>
-            </div>
+            </button>
           )}
           className="sm:py-12"
         />

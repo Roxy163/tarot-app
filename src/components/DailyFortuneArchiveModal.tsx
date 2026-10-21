@@ -15,8 +15,10 @@ import {
   Save,
   Table2,
   Trash2,
+  Search,
+  ChevronRight,
 } from 'lucide-react';
-import { DailyFortune, DailyFortuneReflectionParts } from '../types';
+import { DailyFortune, DailyFortuneReflectionParts, TarotReading } from '../types';
 import { TAROT_CARDS, getCardImageUrl } from '../constants';
 import { TarotCardImage } from './TarotCardImage';
 import {
@@ -43,6 +45,8 @@ import { readLocalDraft, useLocalDraft } from '../hooks/useLocalDraft';
 import { PageView } from './PageView';
 import { scrollFocusedFieldIntoView } from '../lib/mobileFocus';
 import { DailyReflectionCard } from './DailyReflectionCard';
+import { isDailyReading, readingMatchesSearch } from '../lib/readingSearch';
+import { ReadingDetailModal } from './ReadingDetailModal';
 
 interface DailyFortuneArchiveModalProps {
   fortunes: DailyFortune[];
@@ -53,6 +57,8 @@ interface DailyFortuneArchiveModalProps {
   onDeleteFortunes: (ids: string[]) => void;
   ownerName?: string;
   ownerScope?: string;
+  readings?: TarotReading[];
+  onEditReading?: (reading: TarotReading) => void;
 }
 
 type ReviewView = 'timeline' | 'cards' | 'month';
@@ -405,7 +411,35 @@ export const DailyFortuneArchiveModal: React.FC<DailyFortuneArchiveModalProps> =
   onDeleteFortunes,
   ownerName = '见习阁主',
   ownerScope = 'guest',
+  readings = [],
+  onEditReading,
 }) => {
+  const dailyReadings = useMemo(() => readings.filter(isDailyReading).sort((a, b) =>
+    (b.readingDate || b.date).localeCompare(a.readingDate || a.date)), [readings]);
+  const [source, setSource] = useState<'draws' | 'readings'>('draws');
+  const openedOnce = useRef(false);
+  const [readingQuery, setReadingQuery] = useState('');
+  const [readingFilter, setReadingFilter] = useState<'all' | 'pending' | 'reviewed'>('all');
+  const [selectedReadingId, setSelectedReadingId] = useState<string | null>(null);
+  const archiveAnchor = useRef<HTMLDivElement>(null);
+  const sourceScroll = useRef({ draws: 0, readings: 0 });
+  useEffect(() => {
+    if (!isOpen) return;
+    let scroll: HTMLElement | null = null;
+    const remember = () => { if (scroll) sourceScroll.current[source] = scroll.scrollTop; };
+    const frame = requestAnimationFrame(() => {
+      scroll = archiveAnchor.current?.closest<HTMLElement>('[data-page-scroll]') || null;
+      if (scroll) { scroll.scrollTop = sourceScroll.current[source]; scroll.addEventListener('scroll', remember, { passive: true }); }
+    });
+    return () => { cancelAnimationFrame(frame); remember(); scroll?.removeEventListener('scroll', remember); };
+  }, [isOpen, source]);
+  useEffect(() => {
+    if (!isOpen || openedOnce.current) return;
+    openedOnce.current = true;
+    if (!fortunes.length && dailyReadings.length) setSource('readings');
+  }, [isOpen, fortunes.length, dailyReadings.length]);
+  const visibleReadings = dailyReadings.filter(reading => readingMatchesSearch(reading, readingQuery)
+    && (readingFilter === 'all' || Boolean(reading.userFeedback?.trim()) === (readingFilter === 'reviewed')));
 
   const [activeView, setActiveView] = useState<ReviewView>('timeline');
   const [selectedCardName, setSelectedCardName] = useState<string | null>(null);
@@ -710,6 +744,32 @@ export const DailyFortuneArchiveModal: React.FC<DailyFortuneArchiveModalProps> =
 
   return (
     <PageView isOpen={isOpen} onBack={closeArchive} title="日运复盘" width="wide">
+      <div ref={archiveAnchor} role="tablist" aria-label="日运来源" className="mb-4 flex gap-2 border-b border-forest-accent/10">
+        {([['draws', '日运抽牌', fortunes.length], ['readings', '日运手记', dailyReadings.length]] as const).map(([value, label, count]) => (
+          <button key={value} type="button" role="tab" aria-selected={source === value} onClick={() => setSource(value)} className={`min-h-11 border-b-2 px-3 text-sm ${source === value ? 'border-forest-accent font-medium text-forest-accent' : 'border-transparent text-forest-muted'}`}>{label} {count}</button>
+        ))}
+      </div>
+      {source === 'readings' ? <section aria-label="日运手记" className="space-y-4">
+        <div className="relative">
+          <Search size={18} className="pointer-events-none absolute left-3 top-3.5 text-forest-accent" />
+          <input aria-label="搜索日运手记" placeholder="搜索牌名、标签或记录内容" value={readingQuery} onChange={event => setReadingQuery(event.target.value)} className="min-h-11 w-full rounded-lg border border-forest-accent/15 bg-white/60 py-2 pl-10 pr-3 text-base text-forest-ink" />
+        </div>
+        <div role="group" aria-label="日运手记复盘筛选" className="flex gap-2">
+          {([['all', '全部'], ['pending', '待复盘'], ['reviewed', '已复盘']] as const).map(([value, label]) => <button key={value} type="button" aria-pressed={readingFilter === value} onClick={() => setReadingFilter(value)} className={`min-h-11 rounded-lg px-3 ${readingFilter === value ? 'bg-forest-accent text-white' : 'text-forest-muted hover:bg-forest-accent/5'}`}>{label}</button>)}
+        </div>
+        {!visibleReadings.length && <p className="py-10 text-center text-forest-muted">{dailyReadings.length ? '没有符合条件的日运手记' : '还没有带“日运”标签的手记'}</p>}
+        <div className="divide-y divide-forest-accent/10">
+          {visibleReadings.map(reading => <button key={reading.id} type="button" onClick={() => setSelectedReadingId(reading.id)} className="flex min-h-20 w-full items-center gap-3 py-4 text-left">
+            <span className="min-w-0 flex-1">
+              <span className="block text-xs text-forest-muted">{(reading.readingDate || reading.date).slice(0, 10)} · {reading.userFeedback?.trim() ? '已复盘' : '待复盘'}</span>
+              <span className="mt-1 block break-words font-serif text-base font-bold text-forest-ink">{reading.question}</span>
+              <span className="mt-1 block break-words text-xs text-forest-muted">{reading.cards.filter(card => card.name).map(card => `${card.name}${card.isReversed ? '（逆位）' : ''}`).join(' · ')} · {reading.spread}</span>
+            </span>
+            <ChevronRight size={18} className="shrink-0 text-forest-accent" />
+          </button>)}
+        </div>
+        <ReadingDetailModal asPage reading={dailyReadings.find(reading => reading.id === selectedReadingId) || null} onClose={() => setSelectedReadingId(null)} onEdit={onEditReading ? reading => { setSelectedReadingId(null); onEditReading(reading); } : undefined} />
+      </section> : <>
               <div className="relative border-b border-forest-accent/7 bg-white/40 p-3 sm:p-3.5">
                 <div className="flex items-start justify-between gap-3">
                   <div>
@@ -1126,6 +1186,7 @@ export const DailyFortuneArchiveModal: React.FC<DailyFortuneArchiveModalProps> =
             onConfirm={confirmDeleteFortunes}
             onClose={() => setShowDeleteConfirm(false)}
           />
+      </>}
     </PageView>
   );
 };

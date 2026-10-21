@@ -13,6 +13,10 @@ describe('clearDeletedAccountLocalData', () => {
     localStorage.setItem('tarot_readings_user-1__latest', '[{"id":"r1"}]');
     localStorage.setItem('tarot_daily_fortunes_user-1', '[{"id":"day"}]');
     localStorage.setItem('tarot_cached_profile_user-1', '{"id":"user-1"}');
+    localStorage.setItem('tarot_numerology_restore_user-1', '{"隐士":{"numerology":9}}');
+    localStorage.setItem('tarot_numerology_restore_user-2', '{"隐士":{"numerology":2}}');
+    localStorage.setItem('tarot_numerology_cache_user-1', '{"settings":{}}');
+    localStorage.setItem('tarot_numerology_cache_user-2', '{"settings":{}}');
     localStorage.setItem('tarot_readings_user-2', '[{"id":"r2"}]');
     localStorage.setItem('tarot_user_accounts', JSON.stringify({ 'user-1': { email: 'one@example.com' }, 'user-2': { email: 'two@example.com' } }));
     localStorage.setItem('tarot_login_history', JSON.stringify({ identifier: 'one@example.com' }));
@@ -25,6 +29,10 @@ describe('clearDeletedAccountLocalData', () => {
     expect(localStorage.getItem('tarot_readings_user-1__latest')).toBeNull();
     expect(localStorage.getItem('tarot_daily_fortunes_user-1')).toBeNull();
     expect(localStorage.getItem('tarot_cached_profile_user-1')).toBeNull();
+    expect(localStorage.getItem('tarot_numerology_restore_user-1')).toBeNull();
+    expect(localStorage.getItem('tarot_numerology_restore_user-2')).not.toBeNull();
+    expect(localStorage.getItem('tarot_numerology_cache_user-1')).toBeNull();
+    expect(localStorage.getItem('tarot_numerology_cache_user-2')).not.toBeNull();
     expect(localStorage.getItem('tarot_readings_user-2')).toBe('[{"id":"r2"}]');
     expect(JSON.parse(localStorage.getItem('tarot_user_accounts') || '{}')).toEqual({ 'user-2': { email: 'two@example.com' } });
     expect(localStorage.getItem('tarot_login_history')).toBeNull();

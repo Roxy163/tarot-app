@@ -380,6 +380,18 @@ export const getNumerologySetting = async (uid: string, cardName: string): Promi
   };
 };
 
+export const getAllNumerologySettings = async (uid: string): Promise<Record<string, NumerologySetting>> => {
+  const { collection, getDocs } = await loadFirestore();
+  const db = await getFirebaseDb();
+  const snapshot = await getDocs(collection(db, 'users', uid, 'numerologySettings'));
+  return Object.fromEntries(snapshot.docs.map(item => {
+    const data = item.data();
+    return [data.cardName || decodeURIComponent(item.id), {
+      numerology: Number(data.numerology), meaning: data.meaning || '', keywords: data.keywords || '',
+    }];
+  }));
+};
+
 export const saveNumerologySetting = async (
   uid: string,
   cardName: string,

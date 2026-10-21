@@ -136,6 +136,12 @@ export class CardAnnotationService {
     return { ...this.getUserData().annotations };
   }
 
+  public reloadAfterRestore(scope: string) {
+    if (scope !== this.scope) throw new Error('账号已变化，请重新打开备份页面。');
+    this.cache = null;
+    this.notify();
+  }
+
   public saveUserAnnotation(cardId: string, annotation: Partial<CardAnnotation>): void {
     const current = this.getUserData();
     const userData = { ...current, annotations: { ...current.annotations } };

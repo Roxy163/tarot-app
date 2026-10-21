@@ -67,14 +67,14 @@ describe('DailyFortuneCard', () => {
     expect(props.onArchive).not.toHaveBeenCalled();
   });
 
-  it('opens the most recent past unreviewed record, saves to that record, and links its card history', async () => {
-    const previous = { ...baseFortune, id: 'older', date: '2020-01-02', archivedAt: '2020-01-02T20:00:00Z', initialImpression: '上次的想法' };
+  it.each([undefined, '2020-01-02T20:00:00Z'])('opens and saves the most recent past unreviewed record with archivedAt=%s', async archivedAt => {
+    const previous = { ...baseFortune, id: 'older', date: '2020-01-02', archivedAt, initialImpression: '上次的想法' };
     const onOpenCardHistory = vi.fn();
     const props = renderCard({ fortunes: [previous], onOpenCardHistory });
     await userEvent.click(screen.getByRole('button', { name: /上次的「女祭司」还没回看/ }));
     await userEvent.type(screen.getByRole('textbox', { name: '今日回看' }), '补上后来的观察');
     await userEvent.click(screen.getByRole('button', { name: '保存记录' }));
-    expect(props.onUpdateReflection).toHaveBeenCalledWith('older', { initialImpression: '上次的想法', dailyReview: '补上后来的观察' });
+    expect(archivedAt ? props.onUpdateReflection : props.onArchive).toHaveBeenCalledWith('older', { initialImpression: '上次的想法', dailyReview: '补上后来的观察' });
     await userEvent.click(await screen.findByRole('button', { name: '查看「女祭司」的记录' }));
     expect(onOpenCardHistory).toHaveBeenCalledWith('女祭司');
   });
@@ -129,6 +129,14 @@ describe('DailyFortuneCard', () => {
 
     await user.click(screen.getByText('愚者'));
     expect(props.onCreateFromCard).toHaveBeenCalledWith('ar00', false, 'physical-draw');
+  });
+
+  it('keeps the physical card picker open and reports a failed local draw', async () => {
+    renderCard({ onCreateFromCard: () => { throw new Error('本机暂时无法保存'); } });
+    await userEvent.click(screen.getByText('现实牌'));
+    await userEvent.click(screen.getByText('愚者'));
+    expect(screen.getByRole('heading', { name: '选择现实中抽到的牌' })).toBeInTheDocument();
+    expect(within(screen.getByRole('dialog', { name: '选择现实中抽到的牌' })).getByRole('alert')).toHaveTextContent('本机暂时无法保存');
   });
 
   it('shows random draw only after shuffling the daily deck', async () => {

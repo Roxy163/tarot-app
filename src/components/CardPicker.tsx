@@ -16,6 +16,7 @@ interface CardPickerProps {
   excludeCards?: string[];
   title?: string;
   description?: string;
+  error?: string;
   initialIsReversed?: boolean;
 }
 
@@ -28,6 +29,7 @@ export function CardPicker({
   excludeCards = [],
   title = '选择塔罗牌',
   description,
+  error,
 }: CardPickerProps) {
   useBodyScrollLock(true);
   const dialogRef = useRef<HTMLDivElement>(null);
@@ -107,6 +109,8 @@ export function CardPicker({
             onChange={e => setSearch(e.target.value)}
           />
         </div>
+
+        {error && <p role="alert" className="shrink-0 px-3 py-2 text-sm text-red-600 sm:px-4">{error}</p>}
 
         <div className="grid flex-1 grid-cols-3 gap-2 overflow-y-auto overscroll-contain p-2.5 sm:grid-cols-4 sm:gap-3 sm:p-3.5 md:grid-cols-6">
           {filteredCards.map((card, index) => {

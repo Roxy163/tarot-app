@@ -5,6 +5,7 @@ import {
   FEEDBACK_ATTACHMENT_MAX_COUNT,
   FEEDBACK_ATTACHMENT_MAX_BYTES,
   FEEDBACK_ATTACHMENT_TOTAL_MAX_BYTES,
+  getFeedbackEndpoint,
   loadFeedbackDraft,
   saveFeedbackDraft,
   submitFeedback,
@@ -15,6 +16,18 @@ describe('feedbackService', () => {
     localStorage.clear();
     vi.restoreAllMocks();
   });
+
+  it.each(['tarot-pavilion.netlify.app', 'release--tarot-pavilion.netlify.app'])(
+    'routes %s feedback and attachments directly to the configured mail service', hostname => {
+      expect(getFeedbackEndpoint(hostname)).toBe('https://tarot-pavilion.pages.dev/api/feedback');
+    },
+  );
+
+  it.each(['localhost', 'tarot-pavilion.pages.dev', 'other.netlify.app'])(
+    'keeps %s on its own feedback route', hostname => {
+      expect(getFeedbackEndpoint(hostname)).toBe('/api/feedback');
+    },
+  );
 
   it('在本机保留未送出草稿，成功后可清理', () => {
     saveFeedbackDraft({

@@ -55,7 +55,6 @@ export const BasicInfoSection: React.FC<BasicInfoSectionProps> = ({
   cardSlots,
   onAddSlot,
   canAddSlot = true,
-  isDailyMode,
   isForClient,
   onToggleClientMode,
   initialData,
@@ -124,7 +123,6 @@ export const BasicInfoSection: React.FC<BasicInfoSectionProps> = ({
       </div>
 
       <div className="space-y-2.5 sm:space-y-4">
-        {!isDailyMode && (
           <div>
             <input
               data-required-field="question"
@@ -141,7 +139,6 @@ export const BasicInfoSection: React.FC<BasicInfoSectionProps> = ({
               onChange={e => onUpdateQuestion(e.target.value)} 
             />
           </div>
-        )}
 
         <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-row sm:gap-2.5">
           <div className="relative min-w-0 sm:flex-1">

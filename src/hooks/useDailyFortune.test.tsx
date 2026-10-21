@@ -38,6 +38,25 @@ describe('useDailyFortune', () => {
     expect(result.current.fortunes[0].source).toBe('app-draw');
   });
 
+  it('does not reveal a successful draw if the local primary write fails', () => {
+    const { result } = renderHook(() => useDailyFortune());
+    const storage = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new Error('full'); });
+    expect(() => act(() => { result.current.createDailyFortuneFromCard('ar09', false); })).toThrow();
+    expect(result.current.fortunes).toEqual([]);
+    storage.mockRestore();
+  });
+
+  it('keeps an old draw without manual archiving visible after remounting on the next day', () => {
+    const first = renderHook(() => useDailyFortune());
+    act(() => { first.result.current.createDailyFortuneFromCard('ar09', false); });
+    first.unmount();
+    vi.setSystemTime(new Date('2026-07-03T08:00:00Z'));
+    const second = renderHook(() => useDailyFortune());
+    expect(second.result.current.getToday()).toBeUndefined();
+    expect(second.result.current.getArchivedFortunes()).toHaveLength(1);
+    expect(second.result.current.getArchivedFortunes()[0].cardName).toBe('隐士');
+  });
+
   it('uses local midnight and includes the final day in monthly summaries', () => {
     vi.setSystemTime(new Date(2026, 8, 30, 1, 30));
     const { result } = renderHook(() => useDailyFortune());
@@ -284,14 +303,15 @@ describe('useDailyFortune', () => {
     expect(localStorage.getItem('tarot_daily_fortunes_owner')).toBeNull();
   });
 
-  it('keeps unarchived fortunes out of the archive and allows empty archive saves', () => {
+  it('makes a draw immediately available in the archive without requiring notes or manual archiving', () => {
     const { result } = renderHook(() => useDailyFortune());
 
     act(() => {
       result.current.createDailyFortuneFromCard('ar09', false, 'physical-draw');
     });
 
-    expect(result.current.getArchivedFortunes()).toHaveLength(0);
+    expect(result.current.getArchivedFortunes()).toHaveLength(1);
+    expect(JSON.parse(localStorage.getItem('tarot_daily_fortunes')!)).toHaveLength(1);
 
     act(() => {
       result.current.archiveDailyFortune(result.current.fortunes[0].id, '');
