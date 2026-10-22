@@ -1,4 +1,6 @@
-# 2026-10-21 使用流程修复（本地预览）
+# 2026-10-21 使用流程修复与双站发布
+
+发布状态：应用提交 `f174fd5` 已于 2026-10-21 推送 GitHub 并发布到原有 Cloudflare、Netlify 正式地址；2026-10-22 完成最终线上复核。以下保留各开发阶段的本地验收记录，最终发布状态见文末。
 
 ## 范围
 
@@ -83,3 +85,17 @@
 - 已人工检查截图 `output/playwright/audit-draw-save-error-390.png`、`audit-backup-390.png`、`audit-feedback-390.png`、`audit-filled-spread-{320,390,844,1280}.png`。存储失败场景有预期的注入警告，其余隔离验收环境控制台没有错误或警告；测试浏览器已关闭。
 - 所有浏览器数据为独立环境中的测试资料。真实登录账号和生产云端没有被写入、导入或公开测试内容；账号相关异常以自动化模拟验证，不代表生产网络或第三方服务永远可用。
 - 最终构建通过，本地 PWA 版本为 `f12642890f81`，日志 `/tmp/tarot-audit-final-build.log`；`git diff --check` 通过。预览仍为 `http://localhost:3003/`，未提交或部署。
+
+## 正式双站发布
+
+- 应用提交 `f174fd5efcc7c738b3eab9a5317e3b016b06a0cb`，已推送 GitHub `main`。
+- 最终生产 PWA 版本 `c97f68115881`，两站使用同一份本地构建。发布前 88 个文件 / 615 项测试、类型检查、构建通过，日志为 `/tmp/tarot-dual-deploy-{tests,lint,build}.log`；此前 610 项之后新增 5 项 Netlify 反馈路由回归。
+- Cloudflare 正式地址：https://tarot-pavilion.pages.dev/ ，部署地址：https://3a35fbda.tarot-pavilion.pages.dev/ 。Functions 打包及上传成功。
+- Netlify 正式地址：https://tarot-pavilion.netlify.app/ ，部署地址：https://6ad8b9f74cf69497f77bc39e--tarot-pavilion.netlify.app/ 。沿用站点 ID `281250b7-fdfb-40b3-8981-e2c207880f0f`，静态文件及两个 Functions 上传完成。
+- Netlify 的旧 FormSubmit 反馈不支持现有附件，发布时已替换：新前端直接访问现有 Cloudflare `/api/feedback`；旧 `/api/feedback` 和函数入口使用 307 保留方法与正文转到同一接口，不重复配置或复制邮件密钥。生产邮件密钥名称已确认存在，未读取或输出密钥值。
+- 四个正式/部署地址共 96 项资源与响应头检查通过，最终结果 `/tmp/tarot-dual-release-20261021-verification.json`；2026-10-22 已重新执行并再次通过。所有脚本、样式、SW、manifest、图标和三种格式牌面图片均逐字节匹配。Netlify 正式首页比本地 HTML 多出三行平台注释，已单独比对确认只有该差异，其余 HTML 内容一致；没有将平台注释误记为逐字节一致。
+- 两站隔离游客浏览器均实走：随机日运抽出后立即进入复盘、日运手记默认标题、选隐士、改标签、保存及搜索 `hermit`，全部通过；未登录真实用户账号或发布测试手记到广场。
+- Cloudflare 正式站点 9 种牌阵 × 4 种视口共 36 个场景通过；Netlify 追加年运牌阵 320×568、390×844、844×390、1280×800 四种视口验收通过，完整位于底部导航上方、触控区域至少 44px，无横向溢出。没有修改原几何基准。
+- Netlify 反馈页实际添加九张 PNG，以一次性拦截验证发往 Cloudflare 的请求完整包含九个附件并正确处理成功结果；没有发送真实邮件。随后从 Netlify 浏览器真实跨域提交空反馈，返回预期 400，确认 CORS 和服务端验证可达；该负向用例产生一条预期的 HTTP 400 控制台记录。旧 Netlify 反馈入口实际返回 307 和正确目标。
+- 2026-10-22 Netlify 最终验收浏览器控制台 0 错误、0 警告，截图已查看，隔离浏览器已关闭。截图见 `output/playwright/dual-release-*`，包括 Cloudflare 36 个场景、Netlify 典籍和四种视口牌阵。
+- 两站共用同一 Firebase 项目，浏览器本机资料仍按域名分别保存；游客换站应先导出备份。此次没有修改或发布 Firestore Rules。
