@@ -1,12 +1,13 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { ZoomIn, ZoomOut, RefreshCw, Share2, ChevronDown, ChevronUp, PencilLine, Trash2, Lock, Sparkles, Check, Loader2, CheckCircle2, Eye, Clock3 } from 'lucide-react';
+import { ZoomIn, ZoomOut, RefreshCw, Share2, ChevronDown, ChevronUp, PencilLine, Trash2, Lock, Sparkles, Check, Loader2, CheckCircle2, Eye } from 'lucide-react';
 import { ReadingKeywordCandidate, TarotReading, TarotCardMetadata } from '../types';
 import { TAROT_CARDS, getCardImageUrl, LAYOUT_TEMPLATES } from '../constants';
 import { ConfirmDialog } from './ConfirmDialog';
 import { TarotCardImage } from './TarotCardImage';
 import { formatReadingDateTime } from '../lib/dateFormat';
 import { isReadingIncomplete } from '../lib/readingCompletion';
+import { getReadingOverview } from '../lib/readingThoughts';
 import {
   FREE_LAYOUT_CANVAS_HEIGHT,
   FREE_LAYOUT_CANVAS_WIDTH,
@@ -485,12 +486,9 @@ export const ReadingCard: React.FC<ReadingCardProps> = ({
     .filter(item => item.text);
   const hasCardInterpretationRows = cardInterpretationRows.length > 0;
   const legacySingleCardText = reading.interpretation?.singleCard?.trim();
-  const overviewText = (
-    reading.interpretation?.combination?.trim() ||
-    reading.interpretation?.summary?.trim() ||
-    legacySingleCardText ||
-    ''
-  );
+  const overviewText = getReadingOverview(reading);
+  const thoughtExcerpt = overviewText || cardInterpretationRows[0]?.text || '';
+  const feedbackExcerpt = !isPublicView ? reading.userFeedback?.trim() : '';
   const influenceNotes = [
     { label: '灵数影响', value: reading.interpretation?.numerologyInfluence },
     { label: '行星星座影响', value: reading.interpretation?.astrologyInfluence },
@@ -1139,10 +1137,6 @@ export const ReadingCard: React.FC<ReadingCardProps> = ({
                 <span className="shrink-0 rounded-full bg-forest-accent/8 px-1.5 py-0.5 text-[9px] font-medium text-forest-accent">
                   已复盘
                 </span>
-              ) : !reading.isExample ? (
-                <span className="shrink-0 rounded-full bg-forest-pink/10 px-1.5 py-0.5 text-[9px] font-medium text-forest-pink">
-                  待复盘
-                </span>
               ) : null}
             </span>
             <span className="flex min-w-0 items-center gap-1.5 text-[10px] leading-tight text-forest-muted">
@@ -1161,6 +1155,8 @@ export const ReadingCard: React.FC<ReadingCardProps> = ({
             <span className="block truncate text-[11px] leading-tight text-forest-ink/62">
               {listCardSummary || '暂无牌面'}
             </span>
+            {!isPublicView && thoughtExcerpt && <span className="line-clamp-2 break-words text-xs leading-relaxed text-forest-ink/80">{thoughtExcerpt}</span>}
+            {feedbackExcerpt && <span className="line-clamp-1 break-words text-xs leading-relaxed text-forest-muted">后来：{feedbackExcerpt}</span>}
           </span>
           <span className="flex min-h-11 min-w-8 items-center justify-center self-center rounded-full text-forest-muted/80">
             <ChevronDown size={16} className="-rotate-90" />
@@ -1252,12 +1248,6 @@ export const ReadingCard: React.FC<ReadingCardProps> = ({
                   AI参照
                 </span>
               )}
-              {!isIncompleteReading && !hasFeedback && !reading.isExample && (
-                <span className="px-1.5 py-0.5 bg-forest-pink/10 text-forest-pink text-[10px] rounded-full font-bold inline-flex items-center gap-1 shrink-0">
-                  <Clock3 size={10} strokeWidth={2.5} />
-                  待复盘
-                </span>
-              )}
             </div>
             <h3 className={`${isListView ? 'text-sm sm:text-base' : 'text-[0.98rem] sm:text-base'} font-semibold leading-snug text-forest-ink line-clamp-2`}>{reading.question}</h3>
             <div className={`${isListView ? 'mt-1' : 'mt-1 sm:mt-2'} flex flex-wrap items-center gap-1.5`}>
@@ -1311,6 +1301,11 @@ export const ReadingCard: React.FC<ReadingCardProps> = ({
         {renderCards()}
       </div>
 
+      {!isPublicView && (thoughtExcerpt || feedbackExcerpt) && <div className="space-y-1 border-t border-forest-accent/5 px-3.5 py-2.5">
+        {thoughtExcerpt && <p className="line-clamp-2 whitespace-pre-wrap break-words text-xs leading-relaxed text-forest-ink/80">{thoughtExcerpt}</p>}
+        {feedbackExcerpt && <p className="line-clamp-1 break-words text-xs leading-relaxed text-forest-muted">后来：{feedbackExcerpt}</p>}
+      </div>}
+
       {reading.category && (
         <div className="hidden items-center gap-2 border-t border-forest-accent/5 px-3.5 py-2 sm:flex">
           <span className="text-[10px] text-forest-muted">分类：</span>
@@ -1318,7 +1313,7 @@ export const ReadingCard: React.FC<ReadingCardProps> = ({
         </div>
       )}
 
-      {overviewText && (
+      {isPublicView && overviewText && (
         <div className="hidden border-t border-forest-accent/5 bg-forest-accent/5 px-3.5 py-3 sm:block">
           <p className="text-[10px] font-bold text-forest-accent mb-1">综合解读</p>
           <p className="text-xs text-forest-ink/80 leading-relaxed line-clamp-3">{overviewText}</p>

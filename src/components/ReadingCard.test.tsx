@@ -49,6 +49,24 @@ const yearlyReading: TarotReading = {
 };
 
 describe('ReadingCard', () => {
+  it('previews actual thoughts and feedback without assigning a review task', () => {
+    render(<ReadingCard reading={{ ...celticReading, interpretation: { singleCard: '', combination: '先放慢脚步再决定。', summary: '' }, userFeedback: '后来找到更合适的方法。' }} cardMetadata={[]} variant="list" />);
+    expect(screen.getByText('先放慢脚步再决定。')).toBeInTheDocument();
+    expect(screen.getByText('后来：后来找到更合适的方法。')).toBeInTheDocument();
+    expect(screen.queryByText('待复盘')).not.toBeInTheDocument();
+  });
+
+  it('does not show private review excerpts on public cards', () => {
+    render(<ReadingCard reading={{ ...celticReading, userFeedback: '只给自己看的经历' }} cardMetadata={[]} isPublicView variant="list" />);
+    expect(screen.queryByText(/只给自己看的经历/)).not.toBeInTheDocument();
+  });
+
+  it('previews the current single-card thought instead of an older overall note', () => {
+    render(<ReadingCard reading={{ ...celticReading, spread: '单牌阵', cards: [celticReading.cards[0]], cardInterpretations: ['刚修改的单牌想法'], interpretation: { singleCard: '刚修改的单牌想法', combination: '保留的旧组合笔记', summary: '保留的旧总结' } }} cardMetadata={[]} variant="list" />);
+    expect(screen.getByText('刚修改的单牌想法')).toBeInTheDocument();
+    expect(screen.queryByText('保留的旧组合笔记')).not.toBeInTheDocument();
+  });
+
   afterEach(() => {
     Object.defineProperty(window, 'innerWidth', {
       configurable: true,

@@ -50,7 +50,7 @@ export function useLocalDraft<T>(key: string, value: T, enabled = true) {
 }
 
 export function clearAccountDrafts(uid: string) {
-  const belongsToAccount = (key: string) => key.startsWith(`tarot_reading_draft_${uid}_`) || key.startsWith(`tarot_annotation_draft_${uid}_`) || key.startsWith(`tarot_daily_reflection_draft_${uid}_`) || key === `tarot_personal_meaning_draft_${uid}`;
+  const belongsToAccount = (key: string) => key.startsWith(`tarot_reading_draft_${uid}_`) || key.startsWith(`tarot_reading_review_draft_${uid}_`) || key.startsWith(`tarot_annotation_draft_${uid}_`) || key.startsWith(`tarot_daily_reflection_draft_${uid}_`) || key === `tarot_personal_meaning_draft_${uid}`;
   const keys = new Set([...memory.keys(), ...Object.keys(localStorage), ...Object.keys(sessionStorage)]);
   for (const key of keys) if (belongsToAccount(key)) clearLocalDraft(key);
 }

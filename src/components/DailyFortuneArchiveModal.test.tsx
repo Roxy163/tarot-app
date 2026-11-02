@@ -19,12 +19,13 @@ describe('combined daily archive', () => {
     expect(screen.getByRole('tab', { name: '日运手记 1' })).toHaveAttribute('aria-selected', 'true');
     await user.type(screen.getByRole('textbox', { name: '搜索日运手记' }), '湖边散步');
     await user.click(screen.getByRole('button', { name: /日运手记的原问题/ }));
-    expect(screen.getByRole('main', { name: '手记详情' })).toBeInTheDocument();
-    expect(screen.getAllByText('隐士').length).toBeGreaterThan(0);
-    expect(screen.getAllByText('愚者').length).toBeGreaterThan(0);
+    expect(screen.getByRole('main', { name: '手记回看' })).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: '牌面与逐牌解读（2）' }));
+    expect(screen.getByAltText('隐士')).toBeInTheDocument();
+    expect(screen.getByAltText('愚者')).toBeInTheDocument();
     expect(screen.getByText('湖边散步')).toBeInTheDocument();
     await user.keyboard('{Escape}');
-    await waitFor(() => expect(screen.queryByRole('main', { name: '手记详情' })).not.toBeInTheDocument());
+    await waitFor(() => expect(screen.queryByRole('main', { name: '手记回看' })).not.toBeInTheDocument());
     expect(screen.getByRole('textbox', { name: '搜索日运手记' })).toHaveValue('湖边散步');
     expect(callbacks.onUpdateReflection).not.toHaveBeenCalled();
     expect(callbacks.onDeleteFortunes).not.toHaveBeenCalled();
@@ -37,7 +38,7 @@ describe('combined daily archive', () => {
     expect(screen.queryByRole('button', { name: /日运手记的原问题/ })).not.toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: '待复盘' }));
     await user.click(screen.getByRole('button', { name: /日运手记的原问题/ }));
-    await user.click(screen.getByRole('button', { name: '编辑' }));
+    await user.click(screen.getByRole('button', { name: '编辑手记' }));
     expect(callbacks.onEditReading).toHaveBeenCalledWith(reading);
     expect(callbacks.onUpdateReflection).not.toHaveBeenCalled();
   });
@@ -50,5 +51,18 @@ describe('combined daily archive', () => {
     view.rerender(<DailyFortuneArchiveModal {...callbacks} readings={[reading, { ...reading, id: 'example', isExample: true }]} />);
     expect(screen.getByRole('textbox', { name: '搜索日运手记' })).toHaveValue('隐士');
     expect(screen.getByRole('tab', { name: '日运手记 1' })).toHaveAttribute('aria-selected', 'true');
+  });
+
+  it('saves a handnote review in place without calling the draw reflection store', async () => {
+    const user = userEvent.setup(); const callbacks = props(); const save = vi.fn(() => true);
+    render(<DailyFortuneArchiveModal {...callbacks} ownerScope="user-a" onUpdateReadingFeedback={save} />);
+    await user.click(screen.getByRole('button', { name: /日运手记的原问题/ }));
+    await user.click(screen.getByRole('button', { name: '添加复盘' }));
+    await user.type(screen.getByRole('textbox', { name: '后来发生了什么' }), '之后散步时想通了');
+    await user.click(screen.getByRole('button', { name: '保存复盘' }));
+    expect(save).toHaveBeenCalledWith(reading.id, '之后散步时想通了');
+    expect(callbacks.onUpdateReflection).not.toHaveBeenCalled();
+    expect(callbacks.onEditReading).not.toHaveBeenCalled();
+    expect(screen.getByRole('main', { name: '手记回看' })).toBeInTheDocument();
   });
 });

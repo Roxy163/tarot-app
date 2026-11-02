@@ -1,7 +1,7 @@
 import { scrollFocusedFieldIntoView } from '../lib/mobileFocus';
-import React from 'react';
+import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { HelpCircle, RotateCcw, Plus, FileText } from 'lucide-react';
+import { HelpCircle, RotateCcw, Plus, FileText, ChevronDown } from 'lucide-react';
 import { ReadingSlotData, TarotCardMetadata } from '../types';
 import { TAROT_CARDS, getCardImageUrl } from '../constants';
 import { getAnnotationByCardId } from '../constants/cardAnnotations';
@@ -44,6 +44,8 @@ export const ReadingDetailView: React.FC<ReadingDetailViewProps> = ({
   onSetShowPicker,
   hasInterpretationError = false
 }) => {
+  const [showCorrespondences, setShowCorrespondences] = useState(false);
+  const [questionVisibility, setQuestionVisibility] = useState<Record<number, boolean>>({});
   const currentSlot = cardSlots[activeSlotIndex];
 
   if (!currentSlot?.name) return null;
@@ -58,6 +60,7 @@ export const ReadingDetailView: React.FC<ReadingDetailViewProps> = ({
     element: officialAnnotation?.element || currentMetadata?.astrology?.element,
   };
   const currentSlotLabel = currentSlot.label || `位置 ${activeSlotIndex + 1}`;
+  const showQuestion = questionVisibility[activeSlotIndex] ?? Boolean(cardQuestions[activeSlotIndex]?.trim());
   const correspondenceBadgeClass = 'text-[9px] text-forest-muted bg-forest-bg px-1 rounded border border-forest-accent/5 font-bold';
   const cardAtmosphereHint = [
     cardCorrespondence.element,
@@ -153,7 +156,8 @@ export const ReadingDetailView: React.FC<ReadingDetailViewProps> = ({
               </div>
             </div>
 
-            <div className="flex flex-wrap gap-1.5 sm:gap-2">
+            <button type="button" onClick={() => setShowCorrespondences(previous => !previous)} aria-expanded={showCorrespondences} className="flex min-h-11 items-center gap-1.5 text-xs text-forest-muted">牌面对应 <ChevronDown size={14} className={showCorrespondences ? 'rotate-180' : ''} /></button>
+            {showCorrespondences && <div className="flex flex-wrap gap-1.5 sm:gap-2">
               <CardNumerologyBadge cardName={currentSlot.name} isLoggedIn={isLoggedIn} userId={userId} />
               {(cardCorrespondence.planet || cardCorrespondence.zodiac || cardCorrespondence.house || cardCorrespondence.element) && (
                 <>
@@ -163,7 +167,7 @@ export const ReadingDetailView: React.FC<ReadingDetailViewProps> = ({
                   {cardCorrespondence.element && <span className={correspondenceBadgeClass}>元素: {cardCorrespondence.element}</span>}
                 </>
               )}
-            </div>
+            </div>}
           </div>
 
           <div className="col-span-2 space-y-3 sm:col-span-1 sm:col-start-2">
@@ -216,16 +220,9 @@ export const ReadingDetailView: React.FC<ReadingDetailViewProps> = ({
               />
             </div>
 
-            <div className="rounded-2xl border border-forest-accent/8 bg-white/46 p-2.5 sm:p-3">
-              <div className="mb-2 flex items-center justify-between gap-2">
-                <div className="flex items-center gap-2 text-xs font-medium text-forest-accent">
-                  <HelpCircle size={14} />
-                  牌面疑问
-                </div>
-                <span className="hidden text-[10px] text-forest-muted sm:inline">
-                  复盘时再回应
-                </span>
-              </div>
+            <div>
+              <button type="button" onClick={() => setQuestionVisibility(previous => ({ ...previous, [activeSlotIndex]: !showQuestion }))} aria-expanded={showQuestion} className="flex min-h-11 items-center gap-1.5 text-xs text-forest-accent"><HelpCircle size={14} />{cardQuestions[activeSlotIndex]?.trim() ? '牌面疑问' : '添加疑问'}</button>
+            {showQuestion && <div className="rounded-xl border border-forest-accent/8 bg-white/46 p-2.5 sm:p-3">
               <AutoResizeTextarea
                 minRows={1.5}
                 maxRows={6}
@@ -236,6 +233,7 @@ export const ReadingDetailView: React.FC<ReadingDetailViewProps> = ({
                 onFocus={scrollFocusedFieldIntoView}
                 onChange={e => updateActiveQuestion(e.target.value)}
               />
+            </div>}
             </div>
           </div>
         </div>

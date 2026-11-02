@@ -208,6 +208,7 @@ function AppContent() {
     editingReading,
     setEditingReading,
     handleAddReading,
+    handleUpdateReadingFeedback,
     handleExtractKeywordCandidates,
     handleConfirmKeywordCandidates,
     handleProcessAi,
@@ -1077,6 +1078,13 @@ function AppContent() {
     setSelectedReadingDetail(null);
     handleEditReading(reading);
     navigateToTab('add');
+  };
+
+  const handleSaveReadingFeedback = (id: string, text: string) => {
+    const saved = handleUpdateReadingFeedback(id, text);
+    if (!saved) return false;
+    setSelectedReadingDetail(previous => previous?.id === id ? saved : previous);
+    return true;
   };
 
   // Handle tag click in public view
@@ -1986,6 +1994,8 @@ function AppContent() {
           reading={selectedReadingDetail}
           onClose={() => setSelectedReadingDetail(null)}
           onEdit={handleEditReadingNavigate}
+          ownerScope={session?.uid || 'guest'}
+          onSaveFeedback={handleSaveReadingFeedback}
         />
       </Suspense>
       <DailyFortuneArchiveModal
@@ -1999,6 +2009,7 @@ function AppContent() {
         ownerName={ownAuthorName}
         ownerScope={session?.uid || 'guest'}
         readings={readings}
+        onUpdateReadingFeedback={handleSaveReadingFeedback}
         onEditReading={reading => {
           returnToDailyArchive.current = activeTab === 'home' ? 'home' : 'private';
           setIsDailyArchiveOpen(false);

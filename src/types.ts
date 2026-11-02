@@ -299,8 +299,15 @@ export type ReadingEditorFields = Omit<ReadingFormData, 'interpretation' | 'card
   elementInfluence?: string;
 };
 
+export interface ReadingAiPromptDraft {
+  text: string;
+  sourceText: string;
+  includeSupplementary: boolean;
+}
+
 export interface ReadingEditorDraft {
   formData: ReadingEditorFields;
+  feedbackBaseline?: string;
   cardSlots: ReadingSlotData[];
   cardInterpretations: string[];
   cardQuestions: string[];
@@ -313,6 +320,9 @@ export interface ReadingEditorDraft {
   spreadSwitchHistory?: ReadingSpreadSwitch[];
   updatedAt?: string;
   hasUnsavedChanges?: boolean;
+  aiPromptMode?: ReadingAiAnswerMode;
+  aiPromptDrafts?: Partial<Record<ReadingAiAnswerMode, ReadingAiPromptDraft>>;
+  showCardStudy?: boolean;
 }
 
 export interface ReadingSpreadSnapshot {

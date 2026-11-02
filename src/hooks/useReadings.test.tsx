@@ -85,6 +85,73 @@ describe('useReadings cloud sync', () => {
     expect(notice).not.toHaveBeenCalledWith(expect.stringContaining('已添入'));
   });
 
+  it('updates only feedback on the latest local reading without altering the editor', async () => {
+    const { result } = renderHook(() => useReadings(null, false));
+    await act(async () => { await Promise.resolve(); });
+    let original!: TarotReading;
+    await act(async () => { original = (await result.current.handleAddReading({ question: '原问题', cards: [{ name: '隐士', isReversed: true, x: 180, y: 90 }], interpretation: { singleCard: '原想法' }, aiAnswer: '原 AI 文字', isPublic: false }))!; });
+    act(() => result.current.setEditingReading(original));
+    let updated: TarotReading | null = null;
+    act(() => { updated = result.current.handleUpdateReadingFeedback(original.id, '  后来的经历  '); });
+    expect(updated).toMatchObject({ ...original, userFeedback: '后来的经历', updatedAt: expect.any(String) });
+    expect(result.current.readings).toHaveLength(1);
+    expect(result.current.editingReading).toEqual(original);
+    expect(original.userFeedback).toBeUndefined();
+    expect(JSON.parse(localStorage.getItem('tarot_guest_data')!)[0].userFeedback).toBe('后来的经历');
+  });
+
+  it('does not change the reading when feedback cannot be durably saved', async () => {
+    const { result } = renderHook(() => useReadings(null, false));
+    await act(async () => { await Promise.resolve(); });
+    let original!: TarotReading;
+    await act(async () => { original = (await result.current.handleAddReading({ question: '不能丢', cards: [{ name: '隐士', isReversed: false }] }))!; });
+    const setItem = Storage.prototype.setItem;
+    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(function(key, value) { if (key === 'tarot_guest_data') throw new Error('storage-full'); setItem.call(this, key, value); });
+    let updated: unknown;
+    act(() => { updated = result.current.handleUpdateReadingFeedback(original.id, '失败后重试'); });
+    expect(updated).toBeNull(); expect(result.current.readings[0]).toEqual(original);
+  });
+
+  it('preserves newer feedback and legacy interpretation fields when editing other content', async () => {
+    const { result } = renderHook(() => useReadings(null, false));
+    await act(async () => { await Promise.resolve(); });
+    let original!: TarotReading;
+    await act(async () => { original = (await result.current.handleAddReading({ question: '原问题', cards: [{ name: '隐士', isReversed: false }], interpretation: { singleCard: '原想法', combination: '原组合', summary: '旧版总结' }, userFeedback: '原复盘' }))!; });
+    act(() => result.current.setEditingReading(original));
+    const saveEditor = result.current.handleAddReading;
+    act(() => { result.current.handleUpdateReadingFeedback(original.id, '刚刚补写的经历'); });
+    await act(async () => { await saveEditor({ question: '改过的问题', cards: original.cards, interpretation: { singleCard: '修改后的想法', combination: '原组合' } }); });
+    expect(result.current.readings[0]).toMatchObject({ question: '改过的问题', userFeedback: '刚刚补写的经历', interpretation: { singleCard: '修改后的想法', summary: '旧版总结' } });
+    expect(JSON.parse(localStorage.getItem('tarot_guest_data')!)[0].userFeedback).toBe('刚刚补写的经历');
+    await act(async () => { await result.current.handleAddReading({ question: '改过的问题', cards: original.cards, userFeedback: '' }); });
+    expect(result.current.readings[0].userFeedback).toBe('');
+  });
+
+  it('rejects a stale feedback callback after changing accounts', async () => {
+    const { result, rerender } = renderHook(({ uid }) => useReadings({ uid }, false, true), { initialProps: { uid: 'user-a' } });
+    await act(async () => { await Promise.resolve(); });
+    const staleSave = result.current.handleUpdateReadingFeedback;
+    const staleEditorSave = result.current.handleAddReading;
+    rerender({ uid: 'user-b' }); await act(async () => { await Promise.resolve(); });
+    const before = result.current.readings;
+    act(() => { expect(staleSave('same-id', '不能跨账号写入')).toBeNull(); });
+    expect(result.current.readings).toEqual(before);
+    expect(result.current.handleUpdateReadingFeedback('unknown', '不能创建新手记')).toBeNull();
+    await act(async () => { expect(await staleEditorSave({ question: '不能跨账号保存旧编辑页', cards: [{ name: '愚者', isReversed: false }] })).toBeNull(); });
+    expect(result.current.readings).toEqual(before);
+  });
+
+  it('syncs a signed-in feedback update through the existing cloud queue', async () => {
+    const original: TarotReading = { id: 'signed-review', userId: 'user-a', date: '2026-11-02', question: '原问题', spread: '单牌阵', cards: [{ name: '隐士', isReversed: true }], interpretation: { singleCard: '原想法', combination: '', summary: '' }, keywords: [], isPublic: false, isAnonymous: false, authorName: 'Roxy' };
+    vi.mocked(getUserReadings).mockResolvedValue([original]);
+    const { result } = renderHook(() => useReadings({ uid: 'user-a' }, false));
+    await act(async () => { await Promise.resolve(); await Promise.resolve(); });
+    act(() => { expect(result.current.handleUpdateReadingFeedback(original.id, '这次的后续经历')).toMatchObject({ id: original.id, userFeedback: '这次的后续经历' }); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(1500); });
+    expect(replaceUserReadings).toHaveBeenCalledWith('user-a', [expect.objectContaining({ question: '原问题', cards: original.cards, userFeedback: '这次的后续经历' })], { deletedReadingIds: [] });
+    expect(JSON.parse(localStorage.getItem('tarot_readings_user-a')!)[0].userFeedback).toBe('这次的后续经历');
+  });
+
   it('does not rewrite settings to cloud immediately after an unchanged signed-in load', async () => {
     const { result } = renderHook(() => useReadings({ uid: 'user-1', email: 'user@example.com' }, false));
 

@@ -41,11 +41,7 @@ export type ReadingSubmitPayloadResult =
 
 export type ReadingSubmitMode = 'auto' | 'complete' | 'draft';
 
-const isSingleCardReading = (formData: ReadingFormState, cardSlots: ReadingSlotData[]) => (
-  formData.category === '日运'
-  || formData.spread === '单牌阵'
-  || cardSlots.length <= 1
-);
+const isSingleCardReading = (_formData: ReadingFormState, cardSlots: ReadingSlotData[]) => cardSlots.length <= 1;
 
 export const getReadingSlotInterpretation = ({
   formData,
@@ -77,17 +73,19 @@ export const validateReadingRequiredFields = ({
   cardSlots: ReadingSlotData[];
   cardInterpretations: string[];
 }): string | null => {
-  return getReadingRequiredFieldIssue({ formData, cardSlots, cardInterpretations })?.notice || null;
+  return getReadingRequiredFieldIssue({ formData, cardSlots, cardInterpretations, requireCardInterpretations: true })?.notice || null;
 };
 
 export const getReadingRequiredFieldIssue = ({
   formData,
   cardSlots,
   cardInterpretations,
+  requireCardInterpretations = false,
 }: {
   formData: ReadingFormState;
   cardSlots: ReadingSlotData[];
   cardInterpretations: string[];
+  requireCardInterpretations?: boolean;
 }): ReadingRequiredFieldIssue | null => {
   if (!formData.question.trim()) return { field: 'question', notice: REQUIRED_QUESTION_NOTICE };
   if (!formData.spread.trim()) return { field: 'spread', notice: REQUIRED_SPREAD_NOTICE };
@@ -107,7 +105,7 @@ export const getReadingRequiredFieldIssue = ({
     slotIndex: index,
     cardSlots,
   }));
-  if (emptyInterpretationIndex !== -1) {
+  if (requireCardInterpretations && emptyInterpretationIndex !== -1) {
     return {
       field: 'cardInterpretation',
       slotIndex: emptyInterpretationIndex,
@@ -185,7 +183,6 @@ export const buildReadingSubmitPayload = ({
   const submittedQuestions = cardSlots.map((_, index) => cardQuestions[index]?.trim() || '');
   const singleCardMode = isSingleCardReading(formData, submittedCards);
   const finalSingleCard = singleCardMode ? submittedInterpretations[0] : singleCard;
-  const finalCombination = singleCardMode ? '' : combination;
   const isAnonymousShare = Boolean(rest.isAnonymous);
   const submittedAiAnswer = aiAnswer?.trim() || '';
   const submittedAiAnswerMode = aiAnswerMode === 'consultant' ? 'consultant' : 'mentor';
@@ -203,7 +200,7 @@ export const buildReadingSubmitPayload = ({
       readingDate: submittedDate,
       interpretation: {
         singleCard: finalSingleCard,
-        combination: finalCombination,
+        combination,
         numerologyInfluence,
         astrologyInfluence,
         houseInfluence,

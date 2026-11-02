@@ -181,6 +181,8 @@ export const useReadings = (
   const pendingGuestReadingsSyncRef = useRef(false);
   const pendingDeletedReadingIdsRef = useRef<Set<string>>(new Set());
   const cloudSyncedSnapshotsRef = useRef<Record<CloudSnapshotKey, string>>(createCloudSnapshots());
+  const feedbackDataRef = useRef({ activeDataKey, loadedDataKey, isAuthLoading, readings });
+  feedbackDataRef.current = { activeDataKey, loadedDataKey, isAuthLoading, readings };
 
   const markCloudSnapshot = useCallback((key: CloudSnapshotKey, value: unknown) => {
     cloudSyncedSnapshotsRef.current[key] = serializeCloudSnapshot(value);
@@ -699,6 +701,8 @@ export const useReadings = (
     profile?: { display_name?: string; nickname?: string; bio?: string; signature?: string },
     onShowSnackbar?: (msg: string) => void,
   ) => {
+    const current = feedbackDataRef.current;
+    if (current.isAuthLoading || current.activeDataKey !== activeDataKey || current.loadedDataKey !== activeDataKey) return null;
     setIsProcessing(true);
     try {
       const currentAuthorBio = (profile?.bio || profile?.signature || '').trim();
@@ -720,11 +724,14 @@ export const useReadings = (
       let savedReading: TarotReading | null = null;
 
       if (editingReading?.id) {
-        const updatedReading = stampReadingUpdate({ ...editingReading, ...readingData });
-        const updatedReadings = readings.map(r => r.id === editingReading.id ? updatedReading : r);
+        const latestReading = current.readings.find(reading => reading.id === editingReading.id && !reading.isExample);
+        if (!latestReading || (session?.uid && latestReading.userId !== session.uid)) return null;
+        const updatedReading = stampReadingUpdate({ ...latestReading, ...readingData, interpretation: { ...latestReading.interpretation, ...newReading.interpretation } });
+        const updatedReadings = current.readings.map(r => r.id === editingReading.id ? updatedReading : r);
         requireLocalSave(session?.uid ? getUserScopedStorageKey(USER_READINGS_STORAGE_KEY, session.uid) : GUEST_READINGS_STORAGE_KEY, getPersistableReadings(updatedReadings));
+        feedbackDataRef.current = { ...current, readings: updatedReadings };
         setReadings(updatedReadings);
-        onShowSnackbar?.(updatedReading.status === 'draft' ? '已保存为待补全，可稍后继续补牌面或解读。' : '✨ 灵见手帖已更新。');
+        onShowSnackbar?.(updatedReading.status === 'draft' ? '已保存，剩余牌面可以稍后补录。' : '✨ 灵见手帖已更新。');
         savedReading = updatedReading;
       } else {
         const reading: TarotReading = {
@@ -734,8 +741,9 @@ export const useReadings = (
           authorName: profile?.display_name || profile?.nickname || session?.email?.split('@')[0] || '研习阁主',
           ...readingData
         };
-        const updatedReadings = [reading, ...readings.filter(item => !item.isExample)];
+        const updatedReadings = [reading, ...current.readings.filter(item => !item.isExample)];
         requireLocalSave(session?.uid ? getUserScopedStorageKey(USER_READINGS_STORAGE_KEY, session.uid) : GUEST_READINGS_STORAGE_KEY, getPersistableReadings(updatedReadings));
+        feedbackDataRef.current = { ...current, readings: updatedReadings };
         setReadings(updatedReadings);
 
         onShowSnackbar?.(reading.status === 'draft' ? '已保存为待补全，可在《阁中典籍》继续编辑。' : '✨ 灵见手帖已添入《阁中典籍》。');
@@ -789,7 +797,25 @@ export const useReadings = (
     } finally {
       setIsProcessing(false);
     }
-  }, [readings, editingReading, session]);
+  }, [activeDataKey, editingReading, session]);
+
+  const handleUpdateReadingFeedback = useCallback((id: string, text: string): TarotReading | null => {
+    const current = feedbackDataRef.current;
+    if (current.isAuthLoading || current.activeDataKey !== activeDataKey || current.loadedDataKey !== activeDataKey) return null;
+    const reading = current.readings.find(item => item.id === id && !item.isExample);
+    if (!reading || (session?.uid && reading.userId !== session.uid)) return null;
+    const updatedReading = stampReadingUpdate({ ...reading, userFeedback: text.trim() });
+    const updatedReadings = current.readings.map(item => item.id === id ? updatedReading : item);
+    try {
+      requireLocalSave(session?.uid ? getUserScopedStorageKey(USER_READINGS_STORAGE_KEY, session.uid) : GUEST_READINGS_STORAGE_KEY, getPersistableReadings(updatedReadings));
+      feedbackDataRef.current = { ...current, readings: updatedReadings };
+      setReadings(updatedReadings);
+      return updatedReading;
+    } catch (error) {
+      console.warn('Failed to save reading feedback locally:', error);
+      return null;
+    }
+  }, [activeDataKey, session?.uid]);
 
   const handleExtractKeywordCandidates = useCallback(async (id: string): Promise<ReadingKeywordCandidate[]> => {
     const reading = readings.find(r => r.id === id);
@@ -922,6 +948,7 @@ export const useReadings = (
     editingReading,
     setEditingReading,
     handleAddReading,
+    handleUpdateReadingFeedback,
     handleExtractKeywordCandidates,
     handleConfirmKeywordCandidates,
     handleProcessAi,

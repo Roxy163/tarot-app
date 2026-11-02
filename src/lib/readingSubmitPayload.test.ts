@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest';
 import { ReadingSlotData } from '../types';
 import {
   INCOMPLETE_CARDS_NOTICE,
-  REQUIRED_CARD_INTERPRETATION_NOTICE,
   REQUIRED_CLIENT_NAME_NOTICE,
   REQUIRED_QUESTION_NOTICE,
   ReadingFormState,
@@ -71,13 +70,19 @@ describe('buildReadingSubmitPayload', () => {
     })).toEqual({ ok: false, notice: REQUIRED_CLIENT_NAME_NOTICE });
   });
 
-  it('requires every submitted card to have a card interpretation', () => {
-    expect(buildReadingSubmitPayload({
+  it('accepts an overall thought without requiring every card interpretation', () => {
+    const result = buildReadingSubmitPayload({
       formData: baseFormData,
       cardSlots: completeSlots,
       cardInterpretations: ['过去解读', '', '未来解读'],
       mode: 'complete',
-    })).toEqual({ ok: false, notice: REQUIRED_CARD_INTERPRETATION_NOTICE });
+    });
+    expect(result).toMatchObject({ ok: true, payload: { status: 'complete', interpretation: { combination: '组合原文' }, cardInterpretations: ['过去解读', '', '未来解读'] } });
+  });
+
+  it('also accepts recording all cards before writing any thoughts', () => {
+    const result = buildReadingSubmitPayload({ formData: { ...baseFormData, singleCard: '', combination: '' }, cardSlots: completeSlots, cardInterpretations: [] });
+    expect(result).toMatchObject({ ok: true, payload: { status: 'complete', cardInterpretations: ['', '', ''] } });
   });
 
   it('keeps labels, positions, rotations and interpretations aligned when all required fields are filled', () => {
@@ -144,7 +149,7 @@ describe('buildReadingSubmitPayload', () => {
     expect(result.payload.slotPositions).toEqual(['', '', '']);
   });
 
-  it('uses the first submitted interpretation as single-card text for daily readings', () => {
+  it('preserves the overall thought of a multi-card reading even with the daily tag', () => {
     const result = buildReadingSubmitPayload({
       formData: { ...baseFormData, category: '日运', spread: '时间流牌阵' },
       cardSlots: completeSlots,
@@ -154,8 +159,8 @@ describe('buildReadingSubmitPayload', () => {
     expect(result.ok).toBe(true);
     if (!result.ok) return;
 
-    expect(result.payload.interpretation?.singleCard).toBe('今日解读');
-    expect(result.payload.interpretation?.combination).toBe('');
+    expect(result.payload.interpretation?.singleCard).toBe('单牌原文');
+    expect(result.payload.interpretation?.combination).toBe('组合原文');
   });
 
   it('keeps single-card spread as a single-card reading even when only fallback text exists', () => {
@@ -169,7 +174,7 @@ describe('buildReadingSubmitPayload', () => {
     if (!result.ok) return;
 
     expect(result.payload.interpretation?.singleCard).toBe('单牌原文');
-    expect(result.payload.interpretation?.combination).toBe('');
+    expect(result.payload.interpretation?.combination).toBe('组合原文');
   });
 
   it('serializes the reading date to ISO format', () => {

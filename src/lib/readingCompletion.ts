@@ -9,18 +9,8 @@ export const hasLegacyOverviewInterpretation = (reading: TarotReading) => (
 );
 
 export const isReadingIncomplete = (reading: TarotReading) => {
-  if (reading.status === 'draft') return true;
-  if (reading.status === 'complete') return false;
-
   const cards = reading.cards || [];
-  if (cards.length === 0) return true;
-  if (cards.some(card => !hasText(card.name))) return true;
-
-  if (reading.cardInterpretations?.some(hasText)) {
-    return cards.some((card, index) => hasText(card.name) && !hasText(reading.cardInterpretations?.[index]));
-  }
-
-  return !hasLegacyOverviewInterpretation(reading);
+  return cards.length === 0 || cards.some(card => !hasText(card.name));
 };
 
 export const getReadingCompletionLabel = (reading: TarotReading) => (

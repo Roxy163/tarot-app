@@ -10,6 +10,7 @@ import { formatReadingDateTime } from '../lib/dateFormat';
 import { isReadingIncomplete } from '../lib/readingCompletion';
 import { useModalFocus } from '../hooks/useModalFocus';
 import { PageView } from './PageView';
+import { ReadingReviewPage } from './ReadingReviewPage';
 
 interface ReadingDetailModalProps {
   reading: TarotReading | null;
@@ -17,6 +18,8 @@ interface ReadingDetailModalProps {
   onEdit?: (reading: TarotReading) => void;
   isPublicView?: boolean;
   asPage?: boolean;
+  ownerScope?: string;
+  onSaveFeedback?: (id: string, text: string) => boolean | Promise<boolean>;
 }
 
 export const ReadingDetailModal: React.FC<ReadingDetailModalProps> = ({
@@ -25,13 +28,16 @@ export const ReadingDetailModal: React.FC<ReadingDetailModalProps> = ({
   onEdit,
   isPublicView = false,
   asPage = false,
+  ownerScope = 'guest',
+  onSaveFeedback,
 }) => {
-  useBodyScrollLock(Boolean(reading) && !asPage);
+  useBodyScrollLock(Boolean(reading) && isPublicView && !asPage);
   const dialogRef = React.useRef<HTMLDivElement>(null);
   const titleId = React.useId();
-  useModalFocus(Boolean(reading) && !asPage, dialogRef, onClose);
+  useModalFocus(Boolean(reading) && isPublicView && !asPage, dialogRef, onClose);
 
   if (!reading) return null;
+  if (!isPublicView) return <ReadingReviewPage key={`${ownerScope}:${reading.id}`} reading={reading} ownerScope={ownerScope} onClose={onClose} onEdit={onEdit} onSaveFeedback={onSaveFeedback} />;
 
   const overviewText = (
     reading.interpretation?.combination?.trim() ||

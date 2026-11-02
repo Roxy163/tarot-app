@@ -59,6 +59,7 @@ interface DailyFortuneArchiveModalProps {
   ownerScope?: string;
   readings?: TarotReading[];
   onEditReading?: (reading: TarotReading) => void;
+  onUpdateReadingFeedback?: (id: string, text: string) => boolean | Promise<boolean>;
 }
 
 type ReviewView = 'timeline' | 'cards' | 'month';
@@ -413,6 +414,7 @@ export const DailyFortuneArchiveModal: React.FC<DailyFortuneArchiveModalProps> =
   ownerScope = 'guest',
   readings = [],
   onEditReading,
+  onUpdateReadingFeedback,
 }) => {
   const dailyReadings = useMemo(() => readings.filter(isDailyReading).sort((a, b) =>
     (b.readingDate || b.date).localeCompare(a.readingDate || a.date)), [readings]);
@@ -768,7 +770,7 @@ export const DailyFortuneArchiveModal: React.FC<DailyFortuneArchiveModalProps> =
             <ChevronRight size={18} className="shrink-0 text-forest-accent" />
           </button>)}
         </div>
-        <ReadingDetailModal asPage reading={dailyReadings.find(reading => reading.id === selectedReadingId) || null} onClose={() => setSelectedReadingId(null)} onEdit={onEditReading ? reading => { setSelectedReadingId(null); onEditReading(reading); } : undefined} />
+        <ReadingDetailModal asPage reading={dailyReadings.find(reading => reading.id === selectedReadingId) || null} ownerScope={ownerScope} onSaveFeedback={onUpdateReadingFeedback} onClose={() => setSelectedReadingId(null)} onEdit={onEditReading ? reading => { setSelectedReadingId(null); onEditReading(reading); } : undefined} />
       </section> : <>
               <div className="relative border-b border-forest-accent/7 bg-white/40 p-3 sm:p-3.5">
                 <div className="flex items-start justify-between gap-3">

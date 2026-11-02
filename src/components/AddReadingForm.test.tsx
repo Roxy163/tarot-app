@@ -143,6 +143,32 @@ describe('AddReadingForm spread designer flow', () => {
     expect(readLocalDraft<any>(key).hasUnsavedChanges).toBe(true);
   });
 
+  it('does not submit an untouched old review when resuming an edit after a newer review was saved', async () => {
+    const user = userEvent.setup();
+    const initialData = makeReading('review-rebase', [], '2026-11-02', { userFeedback: '原复盘' });
+    const first = renderForm({ initialData });
+    await user.type(screen.getByPlaceholderText('占卜的问题是什么？'), ' 未完成的问题修改');
+    first.unmount();
+    const second = renderForm({ initialData: { ...initialData, userFeedback: '后来补写的复盘' } });
+    await user.click(screen.getByRole('button', { name: /添加复盘/ }));
+    expect(screen.getByRole('textbox', { name: '手记复盘' })).toHaveValue('后来补写的复盘');
+    await user.click(screen.getByRole('button', { name: '保存修改' }));
+    expect(second.onSubmit).toHaveBeenCalledOnce();
+    expect(second.onSubmit.mock.calls[0][0]).not.toHaveProperty('userFeedback');
+  });
+
+  it('still submits a deliberate review deletion from a resumed edit', async () => {
+    const user = userEvent.setup();
+    const initialData = makeReading('review-erasure', [], '2026-11-02', { userFeedback: '原复盘' });
+    const first = renderForm({ initialData });
+    await user.click(screen.getByRole('button', { name: /添加复盘/ }));
+    await user.clear(screen.getByRole('textbox', { name: '手记复盘' }));
+    first.unmount();
+    const second = renderForm({ initialData });
+    await user.click(screen.getByRole('button', { name: '保存修改' }));
+    expect(second.onSubmit).toHaveBeenCalledWith(expect.objectContaining({ userFeedback: '' }));
+  });
+
   it('restores exact custom coordinates, rotation and scale when undoing a spread switch', async () => {
     const user = userEvent.setup();
     const cards = [
@@ -588,12 +614,13 @@ describe('AddReadingForm spread designer flow', () => {
     expect(screen.getByRole('heading', { name: '选择第 1 张：第一张' })).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: '愚者 愚者' }));
 
+    expect(screen.getByRole('textbox', { name: '我的想法' })).toBeInTheDocument();
+    expect(screen.queryByPlaceholderText('记录关于“第一张”的直觉与洞察...')).not.toBeInTheDocument();
+    expect(scrollTo).not.toHaveBeenCalled();
+    await user.click(screen.getByRole('button', { name: '逐牌研习（可选）' }));
     expect(screen.getByPlaceholderText('记录关于“第一张”的直觉与洞察...')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /组合解读/ })).toBeInTheDocument();
     expect(screen.getByTestId('spread-overview-status')).toHaveTextContent('已填 1/3');
     expect(screen.getByTestId('spread-overview-status')).toHaveTextContent('可继续补齐牌面，也可下滑给已选牌写解读。');
-    expect(scrollTo).not.toHaveBeenCalled();
-
     await user.click(screen.getByRole('button', { name: '打开第 2 个位置：第二张' }));
     expect(screen.getByRole('heading', { name: '选择第 2 张：第二张' })).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: '魔术师 魔术师' }));
@@ -608,7 +635,7 @@ describe('AddReadingForm spread designer flow', () => {
     await waitFor(() => {
       expect(screen.getByPlaceholderText('记录关于“第三张”的直觉与洞察...')).toBeInTheDocument();
     });
-    expect(screen.getByRole('button', { name: /组合解读/ })).toBeInTheDocument();
+    expect(screen.getByRole('textbox', { name: '我的想法' })).toBeInTheDocument();
     await waitFor(() => {
       expect(scrollTo).toHaveBeenCalledWith(expect.objectContaining({ behavior: 'smooth' }));
     });
@@ -661,6 +688,7 @@ describe('AddReadingForm spread designer flow', () => {
     await user.selectOptions(screen.getByRole('combobox'), '无牌阵三张');
     await user.click(screen.getByRole('button', { name: '1 第一张' }));
     await user.click(screen.getByRole('button', { name: '隐士 隐士' }));
+    await user.click(screen.getByRole('button', { name: '逐牌研习（可选）' }));
     await user.type(screen.getByRole('textbox', { name: /灵见注疏/ }), '已经写好的解读');
     const tag = screen.getByPlaceholderText('添加标签...');
     await user.type(tag, '日运');
@@ -674,6 +702,32 @@ describe('AddReadingForm spread designer flow', () => {
       cards: expect.arrayContaining([expect.objectContaining({ name: '隐士' })]),
       cardInterpretations: ['已经写好的解读', '', ''],
     }));
+  });
+
+  it('saves an overall thought as complete without opening optional card study', async () => {
+    const user = userEvent.setup();
+    const cards = [{ name: '隐士', isReversed: false }, { name: '太阳', isReversed: true }, { name: '魔术师', isReversed: false }];
+    const props = renderForm({ initialData: makeReading('overall-only', ['日运'], '2026-11-02', { spread: '无牌阵三张', layoutType: 'horizontal', cards, cardInterpretations: ['', '', ''] }) });
+    expect(screen.queryByRole('textbox', { name: /灵见注疏/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('textbox', { name: /牌面疑问/ })).not.toBeInTheDocument();
+    await user.type(screen.getByRole('textbox', { name: '我的想法' }), '只记这一段，不逐张分析。');
+    await user.click(screen.getByRole('button', { name: '保存修改' }));
+    expect(props.onSubmit).toHaveBeenCalledWith(expect.objectContaining({ status: 'complete', cardInterpretations: ['', '', ''], interpretation: expect.objectContaining({ combination: '只记这一段，不逐张分析。' }), cards: expect.arrayContaining(cards.map(card => expect.objectContaining(card))) }));
+  });
+
+  it('keeps single-card thoughts in sync with optional study and does not restore erased legacy text', async () => {
+    const user = userEvent.setup();
+    const props = renderForm({ initialData: makeReading('single-thought', [], '2026-11-02', { interpretation: { singleCard: '旧文字', combination: '', summary: '' } }) });
+    const thought = screen.getByRole('textbox', { name: '我的想法' });
+    expect(thought).toHaveValue('旧文字');
+    await user.clear(thought); await user.type(thought, '我的新想法');
+    await user.click(screen.getByRole('button', { name: '逐牌研习（可选）' }));
+    const cardThought = screen.getByRole('textbox', { name: /灵见注疏/ });
+    expect(cardThought).toHaveValue('我的新想法');
+    await user.clear(cardThought);
+    expect(thought).toHaveValue('');
+    await user.click(screen.getByRole('button', { name: '保存修改' }));
+    expect(props.onSubmit).toHaveBeenCalledWith(expect.objectContaining({ status: 'complete', interpretation: expect.objectContaining({ singleCard: '' }) }));
   });
 
   it('keeps official spreads visible even if legacy data marked one as hidden', () => {
@@ -766,11 +820,12 @@ describe('AddReadingForm spread designer flow', () => {
     await user.click(screen.getByRole('button', { name: '生成导师提示词' }));
 
     const prompt = screen.getByLabelText('生成的 AI 解牌提示词：导师复盘') as HTMLTextAreaElement;
-    expect(prompt.value).toContain('你是一位经验非常丰富、擅长韦特体系的塔罗师');
-    expect(prompt.value).toContain('我这次占卜的问题是：\n这次工作选择该怎么看？');
+    expect(prompt.value).toContain('检查我的解读');
+    expect(prompt.value).toContain('问题：这次工作选择该怎么看？');
     expect(prompt.value).toContain('1. 主牌：愚者（正位）');
-    expect(prompt.value).toContain('我的逐牌解读：新的开始，也有不确定。');
-    expect(prompt.value).toContain('我对这张牌的疑问：这张牌是在鼓励我开始，还是提醒我太冲动？');
+    expect(prompt.value).toContain('我的理解：新的开始，也有不确定。');
+    expect(prompt.value).toContain('疑问：这张牌是在鼓励我开始，还是提醒我太冲动？');
+    expect(prompt).not.toHaveAttribute('readonly');
   });
 
   it('suggests recent and matching historical tags in the tag field', async () => {
@@ -825,10 +880,99 @@ describe('AddReadingForm spread designer flow', () => {
     await user.click(screen.getByRole('button', { name: '生成咨询提示词' }));
 
     const prompt = screen.getByLabelText('生成的 AI 解牌提示词：咨询解牌') as HTMLTextAreaElement;
-    expect(prompt.value).toContain('请像正式接到一次咨询一样');
+    expect(prompt.value).toContain('围绕问题解读牌面');
     expect(prompt.value).toContain('1. 主牌：愚者（正位）');
     expect(prompt.value).not.toContain('这是我自己的思路');
     expect(prompt.value).not.toContain('这里也不应该给到咨询版');
-    expect(prompt.value).not.toContain('我的逐牌解读');
+    expect(prompt.value).not.toContain('我的理解');
+  });
+
+  it('copies edited prompt text, preserves it across source changes, mode switches and reopening, and never changes the reading', async () => {
+    const user = userEvent.setup();
+    const writeText = vi.spyOn(navigator.clipboard, 'writeText').mockResolvedValue();
+    const initialData = makeReading('prompt-edit', [], '2026-11-02', { cardInterpretations: ['先观察再行动'] });
+    const first = renderForm({ initialData });
+    await user.click(screen.getByRole('button', { name: /添加复盘/ }));
+    await user.click(screen.getByRole('button', { name: '生成导师提示词' }));
+    const prompt = screen.getByLabelText('生成的 AI 解牌提示词：导师复盘');
+    await user.clear(prompt);
+    expect(screen.getByRole('button', { name: '复制提示词' })).toBeDisabled();
+    const edited = '只讨论这张牌为什么可以这样理解。\n保留我的措辞。';
+    await user.type(prompt, edited);
+    await user.clear(screen.getByRole('textbox', { name: '占卜问题' }));
+    await user.type(screen.getByRole('textbox', { name: '占卜问题' }), '更新后的问题');
+    expect(prompt).toHaveValue(edited);
+    expect(screen.getByText('手记内容已变化，当前保留你修改的提示词。')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: '复制提示词' }));
+    expect(writeText).toHaveBeenLastCalledWith(edited);
+    expect(readLocalDraft<any>('tarot_reading_draft_guest_prompt-edit').cardInterpretations).toEqual(initialData.cardInterpretations);
+    await user.click(screen.getByRole('button', { name: '咨询解牌直接看牌阵' }));
+    await user.click(screen.getByRole('button', { name: '生成咨询提示词' }));
+    expect(screen.getByLabelText('生成的 AI 解牌提示词：咨询解牌')).not.toHaveValue(edited);
+    await user.click(screen.getByRole('button', { name: '导师复盘看我的解读' }));
+    await user.click(screen.getByRole('button', { name: '生成导师提示词' }));
+    expect(screen.getByLabelText('生成的 AI 解牌提示词：导师复盘')).toHaveValue(edited);
+    first.unmount();
+    resetDraftMemory();
+    renderForm({ initialData });
+    await user.click(screen.getByRole('button', { name: /添加复盘/ }));
+    await user.click(screen.getByRole('button', { name: '生成导师提示词' }));
+    expect(screen.getByLabelText('生成的 AI 解牌提示词：导师复盘')).toHaveValue(edited);
+    expect(screen.getByRole('textbox', { name: '占卜问题' })).toHaveValue('更新后的问题');
+    expect(initialData.question).toBe('测试问题 prompt-edit');
+  });
+
+  it('requires confirmation before changing supplementary material on an edited prompt', async () => {
+    const user = userEvent.setup();
+    renderForm({ initialData: makeReading('prompt-materials', [], '2026-11-02', { cardInterpretations: ['先观察再行动'], userFeedback: '事后才知道的结果', interpretation: { singleCard: '', combination: '我原先的整体判断', summary: '', elementInfluence: '我自己的元素笔记' } }) });
+    await user.click(screen.getByRole('button', { name: /添加复盘/ }));
+    await user.click(screen.getByRole('button', { name: '生成导师提示词' }));
+    const prompt = screen.getByLabelText('生成的 AI 解牌提示词：导师复盘');
+    const materialToggle = screen.getByRole('checkbox', { name: '附带复盘和补充视角' });
+    expect(materialToggle).not.toBeChecked();
+    expect((prompt as HTMLTextAreaElement).value).toContain('我原先的整体判断');
+    expect((prompt as HTMLTextAreaElement).value).not.toContain('事后才知道的结果');
+    await user.clear(prompt);
+    await user.type(prompt, '我在提示词中单独补写的要求');
+    await user.click(materialToggle);
+    await user.click(screen.getByRole('button', { name: '保留修改' }));
+    expect(prompt).toHaveValue('我在提示词中单独补写的要求');
+    expect(materialToggle).not.toBeChecked();
+    await user.click(materialToggle);
+    await user.click(screen.getByRole('button', { name: '重新生成' }));
+    expect(materialToggle).toBeChecked();
+    expect((prompt as HTMLTextAreaElement).value).toContain('事后反馈（已发生）');
+    expect((prompt as HTMLTextAreaElement).value).toContain('事后才知道的结果');
+    expect((prompt as HTMLTextAreaElement).value).toContain('我自己的元素笔记');
+    await user.click(materialToggle);
+    expect((prompt as HTMLTextAreaElement).value).not.toContain('事后才知道的结果');
+    expect((prompt as HTMLTextAreaElement).value).not.toContain('我自己的元素笔记');
+  });
+
+  it('refreshes unedited prompts with source changes and confirms explicitly resetting custom text', async () => {
+    const user = userEvent.setup();
+    renderForm({ initialData: makeReading('prompt-reset', [], '2026-11-02', { cardInterpretations: ['先观察再行动'] }) });
+    await user.click(screen.getByRole('button', { name: /添加复盘/ }));
+    await user.click(screen.getByRole('button', { name: '生成导师提示词' }));
+    const prompt = screen.getByLabelText('生成的 AI 解牌提示词：导师复盘');
+    await user.type(screen.getByRole('textbox', { name: '占卜问题' }), ' 新补充');
+    expect((prompt as HTMLTextAreaElement).value).toContain('新补充');
+    const question = screen.getByRole('textbox', { name: '占卜问题' });
+    const updatedQuestion = (question as HTMLInputElement).value;
+    await user.clear(question);
+    expect(prompt).toHaveValue('');
+    expect(screen.getByRole('button', { name: '复制提示词' })).toBeDisabled();
+    expect(screen.getByText('还差一点：先补上占卜问题，就能生成提示词。')).toBeInTheDocument();
+    await user.type(question, updatedQuestion);
+    expect((prompt as HTMLTextAreaElement).value).toContain('新补充');
+    await user.clear(prompt);
+    await user.type(prompt, '只问这一点');
+    await user.click(screen.getByRole('button', { name: '重新生成提示词' }));
+    await user.click(screen.getByRole('button', { name: '保留修改' }));
+    expect(prompt).toHaveValue('只问这一点');
+    await user.click(screen.getByRole('button', { name: '重新生成提示词' }));
+    await user.click(screen.getByRole('button', { name: '重新生成' }));
+    expect((prompt as HTMLTextAreaElement).value).toContain('新补充');
+    expect((prompt as HTMLTextAreaElement).value).toContain('先观察再行动');
   });
 });

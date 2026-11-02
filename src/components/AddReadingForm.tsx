@@ -3,8 +3,8 @@ import { revealReadingSpread } from '../lib/revealReadingSpread';
 import React, { useState, useEffect, FormEvent, useRef, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'motion/react';
-import { Sparkles, Layers, User, MessageSquare, BookOpen, Settings, Save, Hash, Orbit, Home, Wind, Info, Copy, X, Undo2 } from 'lucide-react';
-import { CardKeywordMemory, SpreadDefinition, TarotCardMetadata, ReadingSlotData, TarotReading, ReadingFormData, ReadingEditorDraft, ReadingEditorFields, ReadingSpreadSnapshot, ReadingSpreadSwitch } from '../types';
+import { Sparkles, Layers, User, MessageSquare, BookOpen, Settings, Save, Hash, Orbit, Home, Wind, Info, Copy, X, Undo2, RefreshCw } from 'lucide-react';
+import { CardKeywordMemory, SpreadDefinition, TarotCardMetadata, ReadingSlotData, TarotReading, ReadingFormData, ReadingEditorDraft, ReadingEditorFields, ReadingSpreadSnapshot, ReadingSpreadSwitch, ReadingAiPromptDraft } from '../types';
 import { readLocalDraft, useLocalDraft } from '../hooks/useLocalDraft';
 import { useModalFocus } from '../hooks/useModalFocus';
 import { toLocalReadingDate } from '../lib/readingDate';
@@ -49,7 +49,7 @@ import {
 } from '../lib/readingSubmitPayload';
 import { convertGridSlotsToFreeLayout, ensureFreeLayoutSlots } from '../lib/freeLayout';
 import { useBodyScrollLock } from '../hooks/useBodyScrollLock';
-import { ReadingAiPromptMode, buildReadingAiPrompt, getGentleAiPromptNotice } from '../lib/readingAiPrompt';
+import { ReadingAiPromptMode, buildReadingAiPrompt, getGentleAiPromptNotice, hasReadingAiSupplementary, isReadingChoiceSpread } from '../lib/readingAiPrompt';
 import { applyTagSuggestionToInput, buildReadingTagSuggestions } from '../lib/readingTagSuggestions';
 import { buildSpreadSwitch, countRemovedSpreadContent, spreadSnapshotContent } from '../lib/readingSpreadSwitch';
 
@@ -223,6 +223,12 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
     const draft = readLocalDraft<ReadingEditorDraft>(draftKey);
     return draft?.formData && Array.isArray(draft.cardSlots) ? draft : null;
   });
+  const [feedbackState] = useState(() => {
+    const latest = initialData?.userFeedback || '';
+    const baseline = restoredDraft?.feedbackBaseline ?? latest;
+    const unchanged = !restoredDraft || restoredDraft.formData.userFeedback.trim() === baseline.trim();
+    return { baseline: unchanged ? latest : baseline, value: unchanged ? latest : restoredDraft.formData.userFeedback };
+  });
   const restoredInitialEffects = useRef(new Set<string>());
   const skipRestoredEffect = (name: string) => {
     if (!(restoredDraft || initialData?.cards?.length) || restoredInitialEffects.current.has(name)) return false;
@@ -232,7 +238,7 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
   const initialSpreadDefinition = initialData?.spread
     ? spreads.find(spread => spread.name === initialData.spread)
     : defaultSpreadDefinition;
-  const [formData, setFormData] = useState<ReadingEditorFields>(() => restoredDraft?.formData || ({
+  const [formData, setFormData] = useState<ReadingEditorFields>(() => restoredDraft ? { ...restoredDraft.formData, userFeedback: feedbackState.value } : ({
     question: initialData?.question || '',
     spread: initialData?.spread || defaultSpreadDefinition.name,
     layoutType: initialData?.layoutType || initialSpreadDefinition?.layout || 'horizontal',
@@ -292,9 +298,11 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
   const [showFeedback, setShowFeedback] = useState(false);
   const [showAiPrompt, setShowAiPrompt] = useState(false);
   const [showAiReference, setShowAiReference] = useState(Boolean(initialData?.aiAnswer?.trim()));
-  const [aiPromptMode, setAiPromptMode] = useState<ReadingAiPromptMode>('mentor');
+  const [aiPromptMode, setAiPromptMode] = useState<ReadingAiPromptMode>(restoredDraft?.aiPromptMode || initialData?.aiAnswerMode || 'mentor');
+  const [aiPromptDrafts, setAiPromptDrafts] = useState<Partial<Record<ReadingAiPromptMode, ReadingAiPromptDraft>>>(restoredDraft?.aiPromptDrafts || {});
+  const [pendingAiRegeneration, setPendingAiRegeneration] = useState<{ includeSupplementary: boolean } | null>(null);
   const [aiPromptNotice, setAiPromptNotice] = useState('');
-  const [showComboReading, setShowComboReading] = useState(false);
+  const [showCardStudy, setShowCardStudy] = useState(Boolean(restoredDraft?.showCardStudy));
   const [expandInfluenceByDefault, setExpandInfluenceByDefault] = useState(() => (
     localStorage.getItem('tarot_influence_sections_open') === 'true'
   ));
@@ -338,13 +346,15 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
   const initialFields = useRef(JSON.stringify(formData));
   const draftStarted = useRef(Boolean(restoredDraft || initialData?.id));
   if (JSON.stringify(formData) !== initialFields.current || cardSlots.some(slot => slot.name) || isEditingSession) draftStarted.current = true;
-  const contentRevision = JSON.stringify({ formData, cardSlots, cardInterpretations, cardQuestions, gridCols, gridRows, isEditingSession });
+  const editedAiPrompts = Object.entries(aiPromptDrafts).filter(([, value]) => value.text !== value.sourceText).map(([mode, value]) => [mode, value.text]);
+  const contentRevision = JSON.stringify({ formData, cardSlots, cardInterpretations, cardQuestions, gridCols, gridRows, isEditingSession, editedAiPrompts });
   const initialContentRevision = useRef(contentRevision);
   const draftUpdatedAt = useMemo(() => new Date().toISOString(), [contentRevision]);
   const draft = useLocalDraft<ReadingEditorDraft>(draftKey, {
     formData, cardSlots, cardInterpretations, cardQuestions, history,
+    feedbackBaseline: feedbackState.baseline,
     activeSlotIndex, readingDetailSlotIndex, gridCols, gridRows, isEditingSession,
-    spreadSwitchHistory, updatedAt: draftUpdatedAt,
+    spreadSwitchHistory, aiPromptMode, aiPromptDrafts, showCardStudy, updatedAt: draftUpdatedAt,
     hasUnsavedChanges: Boolean((restoredDraft && restoredDraft.hasUnsavedChanges !== false) || contentRevision !== initialContentRevision.current || !initialData?.id),
   }, draftStarted.current);
 
@@ -571,6 +581,7 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
       return;
     }
 
+    setShowCardStudy(true);
     setShowPicker(false);
   };
 
@@ -957,6 +968,10 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
 
     setSubmitNotice('');
     setSubmitIssue(null);
+    // Unchanged review text must not overwrite a newer review saved outside this editor.
+    if (initialData?.id && formData.userFeedback.trim() === feedbackState.baseline.trim()) {
+      delete result.payload.userFeedback;
+    }
     try {
       if (await onSubmit(result.payload) !== false) draft.clear();
       else setSubmitNotice('本机保存失败，内容仍保留在此页，请重试。');
@@ -1028,24 +1043,25 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
       category: applyTagSuggestionToInput(prev.category, tag),
     }));
   };
-  const shouldShowChoicePathFields = formData.layoutType === 'choice'
-    || formData.spread.includes('选择')
-    || cardSlots.some(slot => /^[ABＡＢ]/i.test((slot.label || '').trim()));
-  const aiPromptResult = buildReadingAiPrompt({ formData, cardSlots, cardInterpretations, cardQuestions, mode: aiPromptMode });
+  const shouldShowChoicePathFields = isReadingChoiceSpread(formData, cardSlots);
+  const activeAiPrompt = aiPromptDrafts[aiPromptMode];
+  const includeAiSupplementary = activeAiPrompt?.includeSupplementary || false;
+  const aiPromptResult = buildReadingAiPrompt({ formData, cardSlots, cardInterpretations, cardQuestions, mode: aiPromptMode, includeSupplementary: includeAiSupplementary });
   const canGenerateAiPrompt = aiPromptResult.ok === true;
-  const aiPromptText = aiPromptResult.ok === true ? aiPromptResult.prompt : '';
+  const generatedAiPromptText = aiPromptResult.ok === true ? aiPromptResult.prompt : '';
+  const isAiPromptEdited = Boolean(activeAiPrompt && activeAiPrompt.text !== activeAiPrompt.sourceText);
+  const aiPromptText = isAiPromptEdited ? activeAiPrompt.text : generatedAiPromptText;
+  const isAiPromptStale = isAiPromptEdited && activeAiPrompt?.sourceText !== generatedAiPromptText;
   const aiPromptModeMeta = aiPromptMode === 'mentor'
     ? {
         label: '导师复盘',
         buttonText: '生成导师提示词',
-        description: '带上你的逐牌解读，让 AI 帮你校准、补充。',
-        note: '这版会包含你的逐牌解读、疑问和复盘材料，适合学习校准。',
+        description: '带上你的想法，让 AI 帮你校准、补充。',
       }
     : {
         label: '咨询解牌',
         buttonText: '生成咨询提示词',
-        description: '只给问题、牌阵和牌面，让 AI 像接咨询一样直解。',
-        note: '这版不包含你的个人解读，只整理咨询问题和牌阵结果。',
+        description: '只带问题、牌阵和牌面，让 AI 独立解读。',
       };
   const aiAnswerModeLabel = formData.aiAnswerMode === 'consultant' ? '咨询解牌' : '导师复盘';
   const handleAiPromptModeChange = (mode: ReadingAiPromptMode) => {
@@ -1067,29 +1083,46 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
     }))
     .filter(item => item.question);
   const handleToggleAiPrompt = () => {
-    if (showAiPrompt && canGenerateAiPrompt) {
+    if (showAiPrompt && (canGenerateAiPrompt || activeAiPrompt)) {
       setShowAiPrompt(false);
       setAiPromptNotice('');
       return;
     }
 
-    if (aiPromptResult.ok === false) {
+    if (aiPromptResult.ok === false && !activeAiPrompt) {
       setShowAiPrompt(false);
       setAiPromptNotice(getGentleAiPromptNotice(aiPromptResult.notice));
       return;
     }
 
     setAiPromptNotice('');
+    if (!activeAiPrompt && aiPromptResult.ok) {
+      setAiPromptDrafts(previous => ({ ...previous, [aiPromptMode]: { text: aiPromptResult.prompt, sourceText: aiPromptResult.prompt, includeSupplementary: false } }));
+    }
     setShowAiPrompt(true);
   };
+  const regenerateAiPrompt = (includeSupplementary: boolean) => {
+    setPendingAiRegeneration(null);
+    const result = buildReadingAiPrompt({ formData, cardSlots, cardInterpretations, cardQuestions, mode: aiPromptMode, includeSupplementary });
+    if (result.ok === false) {
+      setAiPromptNotice(getGentleAiPromptNotice(result.notice));
+      return;
+    }
+    setAiPromptDrafts(previous => ({ ...previous, [aiPromptMode]: { text: result.prompt, sourceText: result.prompt, includeSupplementary } }));
+    setAiPromptNotice('');
+  };
+  const requestAiRegeneration = (includeSupplementary: boolean) => {
+    if (isAiPromptEdited) setPendingAiRegeneration({ includeSupplementary });
+    else regenerateAiPrompt(includeSupplementary);
+  };
   const handleCopyAiPrompt = async () => {
-    if (aiPromptResult.ok === false) {
-      setAiPromptNotice(getGentleAiPromptNotice(aiPromptResult.notice));
+    if (!aiPromptText.trim()) {
+      setAiPromptNotice('提示词为空，请填写或重新生成。');
       return;
     }
 
     try {
-      await copyTextToClipboard(aiPromptResult.prompt);
+      await copyTextToClipboard(aiPromptText);
       setFormData(prev => ({ ...prev, aiAnswerMode: aiPromptMode }));
       setShowAiReference(true);
       setAiPromptNotice('已复制，可粘贴到你信任的 AI 工具。');
@@ -1432,9 +1465,30 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
       </div>
 
 
-      {/* Card Metadata & Main Display */}
+      <section ref={readingDetailRef} className="scroll-mt-24 space-y-2">
+        <label htmlFor="reading-main-thought" className="font-serif text-sm font-bold text-forest-accent">我的想法 <span className="font-sans text-xs font-normal text-forest-muted">（可选）</span></label>
+        <AutoResizeTextarea
+          id="reading-main-thought"
+          aria-label="我的想法"
+          minRows={2}
+          maxRows={8}
+          value={isMultiCard ? formData.combination : (cardInterpretations[0] || formData.singleCard)}
+          onChange={event => {
+            const value = event.target.value;
+            if (isMultiCard) setFormData(previous => ({ ...previous, combination: value }));
+            else {
+              setCardInterpretations(previous => [value, ...previous.slice(1)]);
+              setFormData(previous => ({ ...previous, singleCard: value }));
+            }
+          }}
+          onFocus={scrollFocusedFieldIntoView}
+          className="w-full rounded-xl border border-forest-accent/8 bg-white/48 px-3 py-2.5 text-base leading-relaxed focus:ring-2 focus:ring-forest-accent/15 sm:text-sm"
+          placeholder="先记下此刻的想法，也可以之后再补。"
+        />
+      </section>
+
       {shouldShowReadingDetail && (
-        <div ref={readingDetailRef} className="scroll-mt-24">
+        <FoldableSection icon={BookOpen} title="逐牌研习（可选）" isOpen={showCardStudy} onToggle={() => setShowCardStudy(previous => !previous)}>
           <ReadingDetailView
             activeSlotIndex={detailSlotIndex}
             cardSlots={cardSlots}
@@ -1446,7 +1500,10 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
             isMultiCard={isMultiCard}
             isDailyMode={isDailyMode}
             onToggleReverse={toggleReverse}
-            onSetCardInterpretations={setCardInterpretations}
+            onSetCardInterpretations={values => {
+              setCardInterpretations(values);
+              if (!isMultiCard) setFormData(previous => ({ ...previous, singleCard: values[0] || '' }));
+            }}
             onSetCardQuestions={setCardQuestions}
             onSetActiveSlotIndex={setReadingDetailSlotIndex}
             onSetShowPicker={(show) => {
@@ -1454,26 +1511,6 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
               setShowPicker(show);
             }}
             hasInterpretationError={submitIssue?.field === 'cardInterpretation' && submitIssue.slotIndex === detailSlotIndex}
-          />
-        </div>
-      )}
-
-      {isMultiCard && (
-        <FoldableSection 
-          icon={Layers} 
-          title="🔗 组合解读（可选）" 
-          isOpen={showComboReading} 
-          onToggle={() => setShowComboReading(!showComboReading)}
-          subtitle="探索牌与牌之间的化学反应与整体意象"
-        >
-          <AutoResizeTextarea
-            minRows={2}
-            maxRows={8}
-            className="w-full rounded-xl border border-forest-accent/8 bg-white/48 px-3 py-2.5 text-base leading-relaxed focus:ring-2 focus:ring-forest-accent/15 sm:text-sm"
-            onFocus={scrollFocusedFieldIntoView}
-            placeholder="牌与牌之间的整体关联感悟..." 
-            value={formData.combination} 
-            onChange={e => setFormData({...formData, combination: e.target.value})} 
           />
         </FoldableSection>
       )}
@@ -1572,11 +1609,11 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
               <button
                 type="button"
                 onClick={handleToggleAiPrompt}
-                aria-label={showAiPrompt && canGenerateAiPrompt ? '收起提示词' : aiPromptModeMeta.buttonText}
+                aria-label={showAiPrompt && (canGenerateAiPrompt || activeAiPrompt) ? '收起提示词' : aiPromptModeMeta.buttonText}
                 className="inline-flex min-h-11 shrink-0 items-center justify-center gap-1.5 rounded-full bg-forest-accent/88 px-3 text-[11px] font-medium text-white transition-all hover:bg-forest-accent active:scale-[0.98] sm:px-3.5 sm:text-xs"
               >
                 <Sparkles size={13} />
-                <span aria-hidden="true">{showAiPrompt && canGenerateAiPrompt ? '收起' : '生成'}</span>
+                <span aria-hidden="true">{showAiPrompt && (canGenerateAiPrompt || activeAiPrompt) ? '收起' : '生成'}</span>
               </button>
             </div>
             <p className="text-[11px] leading-relaxed text-forest-muted">
@@ -1603,30 +1640,43 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
             )}
 
             <AnimatePresence>
-              {showAiPrompt && canGenerateAiPrompt && (
+              {showAiPrompt && (canGenerateAiPrompt || activeAiPrompt) && (
                 <motion.div
                   initial={{ opacity: 0, y: 8 }}
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, y: -8 }}
                   className="space-y-2"
                 >
+                  {aiPromptMode === 'mentor' && hasReadingAiSupplementary(formData) && (
+                    <label className="flex min-h-11 items-center gap-2 text-xs text-forest-muted">
+                      <input type="checkbox" checked={includeAiSupplementary} onChange={event => requestAiRegeneration(event.target.checked)} className="h-4 w-4 shrink-0 accent-forest-accent" />
+                      附带复盘和补充视角
+                    </label>
+                  )}
                   <AutoResizeTextarea
-                    readOnly
                     minRows={5}
                     maxRows={14}
                     value={aiPromptText}
-                    className="w-full resize-y rounded-xl border border-forest-accent/8 bg-[#FDF8F0]/70 px-3 py-2 text-xs leading-relaxed text-forest-ink focus:ring-2 focus:ring-forest-accent/15"
+                    onChange={event => {
+                      setAiPromptDrafts(previous => ({ ...previous, [aiPromptMode]: { text: event.target.value, sourceText: isAiPromptEdited || !canGenerateAiPrompt ? activeAiPrompt?.sourceText ?? '' : generatedAiPromptText, includeSupplementary: includeAiSupplementary } }));
+                      setAiPromptNotice('');
+                    }}
+                    className="w-full resize-y rounded-xl border border-forest-accent/8 bg-[#FDF8F0]/70 px-3 py-2 text-base leading-relaxed text-forest-ink focus:ring-2 focus:ring-forest-accent/15 sm:text-sm"
                     aria-label={`生成的 AI 解牌提示词：${aiPromptModeMeta.label}`}
                   />
+                  {isAiPromptStale && <p role="status" className="text-xs text-forest-muted">手记内容已变化，当前保留你修改的提示词。</p>}
+                  {!isAiPromptEdited && aiPromptResult.ok === false && <p role="status" className="text-xs text-forest-muted">{getGentleAiPromptNotice(aiPromptResult.notice)}</p>}
                   <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                    <p className="text-[11px] text-forest-muted">
-                      {aiPromptModeMeta.note}
-                    </p>
+                    <div className="flex items-center justify-between gap-2 text-[11px] text-forest-muted">
+                      <span aria-label="提示词字符数">{Array.from(aiPromptText).length} 字</span>
+                      <button type="button" onClick={() => requestAiRegeneration(includeAiSupplementary)} aria-label="重新生成提示词" title="按当前手记重新生成提示词" className="flex h-11 w-11 items-center justify-center rounded-full text-forest-accent hover:bg-forest-accent/8"><RefreshCw size={16} /></button>
+                    </div>
                     <div className="grid grid-cols-2 gap-2 sm:flex sm:items-center">
                       <button
                         type="button"
                         onClick={handleCopyAiPrompt}
-                        className="inline-flex min-h-10 items-center justify-center gap-2 rounded-xl border border-forest-accent/10 bg-white/60 px-3 text-xs font-medium text-forest-accent transition-colors hover:bg-white"
+                        disabled={!aiPromptText.trim()}
+                        className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-forest-accent/10 bg-white/60 px-3 text-xs font-medium text-forest-accent transition-colors hover:bg-white disabled:opacity-50"
                       >
                         <Copy size={14} />
                         复制提示词
@@ -1634,7 +1684,7 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
                       <button
                         type="button"
                         onClick={() => setShowAiReference(prev => !prev)}
-                        className="inline-flex min-h-10 items-center justify-center gap-2 rounded-xl bg-forest-accent/88 px-3 text-xs font-medium text-white transition-colors hover:bg-forest-accent"
+                        className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-forest-accent/88 px-3 text-xs font-medium text-white transition-colors hover:bg-forest-accent"
                       >
                         <MessageSquare size={14} />
                         {showAiReference ? '收起参照' : formData.aiAnswer.trim() ? '编辑参照' : '粘贴回答'}
@@ -1647,6 +1697,10 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
                 </motion.div>
               )}
             </AnimatePresence>
+
+            <ConfirmDialog isOpen={Boolean(pendingAiRegeneration)} title="重新生成提示词" message="这会替换你在提示词框中的修改，手记原文不受影响。" confirmText="重新生成" cancelText="保留修改" onConfirm={() => {
+              if (pendingAiRegeneration) regenerateAiPrompt(pendingAiRegeneration.includeSupplementary);
+            }} onClose={() => setPendingAiRegeneration(null)} />
 
             <AnimatePresence>
               {showAiReference && (
@@ -1857,7 +1911,7 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
         </button>
         {!isLoading && (
           <p className="mt-1.5 text-center text-[10px] leading-tight text-forest-muted">
-            只要有问题、牌阵和至少一张牌就能保存；未补齐牌面或解读时，会自动标记为待补全。{isLoggedIn ? '会先写入本机，并继续同步云端。' : '会先保存在本机；登录后可同步云端。'}
+            {isLoggedIn ? '先保存在本机，再同步云端。' : '先保存在本机，登录后可同步云端。'}
           </p>
         )}
       </div>
