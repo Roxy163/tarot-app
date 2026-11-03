@@ -1,6 +1,6 @@
 # 第二轮便利性检查 · 2026-11-03
 
-状态：用户同意按顺序处理的七项已在本地修复，未提交、未部署。后续合并牌面离线修复后的最终构建为 `016a38441e2c`，开发预览 `http://localhost:3003/`，生产构建离线验收预览 `http://localhost:3004/`。上一轮五项复盘修复继续保留。
+状态：2026-11-03 七项修复已与此前五项复盘、牌面离线修复一并发布到 Cloudflare Pages 和 Netlify。应用提交 `008838d`、响应头修正 `cec789e` 已推送 `main`，最终版本 `e280c97b99e7`。本文 752／775 项及 `9dc8ae241460`／`016a38441e2c` 属于本地阶段，最终 98 文件／777 项及线上结果见[统一双站发布记录](./offline-card-images-2026-11-03.md#双站发布记录)。本地开发预览 3003 与离线生产构建预览 3004 保留。
 
 以下每项先记录最终行为，再保留修复前的观察供对照；“复现／实测／原因”及原行号均属于修复前状态，不应当作当前缺陷。
 
@@ -68,14 +68,14 @@
 ## 修复验收
 
 - 全量 **97 个测试文件／752 项测试**、`npm run lint`、`npm run build` 通过；构建与 PWA 版本为 `9dc8ae241460`。日志：`/tmp/tarot-round2-final-all.log`、`/tmp/tarot-round2-final-lint.log`、`/tmp/tarot-round2-build.log`。
-- 后续合并离线修复后的最终全量为 **98 个测试文件／775 项测试**、类型检查和构建全部通过，最终版本 `016a38441e2c`。日志：`/tmp/tarot-final-offline-all.log`、`/tmp/tarot-final-offline-lint.log`、`/tmp/tarot-final-offline-build.log`；离线资源与验收另见 `docs/offline-card-images-2026-11-03.md`。
+- 后续合并离线修复的本地阶段为 **98 个测试文件／775 项测试**、类型检查和构建全部通过，阶段版本 `016a38441e2c`。日志：`/tmp/tarot-final-offline-all.log`、`/tmp/tarot-final-offline-lint.log`、`/tmp/tarot-final-offline-build.log`；上线前再补两项旧 ID 删除保护回归后为 **777 项**，正式版本及线上验收见[统一双站发布记录](./offline-card-images-2026-11-03.md#双站发布记录)。
 - 最终本地浏览器验证：典籍长列表保留 **28 条**已展开记录，从旧记录编辑后**保存、取消、系统返回三条路径**均精确返回 **1234px**。导航兼容原生 history 并保留来源滚动锚点；跨查询选中两条后，即使当前搜索无结果，两条选择仍保留。日运抽牌按 **2026-10＋“面试”**定位成功。
 - 手机证据：`output/playwright/round2-cross-search-390.png`、`output/playwright/round2-daily-month-390.png`。
 - 内容保护实 UI 证据已补齐：重排后文字对应 `output/playwright/round2-reordered-notes-visible.png`；恢复官方确认 `round2-restore-confirm-390.png`；工作台重排、模板替换确认与撤销为 `round2-workspace-reordered.png`、`round2-workspace-template-confirm.png`、`round2-workspace-undo.png`。
 - 官方牌阵最终严格验收 **9 个牌阵 × 320×568／390×844／844×390／1280×800 × 录入／复盘，共 72 场景全部通过**；检查完整牌布处于视口边界内、高度不超过 380px、全部牌位触控区域至少 44px。原有几何基准测试也包含在全量 752 项中，基准未改。
 - 录入证据：`output/playwright/round2-regression-original-{320,390,844,1280}.png`；复盘证据：`output/playwright/round2-regression-celtic-{320,390,844,1280}.png`、`round2-regression-yearly-{320,390,844,1280}.png`。
 - 日运搜索与日期测试在上海时区 **51 项**、洛杉矶时区 **42 项**通过，包含月初本地时间、日期形式、历史月份、查询及状态筛选后统计／导出一致、来源状态保留。日志：`/tmp/daily-history-search-tests.log`、`/tmp/daily-history-search-timezone-tests.log`。
-- 本轮未修改官方几何基准、保存的牌阵坐标、Firebase Rules 或公开权限。验收使用本地虚构资料，未修改真实记录；代码尚未提交、未部署。
+- 本轮未修改官方几何基准、保存的牌阵坐标、Firebase Rules 或公开权限。验收使用隔离虚构资料，未修改真实记录。上述本地结果之后已完成双站发布，以文首及统一发布记录为准。
 
 ## 修复前观察证据（历史）
 
