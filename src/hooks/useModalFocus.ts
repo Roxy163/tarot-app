@@ -63,11 +63,11 @@ export function useModalFocus(open: boolean, ref: RefObject<HTMLElement | null>,
       document.removeEventListener('keydown', keydown);
       document.removeEventListener('focusin', focusin);
       if (wasTop && previous?.isConnected) {
-        previous.focus();
+        previous.focus({ preventScroll: true });
         const parent = stack.at(-1);
         // Exit animations can briefly re-focus an element being removed.
         requestAnimationFrame(() => {
-          if (stack.at(-1) === parent && previous.isConnected) previous.focus();
+          if (stack.at(-1) === parent && previous.isConnected) previous.focus({ preventScroll: true });
         });
       }
     };

@@ -170,7 +170,25 @@ export class CardAnnotationService {
   }
 
   public resetAnnotationToOfficial(cardId: string): void {
-    this.deleteUserAnnotation(cardId);
+    const official = getAnnotationByCardId(cardId);
+    if (!official) throw new Error('这张牌没有可恢复的官方注解。');
+    const user = this.getUserAnnotation(cardId);
+    if (!user?.personalMeaning && !user?.personalNotes) {
+      this.deleteUserAnnotation(cardId);
+      return;
+    }
+    // Save explicit defaults with a new edit timestamp so older devices cannot
+    // restore previous meanings. Personal text keeps its original fields intact.
+    this.saveUserAnnotation(cardId, {
+      numerology: official.numerology ?? null,
+      planet: official.planet ?? null,
+      zodiac: official.zodiac ?? null,
+      house: official.house ?? null,
+      element: official.element ?? null,
+      uprightMeaning: official.uprightMeaning,
+      reversedMeaning: official.reversedMeaning,
+      keywords: [...official.keywords],
+    });
   }
 
   public getMergedAnnotation(cardId: string): CardAnnotation {

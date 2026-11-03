@@ -184,6 +184,21 @@ describe('DailyFortuneCard', () => {
     });
   });
 
+  it('appends the shortcut once without replacing the review already written at home', async () => {
+    const user = userEvent.setup();
+    const props = renderCard({ fortune: baseFortune, fortunes: [baseFortune] });
+    await user.click(screen.getByRole('button', { name: '写下第一直觉' }));
+    await user.type(screen.getByLabelText('今日回看'), '早上很忙。\n晚上轻松了一些。');
+    const shortcut = screen.getByRole('button', { name: '今天暂未看见明显对应' });
+    await user.click(shortcut);
+    await user.click(shortcut);
+    const review = '早上很忙。\n晚上轻松了一些。\n今天暂未看见明显对应';
+    expect(screen.getByLabelText('今日回看')).toHaveValue(review);
+    expect(readLocalDraft('tarot_daily_reflection_draft_guest_fortune-1')).toMatchObject({ dailyReview: review });
+    await user.click(screen.getByRole('button', { name: '保存记录' }));
+    expect(props.onArchive).toHaveBeenCalledWith(baseFortune.id, { initialImpression: '', dailyReview: review });
+  });
+
   it('restores an unfinished daily draft after reload, isolates accounts, and clears it only after saving', async () => {
     const user = userEvent.setup();
     const props = { ...defaultProps, fortune: baseFortune, fortunes: [baseFortune], ownerScope: 'user-a' };
@@ -249,7 +264,7 @@ describe('DailyFortuneCard', () => {
     expect(readLocalDraft('tarot_daily_reflection_draft_guest_fortune-1')).toBeNull();
   });
 
-  it('restores archive drafts after remount and clears them only after a successful save', async () => {
+  it('keeps archive writing and its appended shortcut through reload and a failed save', async () => {
     const user = userEvent.setup();
     const archived = { ...baseFortune, archivedAt: baseFortune.createdAt };
     const onUpdateReflection = vi.fn().mockImplementationOnce(() => { throw new Error('本机保存失败'); });
@@ -258,6 +273,9 @@ describe('DailyFortuneCard', () => {
     await user.click(screen.getByRole('button', { name: '打开日运复盘' }));
     await user.click(screen.getByRole('button', { name: '补写日运手札' }));
     await user.type(screen.getByLabelText('今日回看'), '补写内容不能丢');
+    await user.click(screen.getByRole('button', { name: '今天暂未看见明显对应' }));
+    await user.click(screen.getByRole('button', { name: '今天暂未看见明显对应' }));
+    const review = '补写内容不能丢\n今天暂未看见明显对应';
     first.unmount();
     resetDraftMemory();
     const other = render(<DailyFortuneCard {...props} ownerScope="user-b" />);
@@ -268,12 +286,12 @@ describe('DailyFortuneCard', () => {
     render(<DailyFortuneCard {...props} />);
     await user.click(screen.getByRole('button', { name: '打开日运复盘' }));
     await user.click(screen.getByRole('button', { name: '补写日运手札' }));
-    expect(screen.getByLabelText('今日回看')).toHaveValue('补写内容不能丢');
+    expect(screen.getByLabelText('今日回看')).toHaveValue(review);
     await user.click(screen.getByRole('button', { name: '保存记录' }));
     expect(screen.getByRole('alert')).toHaveTextContent('本机保存失败');
-    expect(readLocalDraft('tarot_daily_reflection_draft_user-a_fortune-1')).toMatchObject({ dailyReview: '补写内容不能丢' });
+    expect(readLocalDraft('tarot_daily_reflection_draft_user-a_fortune-1')).toMatchObject({ dailyReview: review });
     await user.click(screen.getByRole('button', { name: '保存记录' }));
-    expect(onUpdateReflection).toHaveBeenLastCalledWith(baseFortune.id, { initialImpression: '', dailyReview: '补写内容不能丢' });
+    expect(onUpdateReflection).toHaveBeenLastCalledWith(baseFortune.id, { initialImpression: '', dailyReview: review });
     expect(readLocalDraft('tarot_daily_reflection_draft_user-a_fortune-1')).toBeNull();
     await waitFor(() => expect(screen.queryByRole('main', { name: '补写日运' })).not.toBeInTheDocument());
     expect(screen.getByRole('main', { name: '日运复盘' })).toBeInTheDocument();
@@ -297,7 +315,7 @@ describe('DailyFortuneCard', () => {
     expect(screen.getByRole('main', { name: '日运复盘' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /时间线/ })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /按牌/ })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /本月/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /按月/ })).toBeInTheDocument();
     expect(screen.getByText('现实抽牌')).toBeInTheDocument();
     expect(screen.getAllByText('晚上对应到一次真实的直觉判断。').length).toBeGreaterThan(0);
   });

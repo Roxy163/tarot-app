@@ -4,6 +4,7 @@ interface ProgressiveListOptions {
   initialCount?: number;
   step?: number;
   rootMargin?: string;
+  resetKey?: unknown;
 }
 
 export const useProgressiveList = <T,>(
@@ -12,6 +13,7 @@ export const useProgressiveList = <T,>(
     initialCount = 12,
     step = 8,
     rootMargin = '600px',
+    resetKey = items,
   }: ProgressiveListOptions = {},
 ) => {
   const [visibleCount, setVisibleCount] = useState(initialCount);
@@ -19,7 +21,7 @@ export const useProgressiveList = <T,>(
 
   useEffect(() => {
     setVisibleCount(initialCount);
-  }, [initialCount, items]);
+  }, [initialCount, resetKey]);
 
   const hasMore = visibleCount < items.length;
   const visibleItems = useMemo(

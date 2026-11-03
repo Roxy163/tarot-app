@@ -44,6 +44,7 @@ interface SpreadDesignerProps {
   onCenterSpread?: () => void;
   freeLayoutSaveMode?: FreeLayoutSaveMode;
   onUpdateFreeLayoutSaveMode?: (mode: FreeLayoutSaveMode) => void;
+  restoredWorkspace?: boolean;
 }
 
 export const SpreadDesigner: React.FC<SpreadDesignerProps> = ({
@@ -68,17 +69,19 @@ export const SpreadDesigner: React.FC<SpreadDesignerProps> = ({
   onUndo,
   onUpdateSlots,
   freeLayoutSaveMode = 'original',
-  onUpdateFreeLayoutSaveMode
+  onUpdateFreeLayoutSaveMode,
+  restoredWorkspace = false,
 }) => {
 
   const [selectedCustomSpreadNames, setSelectedCustomSpreadNames] = useState<string[]>([]);
   const [isMobileWorkbench, setIsMobileWorkbench] = useState(isMobileViewport);
   const [showCustomManager, setShowCustomManager] = useState(() => !isMobileViewport());
   const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
+  const [pendingTemplate, setPendingTemplate] = useState<string | null>(null);
   const workspaceSnapshot = JSON.stringify({ currentSpread, cardSlots, newSpreadName, freeLayoutSaveMode });
   const initialWorkspace = useRef(workspaceSnapshot);
   const requestBack = () => {
-    if (workspaceSnapshot !== initialWorkspace.current) setShowLeaveConfirm(true);
+    if (restoredWorkspace || workspaceSnapshot !== initialWorkspace.current) setShowLeaveConfirm(true);
     else onClose?.();
   };
 
@@ -138,7 +141,7 @@ export const SpreadDesigner: React.FC<SpreadDesignerProps> = ({
     setSelectedCustomSpreadNames(areAllCustomSpreadsSelected ? [] : customSpreads.map(spread => spread.name));
   };
 
-  const handleTemplateChange = (spreadName: string) => {
+  const applyTemplateChange = (spreadName: string) => {
     if (!spreadName) {
       onStartNewSession?.();
       onUpdateNewSpreadName('');
@@ -154,6 +157,11 @@ export const SpreadDesigner: React.FC<SpreadDesignerProps> = ({
       }
     }
     onSetDesignActiveSlot(-1);
+  };
+  const handleTemplateChange = (spreadName: string) => {
+    if (restoredWorkspace || workspaceSnapshot !== initialWorkspace.current || cardSlots.some(slot => slot.name.trim())) {
+      setPendingTemplate(spreadName);
+    } else applyTemplateChange(spreadName);
   };
 
   return (
@@ -237,11 +245,7 @@ export const SpreadDesigner: React.FC<SpreadDesignerProps> = ({
             <button
               type="button"
               aria-label="新建空白"
-              onClick={() => {
-                onUpdateNewSpreadName('');
-                onSetDesignActiveSlot(-1);
-                onStartNewSession?.();
-              }}
+              onClick={() => handleTemplateChange('')}
               className="flex min-h-11 items-center justify-center gap-1 rounded-lg border border-forest-accent/8 bg-white/40 px-2.5 py-1.5 text-xs font-semibold text-forest-accent transition-all hover:bg-white/64 sm:min-h-10 sm:justify-start"
             >
               <Plus size={15} />
@@ -432,6 +436,7 @@ export const SpreadDesigner: React.FC<SpreadDesignerProps> = ({
           </div>
         </div>
       <ConfirmDialog isOpen={showLeaveConfirm} title="离开牌阵工作台" message="尚未保存的牌阵修改会撤回，原手记和摆牌会保留。" confirmText="放弃修改并返回" cancelText="继续编辑" onConfirm={() => onClose?.()} onClose={() => setShowLeaveConfirm(false)} />
+      <ConfirmDialog isOpen={pendingTemplate !== null} title={pendingTemplate === '' ? '新建空白牌阵' : '切换牌阵模板'} message="当前工作区的设计会被替换，可以用撤销恢复。原手记会保留，保存并使用后才应用新设计。" confirmText="继续替换" cancelText="保留当前设计" onConfirm={() => { if (pendingTemplate !== null) applyTemplateChange(pendingTemplate); setPendingTemplate(null); }} onClose={() => setPendingTemplate(null)} />
     </PageView>
   );
 };

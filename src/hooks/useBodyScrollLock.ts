@@ -94,6 +94,18 @@ const detachScrollGuards = () => {
   lastTouchY = null;
 };
 
+// A route can return to its source while a save or nested page still owns a
+// body lock. Update the unlock destination as well as the visible position.
+export const restoreBodyScrollPosition = (scrollY: number) => {
+  const top = Math.max(0, scrollY);
+  if (snapshot && lockCount > 0) {
+    snapshot.scrollY = top;
+    document.body.style.top = `-${top}px`;
+    return;
+  }
+  window.scrollTo({ top, left: 0, behavior: 'auto' });
+};
+
 const lockBodyScroll = () => {
   if (lockCount === 0) {
     const scrollY = getScrollY();

@@ -92,7 +92,7 @@ describe('account annotation persistence and sync', () => {
   it('sends reset tombstones so old devices cannot resurrect an annotation', async () => {
     const service = new CardAnnotationService();
     service.setScope('alice');
-    service.saveUserAnnotation('ar00', { personalNotes: '准备清除' });
+    service.saveUserAnnotation('ar00', { uprightMeaning: '准备恢复的自定义牌义' });
     const old = service.getUserAnnotation('ar00')!;
     service.resetAnnotationToOfficial('ar00');
     vi.mocked(syncUserAnnotations).mockResolvedValueOnce([old]);
@@ -100,5 +100,22 @@ describe('account annotation persistence and sync', () => {
     expect(service.getUserAnnotation('ar00')).toBeNull();
     expect(service.getModifiedCardIds()).toEqual([]);
     expect(syncUserAnnotations).toHaveBeenLastCalledWith('alice', expect.arrayContaining([expect.objectContaining({ cardId: 'ar00', deletedAt: expect.any(String) })]));
+  });
+
+  it('syncs restored official fields as a new edit while retaining both personal-note originals', async () => {
+    const service = new CardAnnotationService();
+    service.setScope('alice');
+    service.saveUserAnnotation('ar00', { uprightMeaning: '旧自定义牌义', personalMeaning: '笔记原文', personalNotes: '注解原文' });
+    const old = service.getUserAnnotation('ar00')!;
+    service.resetAnnotationToOfficial('ar00');
+    const restored = service.getMergedAnnotation('ar00');
+    expect(restored.uprightMeaning).not.toBe('旧自定义牌义');
+    expect(restored).toMatchObject({ personalMeaning: '笔记原文', personalNotes: '注解原文' });
+    vi.mocked(syncUserAnnotations).mockResolvedValueOnce([old]);
+    await service.sync();
+    expect(service.getMergedAnnotation('ar00')).toEqual(restored);
+    expect(syncUserAnnotations).toHaveBeenLastCalledWith('alice', expect.arrayContaining([expect.objectContaining({
+      cardId: 'ar00', personalMeaning: '笔记原文', personalNotes: '注解原文', uprightMeaning: restored.uprightMeaning,
+    })]));
   });
 });

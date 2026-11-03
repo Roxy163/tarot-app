@@ -4,7 +4,7 @@ import React, { useState, useEffect, FormEvent, useRef, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import { Sparkles, Layers, User, MessageSquare, BookOpen, Settings, Save, Hash, Orbit, Home, Wind, Info, Copy, X, Undo2, RefreshCw } from 'lucide-react';
-import { CardKeywordMemory, SpreadDefinition, TarotCardMetadata, ReadingSlotData, TarotReading, ReadingFormData, ReadingEditorDraft, ReadingEditorFields, ReadingSpreadSnapshot, ReadingSpreadSwitch, ReadingAiPromptDraft } from '../types';
+import { CardKeywordMemory, SpreadDefinition, TarotCardMetadata, ReadingSlotData, TarotReading, ReadingFormData, ReadingEditorDraft, ReadingEditorFields, ReadingSpreadSnapshot, ReadingSpreadSwitch, ReadingAiPromptDraft, ReadingEditorSnapshot, ReadingEditorHistoryEntry, ReadingEditorWorkspaceBackup } from '../types';
 import { readLocalDraft, useLocalDraft } from '../hooks/useLocalDraft';
 import { useModalFocus } from '../hooks/useModalFocus';
 import { toLocalReadingDate } from '../lib/readingDate';
@@ -24,13 +24,13 @@ import { mapSlotsToSpread, normalizeInterpretationsForSlots } from '../lib/readi
 import {
   addReadingSlot,
   applyGridSlotPositionClick,
-  appendSlotHistory,
   moveReadingSlot,
   removeReadingSlot,
   selectCardForSlot,
   toggleSlotReversal,
   updateReadingSlotLabel,
 } from '../lib/readingSlotOperations';
+import { appendEditorHistory, remapEditorSlots, restoreEditorHistory } from '../lib/readingEditorHistory';
 import {
   createBlankSlotsForSpread,
   createSpreadDefinitionFromSlots,
@@ -190,20 +190,6 @@ const SpreadSaveConflictDialog: React.FC<SpreadSaveConflictDialogProps> = ({
   return createPortal(dialog, document.body);
 };
 
-type SpreadManagerDraftBackup = {
-  spread: string;
-  layoutType: string;
-  cardSlots: ReadingSlotData[];
-  history: ReadingSlotData[][];
-  gridCols: number;
-  gridRows: number;
-  freeLayoutSaveMode: FreeLayoutSaveMode;
-  newSpreadName: string;
-  designActiveSlot: number;
-  activeSlotIndex: number;
-  isEditingSession: boolean;
-};
-
 export const AddReadingForm: React.FC<AddReadingFormProps> = ({ 
   onSubmit, 
   isLoading, 
@@ -284,14 +270,14 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
     }
     return [{ name: '', isReversed: false }];
   });
-  const [history, setHistory] = useState<ReadingSlotData[][]>(restoredDraft?.history || []);
+  const [history, setHistory] = useState<ReadingEditorHistoryEntry[]>(restoredDraft?.history || []);
   const [spreadSwitchHistory, setSpreadSwitchHistory] = useState<ReadingSpreadSwitch[]>(restoredDraft?.spreadSwitchHistory || []);
   const [pendingSpreadSwitch, setPendingSpreadSwitch] = useState<{ spread: SpreadDefinition; category?: string } | null>(null);
   const [confirmSpreadUndo, setConfirmSpreadUndo] = useState(false);
-  const [showSpreadManager, setShowSpreadManager] = useState(false);
+  const [showSpreadManager, setShowSpreadManager] = useState(Boolean(restoredDraft?.workspaceBackup));
   const [showPicker, setShowPicker] = useState(false);
-  const [newSpreadName, setNewSpreadName] = useState('');
-  const [designActiveSlot, setDesignActiveSlot] = useState(0);
+  const [newSpreadName, setNewSpreadName] = useState(restoredDraft?.newSpreadName || '');
+  const [designActiveSlot, setDesignActiveSlot] = useState(restoredDraft?.designActiveSlot ?? 0);
   const [spreadActionMessage, setSpreadActionMessage] = useState('');
   const showSlotNumbers = true;
   const [showAdvanced, setShowAdvanced] = useState(false);
@@ -322,10 +308,11 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
   } : null);
   const [gridCols, setGridCols] = useState(restoredDraft?.gridCols || 5);
   const [gridRows, setGridRows] = useState(restoredDraft?.gridRows || 5);
-  const [freeLayoutSaveMode, setFreeLayoutSaveMode] = useState<FreeLayoutSaveMode>('original');
+  const [freeLayoutSaveMode, setFreeLayoutSaveMode] = useState<FreeLayoutSaveMode>(restoredDraft?.freeLayoutSaveMode || 'original');
   const [showUpdatePrompt, setShowUpdatePrompt] = useState<{ name: string, oldSlots: string[] } | null>(null);
   const [pendingRestoreOfficialSpreadName, setPendingRestoreOfficialSpreadName] = useState('');
   const [spreadSaveConflict, setSpreadSaveConflict] = useState<SpreadSaveConflict | null>(null);
+  const [pendingWorkspaceSave, setPendingWorkspaceSave] = useState<{ spread: SpreadDefinition; options: { replaceCurrentCustom?: boolean }; count: number } | null>(null);
   const [spreadNameNotice, setSpreadNameNotice] = useState('');
   const [submitNotice, setSubmitNotice] = useState('');
   const [submitIssue, setSubmitIssue] = useState<ReadingRequiredFieldIssue | null>(null);
@@ -342,7 +329,20 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
     });
     return () => cancelAnimationFrame(frame);
   }, [spreadRevealRequest]);
-  const spreadManagerDraftBackupRef = useRef<SpreadManagerDraftBackup | null>(null);
+  const spreadManagerDraftBackupRef = useRef<ReadingEditorWorkspaceBackup | null>(restoredDraft?.workspaceBackup || null);
+  const currentEditorSnapshot = (): ReadingEditorSnapshot => ({
+    cardSlots, cardInterpretations, cardQuestions, activeSlotIndex, readingDetailSlotIndex, designActiveSlot,
+    spread: formData.spread, layoutType: formData.layoutType, singleCard: formData.singleCard,
+    gridCols, gridRows, isEditingSession, newSpreadName, freeLayoutSaveMode,
+  });
+  const applyEditorSnapshot = (snapshot: ReadingEditorSnapshot) => {
+    savedSpreadDefinition.current = { name: snapshot.spread, signature: JSON.stringify(spreads.find(spread => spread.name === snapshot.spread)) };
+    setFormData(previous => ({ ...previous, spread: snapshot.spread, layoutType: snapshot.layoutType, singleCard: snapshot.singleCard }));
+    setCardSlots(snapshot.cardSlots); setCardInterpretations(snapshot.cardInterpretations); setCardQuestions(snapshot.cardQuestions);
+    setActiveSlotIndex(snapshot.activeSlotIndex); setReadingDetailSlotIndex(snapshot.readingDetailSlotIndex);
+    setDesignActiveSlot(snapshot.designActiveSlot); setGridCols(snapshot.gridCols); setGridRows(snapshot.gridRows);
+    setIsEditingSession(snapshot.isEditingSession); setNewSpreadName(snapshot.newSpreadName); setFreeLayoutSaveMode(snapshot.freeLayoutSaveMode);
+  };
   const initialFields = useRef(JSON.stringify(formData));
   const draftStarted = useRef(Boolean(restoredDraft || initialData?.id));
   if (JSON.stringify(formData) !== initialFields.current || cardSlots.some(slot => slot.name) || isEditingSession) draftStarted.current = true;
@@ -355,6 +355,8 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
     feedbackBaseline: feedbackState.baseline,
     activeSlotIndex, readingDetailSlotIndex, gridCols, gridRows, isEditingSession,
     spreadSwitchHistory, aiPromptMode, aiPromptDrafts, showCardStudy, updatedAt: draftUpdatedAt,
+    newSpreadName, designActiveSlot, freeLayoutSaveMode,
+    workspaceBackup: showSpreadManager ? spreadManagerDraftBackupRef.current || undefined : undefined,
     hasUnsavedChanges: Boolean((restoredDraft && restoredDraft.hasUnsavedChanges !== false) || contentRevision !== initialContentRevision.current || !initialData?.id),
   }, draftStarted.current);
 
@@ -363,7 +365,10 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
     clearLongPressActive,
     handleLongPressStart,
     handleLongPressEnd,
-  } = useLongPressClear({ cardSlots, setCardSlots });
+  } = useLongPressClear({ cardSlots, setCardSlots, onClear: index => {
+    const slots = cardSlots.map((slot, i) => i === index ? { ...slot, name: '', isReversed: false } : slot);
+    updateCardSlotsWithHistory(slots, undefined, [index]);
+  } });
 
   const isDailyMode = formData.category === '日运';
   const isMultiCard = cardSlots.length > 1;
@@ -376,17 +381,7 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
     if (spreadManagerDraftBackupRef.current) return;
 
     spreadManagerDraftBackupRef.current = {
-      spread: formData.spread,
-      layoutType: formData.layoutType,
-      cardSlots,
-      history,
-      gridCols,
-      gridRows,
-      freeLayoutSaveMode,
-      newSpreadName,
-      designActiveSlot,
-      activeSlotIndex,
-      isEditingSession,
+      ...currentEditorSnapshot(), history,
     };
   };
 
@@ -398,20 +393,8 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
     const backup = spreadManagerDraftBackupRef.current;
 
     if (backup) {
-      setFormData(prev => ({
-        ...prev,
-        spread: backup.spread,
-        layoutType: backup.layoutType,
-      }));
-      setCardSlots(backup.cardSlots);
+      applyEditorSnapshot(backup);
       setHistory(backup.history);
-      setGridCols(backup.gridCols);
-      setGridRows(backup.gridRows);
-      setFreeLayoutSaveMode(backup.freeLayoutSaveMode);
-      setNewSpreadName(backup.newSpreadName);
-      setDesignActiveSlot(backup.designActiveSlot);
-      setActiveSlotIndex(backup.activeSlotIndex);
-      setIsEditingSession(backup.isEditingSession);
     }
 
     setSpreadNameNotice('');
@@ -585,17 +568,23 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
     setShowPicker(false);
   };
 
-  const updateCardSlotsWithHistory = (newSlots: typeof cardSlots) => {
-    setHistory(prev => appendSlotHistory(prev, cardSlots));
-    setCardSlots(newSlots);
+  const updateCardSlotsWithHistory = (newSlots: typeof cardSlots, sources?: number[], clearIndices: number[] = []) => {
+    const before = currentEditorSnapshot();
+    const after = remapEditorSlots(before, newSlots, sources);
+    clearIndices.forEach(index => { after.cardInterpretations[index] = ''; after.cardQuestions[index] = ''; });
+    if (newSlots.length === 1 && clearIndices.includes(0)) after.singleCard = '';
+    setHistory(previous => appendEditorHistory(previous, before));
+    applyEditorSnapshot(after);
   };
 
   const undo = () => {
     if (history.length === 0) return;
     const previous = history[history.length - 1];
     setHistory(prev => prev.slice(0, -1));
-    setCardSlots(previous);
-    setDesignActiveSlot(Math.max(0, Math.min(designActiveSlot, previous.length - 1)));
+    const snapshot = restoreEditorHistory(previous, currentEditorSnapshot());
+    applyEditorSnapshot(showSpreadManager && snapshot.layoutType !== 'free' ? {
+      ...snapshot, layoutType: 'free', cardSlots: toFreeEditorSlots(snapshot.cardSlots, snapshot.layoutType),
+    } : snapshot);
   };
 
   const handleCardSelect = (card: typeof TAROT_CARDS[0], isReversed: boolean) => {
@@ -688,7 +677,16 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
   const completeSpreadSave = (
     newSpread: SpreadDefinition,
     options: { replaceCurrentCustom?: boolean } = { replaceCurrentCustom: true },
+    confirmed = false,
   ) => {
+    const before = currentEditorSnapshot();
+    const original = spreadManagerDraftBackupRef.current;
+    // The workbench edits a layout. A blank template must not silently erase
+    // cards and writing from the reading it was opened from.
+    const source = !cardSlots.some(slot => slot.name.trim()) && original?.cardSlots.some(slot => slot.name.trim()) ? original : before;
+    const removalSource = original && original.cardSlots.length > source.cardSlots.length ? original : source;
+    const removed = removalSource.cardSlots.slice(newSpread.slots.length).filter((slot, offset) => slot.name.trim() || removalSource.cardInterpretations[newSpread.slots.length + offset]?.trim() || removalSource.cardQuestions[newSpread.slots.length + offset]?.trim()).length;
+    if (!confirmed && removed) { setPendingWorkspaceSave({ spread: newSpread, options, count: removed }); return; }
     const isRenamingCurrentCustomSpread = Boolean(
       options.replaceCurrentCustom !== false
       &&
@@ -703,15 +701,14 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
     const updatedSpreads = upsertSpreadDefinition(sourceSpreads, newSpread);
     
     onUpdateSpreads(updatedSpreads);
-    setFormData(prev => ({ ...prev, spread: newSpread.name, layoutType: newSpread.layout }));
-    setCardSlots(mapSlotsToSpread(cardSlots, newSpread));
-    setGridCols(newSpread.gridCols || gridCols);
-    setGridRows(newSpread.gridRows || gridRows);
-    setNewSpreadName('');
+    const slots = mapSlotsToSpread(source.cardSlots, newSpread);
+    const after = remapEditorSlots(source, slots, slots.map((_, index) => index < source.cardSlots.length ? index : -1));
+    setHistory(previous => appendEditorHistory(previous, original || before));
+    applyEditorSnapshot({ ...after, spread: newSpread.name, layoutType: newSpread.layout, gridCols: newSpread.gridCols || gridCols, gridRows: newSpread.gridRows || gridRows, newSpreadName: '', isEditingSession: false });
     setSpreadNameNotice('');
     setSpreadSaveConflict(null);
+    setPendingWorkspaceSave(null);
     setSpreadActionMessage('已保存，当前手记正在使用这个牌阵');
-    setIsEditingSession(false);
     clearSpreadManagerDraftBackup();
     setShowSpreadManager(false);
   };
@@ -801,7 +798,10 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
   const swapSlotIndex = (oldIndex: number, newIndex: number) => {
     const newSlots = moveReadingSlot(cardSlots, oldIndex, newIndex);
     if (newSlots === cardSlots) return;
-    updateCardSlotsWithHistory(newSlots);
+    const sources = cardSlots.map((_, index) => index);
+    const [moved] = sources.splice(oldIndex, 1);
+    sources.splice(newIndex, 0, moved);
+    updateCardSlotsWithHistory(newSlots, sources);
     setDesignActiveSlot(newIndex);
   };
 
@@ -911,15 +911,17 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
 
   const handleCreateNewSpread = () => {
     captureSpreadManagerDraftBackup();
-
-    setFormData(prev => ({ ...prev, spread: '', layoutType: 'free' }));
-    setCardSlots([]);
-    setGridCols(20);
-    setGridRows(12);
-    setNewSpreadName('');
+    const before = currentEditorSnapshot();
+    if (showSpreadManager) setHistory(previous => appendEditorHistory(previous, before));
+    applyEditorSnapshot({ ...before, spread: '', layoutType: 'free', cardSlots: [], cardInterpretations: [], cardQuestions: [], singleCard: '', gridCols: 20, gridRows: 12, newSpreadName: '', designActiveSlot: -1, activeSlotIndex: 0, readingDetailSlotIndex: 0, isEditingSession: true });
     setShowSpreadManager(true);
-    setIsEditingSession(true);
-    setDesignActiveSlot(-1);
+  };
+  const handleWorkbenchTemplate = (spread: SpreadDefinition, options?: { useAsTemplate?: boolean }) => {
+    const before = currentEditorSnapshot();
+    const slots = toFreeEditorSlots(mapSlotsToSpread(cardSlots, spread), spread.layout);
+    const after = remapEditorSlots(before, slots, slots.map((_, index) => index < cardSlots.length ? index : -1));
+    setHistory(previous => appendEditorHistory(previous, before));
+    applyEditorSnapshot({ ...after, spread: spread.name, layoutType: 'free', gridCols: 20, gridRows: 12, freeLayoutSaveMode: 'original', newSpreadName: newSpreadName.trim() ? newSpreadName : `${spread.name} 改造`, designActiveSlot: -1, isEditingSession: !OFFICIAL_SPREADS.some(item => item.name === spread.name) && !options?.useAsTemplate });
   };
 
   const handleCycleSlot = (index: number, e: React.MouseEvent) => {
@@ -1243,12 +1245,14 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
         }
       />
 
-      {spreadSwitchHistory.length > 0 && <div className="flex justify-end border-b border-forest-accent/7">
+      {(history.length > 0 || spreadSwitchHistory.length > 0) && <div className="flex justify-end border-b border-forest-accent/7">
+        {history.length > 0 && <button type="button" onClick={undo} aria-label="撤销牌位操作" className="inline-flex min-h-11 items-center gap-1.5 px-2 text-xs text-forest-accent"><Undo2 size={15} />撤销</button>}
+        {spreadSwitchHistory.length > 0 &&
         <button type="button" aria-label="撤销牌阵切换" title="恢复上一个牌阵及其牌面、解读和布局" onClick={() => {
           const last = spreadSwitchHistory.at(-1)!;
           if (spreadSnapshotContent(currentSpreadSnapshot()) !== spreadSnapshotContent(last.after)) setConfirmSpreadUndo(true);
           else undoSpreadSwitch();
-        }} className="inline-flex min-h-11 items-center gap-1.5 px-2 text-xs text-forest-accent"><Undo2 size={15} />撤销切换</button>
+        }} className="inline-flex min-h-11 items-center gap-1.5 px-2 text-xs text-forest-accent"><Undo2 size={15} />撤销切换</button>}
       </div>}
       <ConfirmDialog isOpen={Boolean(pendingSpreadSwitch)} title="切换牌阵" message={`切换到“${pendingSpreadSwitch?.spread.name || ''}”会移除 ${pendingSpreadSwitch ? countRemovedSpreadContent(currentSpreadSnapshot(), pendingSpreadSwitch.spread) : 0} 个已有牌面或解读的位置。原内容会保留在撤销记录中。`} confirmText="切换牌阵" cancelText="保留当前牌阵" onConfirm={() => {
         if (pendingSpreadSwitch) confirmSpreadSelection(pendingSpreadSwitch.spread, pendingSpreadSwitch.category);
@@ -1307,6 +1311,7 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
               layoutType={formData.layoutType}
               cardSlots={cardSlots}
               designActiveSlot={designActiveSlot}
+              restoredWorkspace={Boolean(restoredDraft?.workspaceBackup)}
               newSpreadName={newSpreadName}
               isEditingSession={isEditingSession}
               freeLayoutSaveMode={freeLayoutSaveMode}
@@ -1318,20 +1323,7 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
                 setIsEditingSession(true);
               }}
               gridCols={gridCols}
-              onSelectSpread={(s, options) => {
-                const nextSlots = createBlankSlotsForSpread(s);
-                const editorSlots = toFreeEditorSlots(nextSlots, s.layout);
-                const isOfficial = OFFICIAL_SPREADS.some(os => os.name === s.name);
-                const useAsTemplate = Boolean(options?.useAsTemplate);
-
-                setFormData(prev => ({ ...prev, spread: s.name, layoutType: 'free' }));
-                setGridCols(20);
-                setGridRows(12);
-                setFreeLayoutSaveMode('original');
-                setCardSlots(editorSlots);
-                setDesignActiveSlot(editorSlots.length > 0 ? 0 : -1);
-                setIsEditingSession(!isOfficial && !useAsTemplate);
-              }}
+              onSelectSpread={handleWorkbenchTemplate}
               onStartNewSession={handleCreateNewSpread}
               onClose={handleCancelSpreadManager}
               onDeleteSpread={requestDeleteSpread}
@@ -1424,6 +1416,7 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
         onConfirm={confirmDeleteSpread}
         onClose={() => setPendingDeleteSpreadNames([])}
       />
+      <ConfirmDialog isOpen={Boolean(pendingWorkspaceSave)} title="应用较少的位置？" message={`新设计将移除 ${pendingWorkspaceSave?.count || 0} 个有牌面或文字的位置。确认后仍可撤销恢复。`} confirmText="应用新设计" cancelText="继续调整" onConfirm={() => { if (pendingWorkspaceSave) completeSpreadSave(pendingWorkspaceSave.spread, pendingWorkspaceSave.options, true); }} onClose={() => setPendingWorkspaceSave(null)} />
 
       <div
         data-required-field="cards"

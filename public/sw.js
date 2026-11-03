@@ -2,6 +2,8 @@ const CACHE_VERSION = 'dev';
 const APP_CACHE = `tarot-pavilion-app-${CACHE_VERSION}`;
 const STATIC_CACHE = `tarot-pavilion-static-${CACHE_VERSION}`;
 const PRECACHE_ASSETS = /* BUILD_ASSETS */ [];
+const PRECACHE_CARD_IMAGES = /* BUILD_CARD_IMAGES */ [];
+const INSTALL_CONTEXT_PATH = '/__tarot-pavilion-install-context__';
 const APP_SHELL = [
   '/',
   '/site.webmanifest',
@@ -32,13 +34,67 @@ const shouldBypassCache = (request, url) => (
   || request.headers.has('authorization')
 );
 
-self.addEventListener('install', (event) => {
-  event.waitUntil(
-    Promise.all([
+const isCardImage = (url) => url.pathname.startsWith('/tarot-cards/');
+const isValidStaticResponse = (response, url) => {
+  if (!response?.ok || response.redirected) return false;
+  if (response.url) {
+    const actual = new URL(response.url);
+    if (!isSameOrigin(actual) || actual.pathname !== url.pathname) return false;
+  }
+  const type = (response.headers.get('content-type') || '').split(';')[0].trim().toLowerCase();
+  if (isCardImage(url)) {
+    const expected = { avif: 'image/avif', webp: 'image/webp', jpg: 'image/jpeg' }[url.pathname.split('.').at(-1)];
+    return Boolean(expected) && type === expected;
+  }
+  return Boolean(type) && type !== 'text/html';
+};
+
+// Every supported picture format must be present before this worker can become
+// active. A partially downloaded deck must not replace the working old worker.
+const precacheStaticAssets = async () => {
+  const cache = await caches.open(STATIC_CACHE);
+  const paths = [...PRECACHE_ASSETS, ...PRECACHE_CARD_IMAGES];
+  let cursor = 0;
+  let failure;
+  await Promise.all(Array.from({ length: Math.min(4, paths.length) }, async () => {
+    while (cursor < paths.length && !failure) {
+      const path = paths[cursor++];
+      try {
+        const url = new URL(path, self.location.origin);
+        const response = await fetch(url.href, { cache: 'reload', redirect: 'error' });
+        if (!isValidStaticResponse(response, url)) throw new Error(`Invalid offline asset: ${path}`);
+        await cache.put(path, response);
+      } catch (error) {
+        failure = error;
+      }
+    }
+  }));
+  if (failure) throw failure;
+};
+
+const installOfflineCache = async () => {
+  const firstInstall = !self.registration?.active;
+  const results = await Promise.allSettled([
       caches.open(APP_CACHE).then((cache) => cache.addAll(APP_SHELL)),
-      caches.open(STATIC_CACHE).then((cache) => cache.addAll(PRECACHE_ASSETS)),
-    ])
-  );
+      precacheStaticAssets(),
+  ]);
+  const failed = results.find(result => result.status === 'rejected');
+  try {
+    if (failed) throw failed.reason;
+    // A worker can restart between install and activate. Store the decision in
+    // this version's cache rather than recalculating it in a new global scope.
+    const cache = await caches.open(APP_CACHE);
+    await cache.put(INSTALL_CONTEXT_PATH, new Response(JSON.stringify({ firstInstall }), {
+      headers: { 'content-type': 'application/json' },
+    }));
+  } catch (error) {
+    await Promise.all([caches.delete(APP_CACHE), caches.delete(STATIC_CACHE)]);
+    throw error;
+  }
+};
+
+self.addEventListener('install', (event) => {
+  event.waitUntil(installOfflineCache());
 });
 
 self.addEventListener('activate', (event) => {
@@ -49,6 +105,11 @@ self.addEventListener('activate', (event) => {
           .filter((key) => key.startsWith('tarot-pavilion-') && ![APP_CACHE, STATIC_CACHE].includes(key))
           .map((key) => caches.delete(key))
       ))
+      .then(async () => {
+        const context = await (await caches.open(APP_CACHE)).match(INSTALL_CONTEXT_PATH);
+        // Missing metadata must not turn an update into a takeover of old pages.
+        if (context && (await context.json()).firstInstall === true) await self.clients.claim();
+      })
   );
 });
 
@@ -80,7 +141,7 @@ const staleWhileRevalidate = async (request) => {
   const cached = await cache.match(request, { ignoreVary: true });
   const fetched = fetch(request)
     .then((response) => {
-      if (response.ok) {
+      if (isValidStaticResponse(response, new URL(request.url))) {
         cache.put(request, response.clone());
       }
       return response;
@@ -97,9 +158,20 @@ const cacheFirst = async (request) => {
   if (cached) return cached;
 
   const response = await fetch(request);
-  if (response.ok && !response.headers.get('content-type')?.includes('text/html')) {
+  if (isValidStaticResponse(response, new URL(request.url))) {
     await staticCache.put(request, response.clone());
   }
+  return response;
+};
+
+const cardImageFirst = async (request) => {
+  const url = new URL(request.url);
+  const cache = await caches.open(STATIC_CACHE);
+  const cached = await cache.match(url.pathname, { ignoreVary: true });
+  if (isValidStaticResponse(cached, url)) return cached;
+  const response = await fetch(request, { redirect: 'error' });
+  if (!isValidStaticResponse(response, url)) return Response.error();
+  await cache.put(url.pathname, response.clone());
   return response;
 };
 
@@ -114,7 +186,9 @@ self.addEventListener('fetch', (event) => {
 
   if (isStaticAsset(url)) {
     event.respondWith(
-      url.pathname.startsWith('/assets/') || APP_SHELL.includes(url.pathname)
+      isCardImage(url)
+        ? cardImageFirst(event.request)
+        : url.pathname.startsWith('/assets/') || APP_SHELL.includes(url.pathname)
         ? cacheFirst(event.request)
         : staleWhileRevalidate(event.request)
     );

@@ -46,13 +46,56 @@ const renderPrivateTab = (
     ...overrides,
   };
 
-  render(<PrivateTab {...props} />);
-  return props;
+  const view = render(<PrivateTab {...props} />);
+  return { ...props, rerender: (next: Partial<React.ComponentProps<typeof PrivateTab>>) => view.rerender(<PrivateTab {...props} {...next} />) };
 };
 
 describe('PrivateTab', () => {
   beforeEach(() => {
     localStorage.clear();
+  });
+
+  it('accumulates selections across searches and only deselects the current results', async () => {
+    const user = userEvent.setup();
+    const props = renderPrivateTab([
+      createReading({ id: 'a', question: '甲记录' }),
+      createReading({ id: 'b', question: '乙记录' }),
+    ], { searchQuery: '甲记录' });
+    await user.click(screen.getByRole('button', { name: '多选' }));
+    await user.click(screen.getByRole('button', { name: '选择记录：甲记录' }));
+    props.rerender({ searchQuery: '乙记录' });
+    expect(screen.getByText('另有 1 条已选记录不在当前结果中')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: '全选当前' }));
+    expect(screen.getByRole('button', { name: '导出2' })).toBeEnabled();
+    props.rerender({ searchQuery: '没有结果' });
+    expect(screen.getByRole('button', { name: '导出2' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: '全选当前' })).toBeDisabled();
+    props.rerender({ searchQuery: '甲记录' });
+    await user.click(screen.getByRole('button', { name: '取消当前选择' }));
+    props.rerender({ searchQuery: '' });
+    expect(screen.getByRole('button', { name: '选择记录：甲记录' })).toHaveAttribute('aria-pressed', 'false');
+    expect(screen.getByRole('button', { name: '取消选择记录：乙记录' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('button', { name: '导出1' })).toBeEnabled();
+  });
+
+  it('keeps archive filters, view and selections while its editor is active, pruning only deleted records', async () => {
+    const user = userEvent.setup();
+    const a = createReading({ id: 'a', question: '甲记录', userFeedback: '已经回看' });
+    const b = createReading({ id: 'b', question: '乙记录', userFeedback: '已经回看' });
+    const props = renderPrivateTab([a, b, createReading({ id: 'c', question: '未复盘记录' })]);
+    await user.click(screen.getByRole('button', { name: '筛选' }));
+    await user.click(screen.getByRole('button', { name: '已复盘' }));
+    await user.click(screen.getByRole('button', { name: '收起筛选' }));
+    await user.click(screen.getByRole('button', { name: '列表' }));
+    await user.click(screen.getByRole('button', { name: '多选' }));
+    await user.click(screen.getByRole('button', { name: '全选当前' }));
+    props.rerender({ isActive: false });
+    props.rerender({ isActive: true, readings: [{ ...a, question: '甲记录已修改' }, b] });
+    expect(screen.getByRole('button', { name: '列表' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByText('状态: 已复盘')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '导出2' })).toBeEnabled();
+    props.rerender({ readings: [b] });
+    expect(screen.getByRole('button', { name: '导出1' })).toBeEnabled();
   });
 
   it('filters client readings by client nickname', async () => {
@@ -278,7 +321,7 @@ describe('PrivateTab', () => {
 
     expect(screen.queryByText('当前复盘')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '导出' })).not.toBeInTheDocument();
-    expect(screen.queryByText('已选 0 / 当前 2')).not.toBeInTheDocument();
+    expect(screen.queryByText('已选 0 条 · 当前结果 2 条')).not.toBeInTheDocument();
     expect(screen.queryByText('长按记录进入多选，可批量导出。')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '选择记录：还没复盘' })).not.toBeInTheDocument();
 
@@ -293,7 +336,7 @@ describe('PrivateTab', () => {
     });
     fireEvent.pointerUp(unreviewedCard!);
 
-    expect(screen.getByText('已选 1 / 当前 2')).toBeInTheDocument();
+    expect(screen.getByText('已选 1 条 · 当前结果 2 条')).toBeInTheDocument();
     expect(screen.getByText('长按记录进入多选，可批量导出。')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '全选当前' })).toBeEnabled();
     expect(screen.getByRole('button', { name: '导出1' })).toBeEnabled();
@@ -311,12 +354,12 @@ describe('PrivateTab', () => {
 
     await user.click(screen.getByRole('button', { name: '多选' }));
 
-    expect(screen.getByText('已选 0 / 当前 2')).toBeInTheDocument();
+    expect(screen.getByText('已选 0 条 · 当前结果 2 条')).toBeInTheDocument();
     expect(screen.getByText('长按记录进入多选，可批量导出。')).toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: '全选当前' }));
 
-    expect(screen.getByText('已选 2 / 当前 2')).toBeInTheDocument();
+    expect(screen.getByText('已选 2 条 · 当前结果 2 条')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '导出2' })).toBeEnabled();
   });
 

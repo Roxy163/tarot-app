@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { OFFICIAL_SPREADS } from '../constants';
@@ -52,6 +52,15 @@ const makeReading = (
   ...overrides,
 });
 
+const pairedSpread: SpreadDefinition = { name: '关联回归双牌', layout: 'free', slots: ['左侧', '右侧'], freePositions: [
+  { x: -20, y: 40, rotation: 17, scale: 0.8 }, { x: 190, y: 270, rotation: -12, scale: 1.2 },
+] };
+const pairedReading = (id: string) => makeReading(id, [], '2026-11-03', {
+  spread: pairedSpread.name, layoutType: 'free', slotLabels: pairedSpread.slots,
+  cards: pairedSpread.freePositions!.map((position, index) => ({ ...position, name: index ? '隐士' : '太阳', isReversed: Boolean(index), label: pairedSpread.slots[index] })),
+  cardInterpretations: ['太阳独有注解', '隐士独有注解'], cardQuestions: ['太阳独有疑问', '隐士独有疑问'],
+});
+
 describe('AddReadingForm spread designer flow', () => {
   beforeEach(() => {
     localStorage.clear();
@@ -78,6 +87,165 @@ describe('AddReadingForm spread designer flow', () => {
       value: 1024,
     });
     vi.restoreAllMocks();
+  });
+
+  it('keeps the card, writing and active indices together through workbench reordering, draft reload, and undo', async () => {
+    const user = userEvent.setup();
+    const initialData = pairedReading('reorder-associations');
+    const options = { spreads: [...OFFICIAL_SPREADS, pairedSpread], initialData };
+    const first = renderForm(options);
+    await user.click(screen.getByRole('button', { name: '逐牌研习（可选）' }));
+    await user.click(screen.getByRole('button', { name: '打开第 2 个位置：右侧' }));
+    await user.click(screen.getByRole('button', { name: `编辑当前牌阵 ${pairedSpread.name}` }));
+    const workspace = screen.getByRole('main', { name: '牌阵工作台' });
+    const order = within(workspace).getByRole('spinbutton', { name: '修改第 2 个位置序号' });
+    await user.clear(order); await user.type(order, '1'); await user.tab();
+    const key = 'tarot_reading_draft_guest_reorder-associations';
+    const reordered = readLocalDraft<any>(key);
+    expect(reordered.cardSlots.map((card: any) => card.name)).toEqual(['隐士', '太阳']);
+    expect(reordered.cardInterpretations).toEqual(['隐士独有注解', '太阳独有注解']);
+    expect(reordered.cardQuestions).toEqual(['隐士独有疑问', '太阳独有疑问']);
+    expect([reordered.activeSlotIndex, reordered.readingDetailSlotIndex]).toEqual([0, 0]);
+    first.unmount(); resetDraftMemory();
+    const second = renderForm(options);
+    const resumed = screen.getByRole('main', { name: '牌阵工作台' });
+    expect(readLocalDraft<any>(key).cardInterpretations).toEqual(reordered.cardInterpretations);
+    await user.click(within(resumed).getByRole('button', { name: '撤销' }));
+    const restored = readLocalDraft<any>(key);
+    expect(restored.cardSlots.map((card: any) => card.name)).toEqual(['太阳', '隐士']);
+    expect(restored.cardInterpretations).toEqual(initialData.cardInterpretations);
+    expect(restored.cardQuestions).toEqual(initialData.cardQuestions);
+    expect([restored.activeSlotIndex, restored.readingDetailSlotIndex]).toEqual([1, 1]);
+    await user.click(within(resumed).getByRole('button', { name: '保存修改' }));
+    await waitFor(() => expect(screen.queryByRole('main', { name: '牌阵工作台' })).not.toBeInTheDocument());
+    await user.click(screen.getByRole('button', { name: '保存修改' }));
+    expect(second.onSubmit).toHaveBeenCalledWith(expect.objectContaining({ cardInterpretations: initialData.cardInterpretations, cardQuestions: initialData.cardQuestions }));
+  });
+
+  it('deletes writing with its slot and restores it with undo, and records the 600ms long press as one complete operation', async () => {
+    const user = userEvent.setup();
+    const initialData = pairedReading('delete-associations');
+    renderForm({ spreads: [...OFFICIAL_SPREADS, pairedSpread], initialData });
+    await user.click(screen.getByRole('button', { name: `编辑当前牌阵 ${pairedSpread.name}` }));
+    const workspace = screen.getByRole('main', { name: '牌阵工作台' });
+    await user.click(within(workspace).getByRole('button', { name: '删除位置：左侧' }));
+    const key = 'tarot_reading_draft_guest_delete-associations';
+    expect(readLocalDraft<any>(key).cardInterpretations).toEqual(['隐士独有注解']);
+    expect(readLocalDraft<any>(key).cardQuestions).toEqual(['隐士独有疑问']);
+    await user.click(within(workspace).getByRole('button', { name: '撤销' }));
+    await user.click(within(workspace).getByRole('button', { name: '保存修改' }));
+    await waitFor(() => expect(screen.queryByRole('main', { name: '牌阵工作台' })).not.toBeInTheDocument());
+    const face = screen.getAllByAltText('太阳').map(image => image.closest('button')).find(Boolean)!;
+    vi.useFakeTimers();
+    try {
+      fireEvent.pointerDown(face);
+      act(() => { vi.advanceTimersByTime(599); });
+      expect(readLocalDraft<any>(key).cardSlots[0].name).toBe('太阳');
+      act(() => { vi.advanceTimersByTime(1); });
+      fireEvent.pointerUp(face);
+      expect(readLocalDraft<any>(key).cardSlots[0].name).toBe('');
+      expect(readLocalDraft<any>(key).cardInterpretations).toEqual(['', '隐士独有注解']);
+      expect(readLocalDraft<any>(key).cardQuestions).toEqual(['', '隐士独有疑问']);
+      fireEvent.click(screen.getByRole('button', { name: '撤销牌位操作' }));
+      expect(readLocalDraft<any>(key).cardSlots[0]).toMatchObject(initialData.cards[0]);
+      expect(readLocalDraft<any>(key).cardInterpretations).toEqual(initialData.cardInterpretations);
+      expect(readLocalDraft<any>(key).cardQuestions).toEqual(initialData.cardQuestions);
+    } finally { vi.useRealTimers(); }
+  });
+
+  it('submits the matching notes and questions after accepting a reordered design', async () => {
+    const user = userEvent.setup();
+    const props = renderForm({ spreads: [...OFFICIAL_SPREADS, pairedSpread], initialData: pairedReading('reorder-save') });
+    await user.click(screen.getByRole('button', { name: `编辑当前牌阵 ${pairedSpread.name}` }));
+    const workspace = screen.getByRole('main', { name: '牌阵工作台' });
+    const order = within(workspace).getByRole('spinbutton', { name: '修改第 2 个位置序号' });
+    await user.clear(order); await user.type(order, '1'); await user.tab();
+    await user.click(within(workspace).getByRole('button', { name: '保存修改' }));
+    await waitFor(() => expect(screen.queryByRole('main', { name: '牌阵工作台' })).not.toBeInTheDocument());
+    await user.click(screen.getByRole('button', { name: '保存修改' }));
+    const saved = props.onSubmit.mock.calls[0][0];
+    expect(saved.cards.map((card: any) => card.name)).toEqual(['隐士', '太阳']);
+    expect(saved.cardInterpretations).toEqual(['隐士独有注解', '太阳独有注解']);
+    expect(saved.cardQuestions).toEqual(['隐士独有疑问', '太阳独有疑问']);
+  });
+
+  it.each(['template', 'blank'] as const)('confirms %s replacement and undoes the entire unsaved workspace, including after reload', async action => {
+    const user = userEvent.setup();
+    const initialData = pairedReading(`workspace-${action}`);
+    const options = { spreads: [...OFFICIAL_SPREADS, pairedSpread], initialData };
+    const first = renderForm(options);
+    const key = `tarot_reading_draft_guest_workspace-${action}`;
+    const originalSlots = readLocalDraft<any>(key).cardSlots;
+    await user.click(screen.getByRole('button', { name: `编辑当前牌阵 ${pairedSpread.name}` }));
+    const workspace = screen.getByRole('main', { name: '牌阵工作台' });
+    await user.clear(within(workspace).getByRole('textbox', { name: '名称' }));
+    await user.type(within(workspace).getByRole('textbox', { name: '名称' }), '还没保存的名字');
+    await user.click(within(workspace).getByRole('button', { name: '自适应居中' }));
+    const before = readLocalDraft<any>(key);
+    if (action === 'template') await user.selectOptions(within(workspace).getByRole('combobox', { name: '基于已有改造' }), '时间流牌阵');
+    else await user.click(within(workspace).getByRole('button', { name: '新建空白' }));
+    const confirmation = screen.getByRole('dialog', { name: action === 'template' ? '切换牌阵模板' : '新建空白牌阵' });
+    expect(readLocalDraft<any>(key).cardSlots).toEqual(before.cardSlots);
+    await user.click(within(confirmation).getByRole('button', { name: '继续替换' }));
+    const changed = readLocalDraft<any>(key);
+    expect(changed.workspaceBackup.cardSlots).toEqual(originalSlots);
+    if (action === 'template') expect(changed.cardSlots.map((card: any) => card.name)).toEqual(['太阳', '隐士', '']);
+    else expect(changed.cardSlots).toEqual([]);
+    first.unmount(); resetDraftMemory();
+    renderForm(options);
+    const resumed = screen.getByRole('main', { name: '牌阵工作台' });
+    await user.click(within(resumed).getByRole('button', { name: '撤销' }));
+    const restored = readLocalDraft<any>(key);
+    for (const field of ['cardSlots', 'cardInterpretations', 'cardQuestions', 'newSpreadName', 'freeLayoutSaveMode', 'activeSlotIndex', 'readingDetailSlotIndex', 'designActiveSlot']) expect(restored[field]).toEqual(before[field]);
+    await user.click(within(resumed).getByRole('button', { name: '返回（牌阵工作台）' }));
+    await user.click(screen.getByRole('button', { name: '放弃修改并返回' }));
+    await waitFor(() => expect(screen.queryByRole('main', { name: '牌阵工作台' })).not.toBeInTheDocument());
+    expect(readLocalDraft<any>(key).cardSlots).toEqual(originalSlots);
+    expect(readLocalDraft<any>(key).cardInterpretations).toEqual(initialData.cardInterpretations);
+    expect(readLocalDraft<any>(key).cardQuestions).toEqual(initialData.cardQuestions);
+  });
+
+  it('restores old slot-only undo entries without moving the current writing onto another card', async () => {
+    const user = userEvent.setup();
+    const initialData = pairedReading('legacy-slot-history');
+    const options = { spreads: [...OFFICIAL_SPREADS, pairedSpread], initialData };
+    const first = renderForm(options);
+    const key = 'tarot_reading_draft_guest_legacy-slot-history';
+    const old = readLocalDraft<any>(key);
+    first.unmount();
+    old.history = [old.cardSlots];
+    old.cardSlots = [...old.cardSlots].reverse();
+    old.cardInterpretations = [...old.cardInterpretations].reverse();
+    old.cardQuestions = [...old.cardQuestions].reverse();
+    sessionStorage.clear(); resetDraftMemory();
+    localStorage.setItem(key, JSON.stringify(old));
+    renderForm(options);
+    await user.click(screen.getByRole('button', { name: '撤销牌位操作' }));
+    expect(readLocalDraft<any>(key).cardSlots.map((card: any) => card.name)).toEqual(['太阳', '隐士']);
+    expect(readLocalDraft<any>(key).cardInterpretations).toEqual(initialData.cardInterpretations);
+    expect(readLocalDraft<any>(key).cardQuestions).toEqual(initialData.cardQuestions);
+  });
+
+  it('keeps the source reading intact while applying a blank new design and confirms before reducing its written positions', async () => {
+    const user = userEvent.setup();
+    const initialData = pairedReading('blank-design-source');
+    const props = renderForm({ spreads: [...OFFICIAL_SPREADS, pairedSpread], initialData });
+    await user.click(screen.getByRole('button', { name: '新建自定义牌阵' }));
+    const workspace = screen.getByRole('main', { name: '牌阵工作台' });
+    await user.click(within(workspace).getByTestId('free-layout-canvas'));
+    await user.click(within(workspace).getByTestId('free-layout-pending-slot'));
+    await user.type(within(workspace).getByRole('textbox', { name: '名称' }), '新的单位置设计');
+    await user.click(within(workspace).getByRole('button', { name: '保存并使用' }));
+    expect(screen.getByRole('dialog', { name: '应用较少的位置？' })).toBeInTheDocument();
+    expect(props.onUpdateSpreads).not.toHaveBeenCalled();
+    await user.click(screen.getByRole('button', { name: '应用新设计' }));
+    await waitFor(() => expect(screen.queryByRole('main', { name: '牌阵工作台' })).not.toBeInTheDocument());
+    const saved = readLocalDraft<any>('tarot_reading_draft_guest_blank-design-source');
+    expect(saved.cardSlots[0].name).toBe('太阳');
+    expect(saved.cardInterpretations).toEqual(['太阳独有注解']);
+    expect(saved.cardQuestions).toEqual(['太阳独有疑问']);
+    await user.click(screen.getByRole('button', { name: '撤销牌位操作' }));
+    expect(readLocalDraft<any>('tarot_reading_draft_guest_blank-design-source').cardSlots.map((card: any) => card.name)).toEqual(['太阳', '隐士']);
   });
 
   it('confirms shrinking a filled spread and restores every card and note after reopening and undoing', async () => {

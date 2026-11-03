@@ -69,6 +69,18 @@ describe('portable learning backup', () => {
     expect(restored.annotations.ar09).toEqual(current.annotations.ar09);
     expect(mergeTarotBackup(restored, data(), 'current-user', '我')).toEqual(restored);
   });
+  it('round trips deleted daily annotation examples and keeps the deletion on restore', () => {
+    const current = data();
+    Object.assign(current.fortunes[0], {
+      deletedAt: '2026-10-21T12:00:00Z', savedToCardAnnotationAt: '2026-10-21T11:00:00Z', cardAnnotationNote: '原记录删除后保留的完整例证',
+    });
+    const incoming = parseTarotBackup(JSON.stringify(createTarotBackup(current))).data;
+    const restored = mergeTarotBackup(empty(), incoming, 'current-user', '我');
+    expect(restored.fortunes[0]).toMatchObject({ deletedAt: '2026-10-21T12:00:00Z', dailyReview: '今天的回看', cardAnnotationNote: '原记录删除后保留的完整例证', userId: 'current-user' });
+    expect(mergeTarotBackup(restored, data(), 'current-user', '我').fortunes).toEqual(restored.fortunes);
+    const backup = createTarotBackup(current);
+    expect(() => parseTarotBackup(JSON.stringify({ ...backup, data: { ...backup.data, fortunes: [{ ...backup.data.fortunes[0], deletedAt: 'broken' }] } }))).toThrow();
+  });
   it('renames a conflicting custom layout once and remaps only new readings', () => {
     const current = data();
     const incoming = data();

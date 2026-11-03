@@ -1,4 +1,4 @@
-import { act, render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ReadingDetailModal } from './ReadingDetailModal';
@@ -112,5 +112,45 @@ describe('reading review', () => {
       await user.click(screen.getByRole('button', { name: '继续填写' }));
       expect(screen.getByRole('textbox', { name: '后来发生了什么' })).toHaveValue('本机暂存不了的文字');
     } finally { failing.mockRestore(); }
+  });
+
+  it('keeps the draft while switching between the original spread, card preview and review', async () => {
+    const user = userEvent.setup(); renderReview();
+    await user.click(screen.getByRole('button', { name: '写复盘' }));
+    await user.type(screen.getByRole('textbox', { name: '后来发生了什么' }), '边看牌边写的复盘');
+    await user.click(screen.getByRole('button', { name: '看牌阵' }));
+    const spread = screen.getByRole('region', { name: '原牌阵' });
+    await user.click(within(spread).getByRole('button', { name: /1\. 主牌：隐士/ }));
+    await user.click(screen.getByRole('button', { name: '放大隐士牌面' }));
+    expect(screen.getByRole('dialog', { name: '隐士 · 逆位' })).toBeInTheDocument();
+    await user.keyboard('{Escape}');
+    expect(screen.getByRole('heading', { name: '手记回看' })).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: '继续写复盘' }));
+    expect(screen.getByRole('textbox', { name: '后来发生了什么' })).toHaveValue('边看牌边写的复盘');
+  });
+
+  it('can explicitly discard an accidental change without leaving the reading or restoring the draft', async () => {
+    const user = userEvent.setup(); const first = renderReview({ reading: { ...reading, userFeedback: '已保存的复盘' } });
+    await user.click(screen.getByRole('button', { name: '写复盘' }));
+    await user.type(screen.getByRole('textbox'), '误写');
+    await user.click(screen.getByRole('button', { name: '取消修改' }));
+    await user.click(screen.getByRole('button', { name: '放弃修改' }));
+    expect(screen.getByText('已保存的复盘')).toBeInTheDocument();
+    expect(readLocalDraft('tarot_reading_review_draft_user-a_review-1')).toBeNull();
+    first.unmount(); resetDraftMemory(); renderReview({ reading: { ...reading, userFeedback: '已保存的复盘' } });
+    expect(screen.queryByRole('textbox')).not.toBeInTheDocument();
+  });
+
+  it('persists the same text when a new edit follows a cancelled edit in the same page', async () => {
+    const user = userEvent.setup(); const first = renderReview();
+    await user.click(screen.getByRole('button', { name: '写复盘' }));
+    await user.type(screen.getByRole('textbox'), '晚上');
+    await user.click(screen.getByRole('button', { name: '取消修改' }));
+    await user.click(screen.getByRole('button', { name: '放弃修改' }));
+    await user.click(screen.getByRole('button', { name: '写复盘' }));
+    await user.type(screen.getByRole('textbox'), '晚上');
+    await user.click(screen.getByRole('button', { name: '稍后继续' }));
+    first.unmount(); resetDraftMemory(); renderReview();
+    expect(screen.getByRole('textbox')).toHaveValue('晚上');
   });
 });

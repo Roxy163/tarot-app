@@ -1341,7 +1341,7 @@ const FreeLayoutSlot: React.FC<FreeLayoutSlotProps> = ({
 
   useEffect(() => {
     setOrderInput((idx + 1).toString());
-  }, [idx]);
+  }, [idx, slot]);
 
   const clearDragStartTimer = useCallback(() => {
     if (!dragStartTimerRef.current) return;

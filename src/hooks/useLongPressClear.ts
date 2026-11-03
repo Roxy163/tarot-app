@@ -7,13 +7,17 @@ const LONG_PRESS_VIBRATION_MS = 50;
 interface UseLongPressClearOptions {
   cardSlots: ReadingSlotData[];
   setCardSlots: Dispatch<SetStateAction<ReadingSlotData[]>>;
+  onClear?: (index: number) => void;
 }
 
 export const useLongPressClear = ({
   cardSlots,
   setCardSlots,
+  onClear,
 }: UseLongPressClearOptions) => {
   const cardSlotsRef = useRef(cardSlots);
+  const onClearRef = useRef(onClear);
+  onClearRef.current = onClear;
   const timerRef = useRef<number | null>(null);
   const [isLongPressActive, setIsLongPressActive] = useState(false);
 
@@ -39,7 +43,8 @@ export const useLongPressClear = ({
       if (targetSlot?.name) {
         const nextSlots = [...currentSlots];
         nextSlots[index] = { ...targetSlot, name: '', isReversed: false };
-        setCardSlots(nextSlots);
+        if (onClearRef.current) onClearRef.current(index);
+        else setCardSlots(nextSlots);
         setIsLongPressActive(true);
 
         if (window.navigator.vibrate) {

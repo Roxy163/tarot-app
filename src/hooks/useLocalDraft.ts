@@ -18,11 +18,29 @@ export function readLocalDraft<T>(key: string): T | null {
   } catch { return null; }
 }
 
+// Imperative draft edits share the hook's runtime copy and leave protection.
+// A failed disk write still keeps the newest text available to another editor.
+export function writeLocalDraft<T>(key: string, value: T): boolean {
+  const serialized = JSON.stringify(value);
+  memory.set(key, JSON.parse(serialized) as T);
+  try { sessionStorage.setItem(key, serialized); } catch { /* Keep runtime copy. */ }
+  const result = writeJsonWithBackup(key, value);
+  if (result.ok) failedKeys.delete(key);
+  else failedKeys.add(key);
+  window.removeEventListener('beforeunload', warnOnLeave);
+  if (failedKeys.size) window.addEventListener('beforeunload', warnOnLeave);
+  return result.ok;
+}
+
+export const isLocalDraftDurable = (key: string) => !failedKeys.has(key);
+
 export function clearLocalDraft(key: string) {
   memory.set(key, null);
   failedKeys.delete(key);
-  try { sessionStorage.removeItem(key); } catch { /* Best effort. */ }
-  try { localStorage.setItem(key, 'null'); removeJsonWithBackup(key); } catch { /* The runtime tombstone prevents reopening a completed draft. */ }
+  let durable = true;
+  try { sessionStorage.removeItem(key); } catch { durable = false; }
+  try { localStorage.setItem(key, 'null'); removeJsonWithBackup(key); } catch { durable = false; }
+  return durable;
 }
 
 export function useLocalDraft<T>(key: string, value: T, enabled = true) {
@@ -30,18 +48,11 @@ export function useLocalDraft<T>(key: string, value: T, enabled = true) {
   const cleared = useRef<string | null>(null);
   const serialized = JSON.stringify(value);
   useLayoutEffect(() => {
-    if (!enabled || cleared.current === `${key}:${serialized}`) return;
-    const snapshot = JSON.parse(serialized) as T;
-    memory.set(key, snapshot);
-    // This copy survives a reload even if local storage is full.
-    try { sessionStorage.setItem(key, serialized); } catch { /* Keep runtime copy. */ }
-    const result = writeJsonWithBackup(key, snapshot);
-    setDurable(result.ok);
-    if (result.ok) failedKeys.delete(key);
-    else failedKeys.add(key);
-    // Keep the guard when navigating within the app while an unpersisted draft exists.
-    window.removeEventListener('beforeunload', warnOnLeave);
-    if (failedKeys.size) window.addEventListener('beforeunload', warnOnLeave);
+    // A completed/cancelled edit only suppresses its own active session.
+    // Starting a new session may intentionally contain exactly the same text.
+    if (!enabled) { cleared.current = null; return; }
+    if (cleared.current === `${key}:${serialized}`) return;
+    setDurable(writeLocalDraft(key, JSON.parse(serialized) as T));
   }, [key, serialized, enabled]);
   return {
     durable,
@@ -50,7 +61,7 @@ export function useLocalDraft<T>(key: string, value: T, enabled = true) {
 }
 
 export function clearAccountDrafts(uid: string) {
-  const belongsToAccount = (key: string) => key.startsWith(`tarot_reading_draft_${uid}_`) || key.startsWith(`tarot_reading_review_draft_${uid}_`) || key.startsWith(`tarot_annotation_draft_${uid}_`) || key.startsWith(`tarot_daily_reflection_draft_${uid}_`) || key === `tarot_personal_meaning_draft_${uid}`;
+  const belongsToAccount = (key: string) => key.startsWith(`tarot_reading_draft_${uid}_`) || key.startsWith(`tarot_reading_review_draft_${uid}_`) || key.startsWith(`tarot_annotation_draft_${uid}_`) || key.startsWith(`tarot_card_personal_note_draft_${uid}_`) || key.startsWith(`tarot_daily_reflection_draft_${uid}_`) || key === `tarot_personal_meaning_draft_${uid}`;
   const keys = new Set([...memory.keys(), ...Object.keys(localStorage), ...Object.keys(sessionStorage)]);
   for (const key of keys) if (belongsToAccount(key)) clearLocalDraft(key);
 }

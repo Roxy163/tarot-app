@@ -23,6 +23,20 @@ export interface UserProfile {
   updatedAt?: string;
 }
 
+export interface ReadingReviewLayout {
+  width: number;
+  height: number;
+  official: boolean;
+  cards: Array<{
+    slot: ReadingSlotData;
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+    rotation: number;
+  }>;
+}
+
 export interface TarotCardMetadata {
   id: string;
   name: string;
@@ -305,13 +319,37 @@ export interface ReadingAiPromptDraft {
   includeSupplementary: boolean;
 }
 
+export interface ReadingEditorSnapshot {
+  cardSlots: ReadingSlotData[];
+  cardInterpretations: string[];
+  cardQuestions: string[];
+  activeSlotIndex: number;
+  readingDetailSlotIndex: number;
+  designActiveSlot: number;
+  spread: string;
+  layoutType: string;
+  gridCols: number;
+  gridRows: number;
+  isEditingSession: boolean;
+  newSpreadName: string;
+  freeLayoutSaveMode: 'original' | 'adaptive';
+  singleCard: string;
+}
+
+// Older drafts stored only the slot array. New undo entries retain the
+// associated writing and workspace state as one operation.
+export type ReadingEditorHistoryEntry = ReadingEditorSnapshot | ReadingSlotData[];
+export interface ReadingEditorWorkspaceBackup extends ReadingEditorSnapshot {
+  history: ReadingEditorHistoryEntry[];
+}
+
 export interface ReadingEditorDraft {
   formData: ReadingEditorFields;
   feedbackBaseline?: string;
   cardSlots: ReadingSlotData[];
   cardInterpretations: string[];
   cardQuestions: string[];
-  history: ReadingSlotData[][];
+  history: ReadingEditorHistoryEntry[];
   activeSlotIndex: number;
   readingDetailSlotIndex: number;
   gridCols: number;
@@ -323,6 +361,10 @@ export interface ReadingEditorDraft {
   aiPromptMode?: ReadingAiAnswerMode;
   aiPromptDrafts?: Partial<Record<ReadingAiAnswerMode, ReadingAiPromptDraft>>;
   showCardStudy?: boolean;
+  newSpreadName?: string;
+  designActiveSlot?: number;
+  freeLayoutSaveMode?: 'original' | 'adaptive';
+  workspaceBackup?: ReadingEditorWorkspaceBackup;
 }
 
 export interface ReadingSpreadSnapshot {
@@ -333,7 +375,7 @@ export interface ReadingSpreadSnapshot {
   cardSlots: ReadingSlotData[];
   cardInterpretations: string[];
   cardQuestions: string[];
-  history: ReadingSlotData[][];
+  history: ReadingEditorHistoryEntry[];
   activeSlotIndex: number;
   readingDetailSlotIndex: number;
   gridCols: number;
@@ -360,6 +402,7 @@ export interface DailyFortune {
   archivedAt?: string;
   savedToCardAnnotationAt?: string;
   cardAnnotationNote?: string;
+  deletedAt?: string;
   source?: 'app-draw' | 'physical-draw';
   createdAt: string;
   updatedAt?: string;

@@ -1,6 +1,6 @@
 import { act, renderHook } from '@testing-library/react';
 import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
-import { clearAccountDrafts, readLocalDraft, resetDraftMemory, useLocalDraft } from './useLocalDraft';
+import { clearAccountDrafts, isLocalDraftDurable, readLocalDraft, resetDraftMemory, useLocalDraft, writeLocalDraft } from './useLocalDraft';
 
 describe('local drafts', () => {
   beforeEach(() => { localStorage.clear(); sessionStorage.clear(); resetDraftMemory(); });
@@ -37,5 +37,26 @@ describe('local drafts', () => {
     resetDraftMemory();
     expect(readLocalDraft('tarot_daily_reflection_draft_user-a_fortune')).toBeNull();
     expect(readLocalDraft('tarot_daily_reflection_draft_user-b_fortune')).toEqual({ initialImpression: 'b' });
+  });
+  it('shares imperative draft updates with hook reads and keeps the newest value after a failed write', () => {
+    expect(writeLocalDraft('draft', { note: '旧稿' })).toBe(true);
+    expect(readLocalDraft('draft')).toEqual({ note: '旧稿' });
+    const fail = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new Error('full'); });
+    expect(writeLocalDraft('draft', { note: '写入失败的新稿' })).toBe(false);
+    expect(readLocalDraft('draft')).toEqual({ note: '写入失败的新稿' });
+    expect(isLocalDraftDurable('draft')).toBe(false);
+    fail.mockRestore();
+    expect(writeLocalDraft('draft', { note: '恢复写入后的新稿' })).toBe(true);
+    expect(isLocalDraftDurable('draft')).toBe(true);
+    resetDraftMemory();
+    expect(readLocalDraft('draft')).toEqual({ note: '恢复写入后的新稿' });
+  });
+  it('clears shared card-note drafts only for the deleted account', () => {
+    writeLocalDraft('tarot_card_personal_note_draft_user-a_ar00', { text: 'a' });
+    writeLocalDraft('tarot_card_personal_note_draft_user-b_ar00', { text: 'b' });
+    clearAccountDrafts('user-a');
+    resetDraftMemory();
+    expect(readLocalDraft('tarot_card_personal_note_draft_user-a_ar00')).toBeNull();
+    expect(readLocalDraft('tarot_card_personal_note_draft_user-b_ar00')).toEqual({ text: 'b' });
   });
 });

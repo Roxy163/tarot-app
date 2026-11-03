@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { INITIAL_READINGS } from '../constants';
-import { isDailyReading, readingMatchesSearch } from './readingSearch';
+import { getRecordCalendarDate, isDailyReading, readingMatchesSearch, recordDateMatchesSearch } from './readingSearch';
 
 const reading = {
   ...INITIAL_READINGS[0], isExample: false,
@@ -23,5 +23,21 @@ describe('private reading search', () => {
     expect(isDailyReading(reading)).toBe(true);
     expect(isDailyReading({ ...reading, manualTags: [], category: '日运，学习' })).toBe(true);
     expect(isDailyReading({ ...reading, isExample: true })).toBe(false);
+  });
+  it.each(['2026-11-03', '2026/11/3', '2026.11.03', '2026年11月3日', '11月3号', '11/3', '11-03', '2026/11', '2026年11月', '１１／３'])('searches actual reading dates in the common form %s', query => {
+    expect(readingMatchesSearch({ ...reading, readingDate: '2026-11-03', date: '2026-10-20T08:00:00Z' }, query)).toBe(true);
+  });
+  it('searches the local calendar date of legacy timestamps and keeps date-only values unchanged', () => {
+    const timestamp = new Date(2026, 10, 3, 0, 15).toISOString();
+    expect(getRecordCalendarDate(timestamp)).toBe('2026-11-03');
+    expect(getRecordCalendarDate('2026-11-03')).toBe('2026-11-03');
+    expect(readingMatchesSearch({ ...reading, readingDate: undefined, date: timestamp }, '2026年11月3日')).toBe(true);
+    expect(recordDateMatchesSearch(timestamp, '11/2')).toBe(false);
+  });
+  it('does not mistake a different day or month for an unpadded date search', () => {
+    expect(recordDateMatchesSearch('2026-11-30', '11/3')).toBe(false);
+    expect(recordDateMatchesSearch('2026-11-03', '2026/1')).toBe(false);
+    expect(recordDateMatchesSearch('not-a-date', '2026')).toBe(false);
+    expect(recordDateMatchesSearch(undefined, '2026')).toBe(false);
   });
 });

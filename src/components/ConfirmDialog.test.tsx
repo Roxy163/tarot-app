@@ -129,4 +129,17 @@ describe('ConfirmDialog', () => {
 
     expect(calls).toEqual(['confirm', 'close']);
   });
+
+  it('keeps the dialog and visible error when confirmation returns false, while allowing cancellation', async () => {
+    const user = userEvent.setup();
+    const onClose = vi.fn();
+    render(<ConfirmDialog isOpen title="删除日运记录" message="确定删除吗？" error="本机保存失败，请重试。" onConfirm={async () => false} onClose={onClose} />);
+
+    await user.click(screen.getByRole('button', { name: '确认' }));
+    expect(onClose).not.toHaveBeenCalled();
+    expect(screen.getByRole('dialog', { name: '删除日运记录' })).toBeInTheDocument();
+    expect(screen.getByRole('alert')).toHaveTextContent('本机保存失败，请重试。');
+    await user.click(screen.getByRole('button', { name: '取消' }));
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
 });

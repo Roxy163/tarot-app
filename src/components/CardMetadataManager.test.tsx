@@ -1,8 +1,9 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cardAnnotationService } from '../services/cardAnnotationService';
 import { CardMetadataManager } from './CardMetadataManager';
+import { DailyFortune } from '../types';
 
 vi.mock('./CardAnnotationEditor', () => ({
   CardAnnotationEditor: ({ isOpen, initialCardId, onAnnotationsUpdated }: {
@@ -197,6 +198,58 @@ describe('CardMetadataManager', () => {
 
     expect(anchorClickSpy).toHaveBeenCalled();
     expect(onShowSnackbar).toHaveBeenCalledWith('已开始下载当前筛选 78 张的表格。');
+  });
+
+  it('reads both daily reflection fields in a nested page and returns with the source draft and scroll intact', async () => {
+    const user = userEvent.setup();
+    const fortune: DailyFortune = {
+      id: 'saved-example', userId: 'local', date: '2026-11-02', cardName: '愚者', isReversed: true,
+      interpretation: '先观察新的可能。', keywords: [],
+      initialImpression: '最初想换一条路。\n仍然有点犹豫。',
+      dailyReview: '后来遇到了新的机会。\n最后决定认真尝试。',
+      savedToCardAnnotationAt: '2026-11-02T20:00:00.000Z',
+      source: 'physical-draw', createdAt: '2026-11-02T08:00:00.000Z',
+    };
+    render(<CardMetadataManager metadata={[]} onUpdate={vi.fn()} readings={[]} dailyFortunes={[fortune]} />);
+    await user.click(screen.getByRole('button', { name: '查看愚者研习资料' }));
+    const detailPage = screen.getByRole('main', { name: '愚者研习资料' });
+    const scrollArea = detailPage.querySelector('[data-page-scroll]')!;
+    scrollArea.scrollTop = 280;
+    const note = within(detailPage).getByPlaceholderText('在此记录你对这张牌的独特见解、私人感悟或研习心得...');
+    await user.type(note, '还没保存的个人注疏');
+    expect(within(detailPage).getAllByText(/后来遇到了新的机会/)).toHaveLength(2);
+    await user.click(within(detailPage).getByRole('button', { name: '查看2026-11-02日运例证' }));
+    const readingPage = screen.getByRole('main', { name: '2026-11-02 日运记录' });
+    expect(within(readingPage).getByText(/实体抽牌/)).toBeInTheDocument();
+    expect(within(readingPage).getByText('最初想换一条路。 仍然有点犹豫。')).toBeInTheDocument();
+    expect(within(readingPage).getByText('后来遇到了新的机会。 最后决定认真尝试。')).toBeInTheDocument();
+    await user.click(within(readingPage).getByRole('button', { name: '放大愚者牌面' }));
+    expect(screen.getByRole('dialog', { name: '愚者 · 逆位' })).toBeInTheDocument();
+    await user.keyboard('{Escape}');
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: '愚者 · 逆位' })).not.toBeInTheDocument());
+    expect(screen.getByRole('main', { name: '2026-11-02 日运记录' })).toBeInTheDocument();
+    await user.keyboard('{Escape}');
+    await waitFor(() => expect(screen.queryByRole('main', { name: '2026-11-02 日运记录' })).not.toBeInTheDocument());
+    expect(screen.getByRole('main', { name: '愚者研习资料' })).toBe(detailPage);
+    expect(scrollArea.scrollTop).toBe(280);
+    expect(note).toHaveValue('还没保存的个人注疏');
+    await user.click(within(detailPage).getByRole('button', { name: '查看2026-11-02日运历史' }));
+    expect(screen.getByRole('main', { name: '2026-11-02 日运记录' })).toBeInTheDocument();
+  });
+
+  it('keeps retained annotation examples visible after their daily history is removed', async () => {
+    const user = userEvent.setup();
+    render(<CardMetadataManager metadata={[]} onUpdate={vi.fn()} readings={[]} dailyFortunes={[]} dailyFortuneExamples={[{
+      id: 'retained-example', userId: 'local', date: '2026-11-01', cardName: '愚者', isReversed: false,
+      interpretation: '留下一次尝试。', keywords: [], dailyReview: '归入后仍值得回看的经历。',
+      savedToCardAnnotationAt: '2026-11-01T20:00:00.000Z', createdAt: '2026-11-01T08:00:00.000Z',
+    }]} />);
+    expect(screen.getByText('例证 ×1')).toBeInTheDocument();
+    expect(screen.queryByText('日运 ×1')).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: '查看愚者研习资料' }));
+    expect(screen.getByText('暂无日运历史')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: '查看2026-11-01日运例证' }));
+    expect(within(screen.getByRole('main', { name: '2026-11-01 日运记录' })).getByText('归入后仍值得回看的经历。')).toBeInTheDocument();
   });
 
   it('closes the booklet export dialog with Escape', async () => {

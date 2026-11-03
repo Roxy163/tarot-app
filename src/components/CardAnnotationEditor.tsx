@@ -10,6 +10,9 @@ import { cardAnnotationService } from '../services/cardAnnotationService';
 import { TarotCardImage } from './TarotCardImage';
 import { AutoResizeTextarea } from './ui/AutoResizeTextarea';
 import { readLocalDraft, useLocalDraft } from '../hooks/useLocalDraft';
+import { getCardPersonalNotes, cardPersonalNotesPatch } from '../lib/cardPersonalNotes';
+import { clearCardPersonalNoteDrafts, getCardAnnotationDraftKey, isCardPersonalNoteDraftDurable, readCardPersonalNoteText, writeCardPersonalNoteDraft } from '../lib/cardPersonalNoteDrafts';
+import { ConfirmDialog } from './ConfirmDialog';
 
 interface CardAnnotationEditorProps {
   isOpen: boolean;
@@ -32,11 +35,22 @@ const getAnnotationForm = (cardId: string) => {
     uprightMeaning: merged.uprightMeaning,
     reversedMeaning: merged.reversedMeaning,
     keywords: merged.keywords.join('、'),
-    personalNotes: merged.personalNotes,
+    personalNotes: getCardPersonalNotes(merged),
+    personalNotesUnified: true,
   };
 };
-const getDraftKey = (cardId: string) => `tarot_annotation_draft_${cardAnnotationService.getScope()}_${cardId}`;
-const getEditableForm = (cardId: string) => readLocalDraft<ReturnType<typeof getAnnotationForm>>(getDraftKey(cardId)) || getAnnotationForm(cardId);
+const getDraftKey = (cardId: string) => getCardAnnotationDraftKey(cardAnnotationService.getScope(), cardId);
+const getEditableForm = (cardId: string) => {
+  const saved = getAnnotationForm(cardId);
+  const existing = readLocalDraft<Partial<typeof saved>>(getDraftKey(cardId));
+  const cardName = TAROT_CARDS.find(card => card.id === cardId)?.name || cardId;
+  return {
+    ...saved,
+    ...existing,
+    personalNotes: readCardPersonalNoteText(cardAnnotationService.getScope(), cardId, cardName, cardAnnotationService.getUserAnnotation(cardId)),
+    personalNotesUnified: true,
+  };
+};
 
 export const CardAnnotationEditor: React.FC<CardAnnotationEditorProps> = ({
   isOpen,
@@ -59,6 +73,7 @@ export const CardAnnotationEditor: React.FC<CardAnnotationEditorProps> = ({
     reversedMeaning: '',
     keywords: '',
     personalNotes: '',
+    personalNotesUnified: true,
   }));
 
   const [isSaving, setIsSaving] = useState(false);
@@ -67,10 +82,13 @@ export const CardAnnotationEditor: React.FC<CardAnnotationEditorProps> = ({
   const [showSaveSuccess, setShowSaveSuccess] = useState(false);
   const [saveSuccessMessage, setSaveSuccessMessage] = useState('');
   const [saveError, setSaveError] = useState('');
+  const [showRestoreConfirm, setShowRestoreConfirm] = useState(false);
+  const [restoreError, setRestoreError] = useState('');
   const hasUnsavedChanges = () => !!selectedCardId && JSON.stringify(editForm) !== JSON.stringify(savedForm);
   const draft = useLocalDraft(getDraftKey(selectedCardId || 'none'), editForm, isOpen && hasUnsavedChanges());
   const requestClose = () => {
-    if (!draft.durable && selectedCardId && hasUnsavedChanges()) {
+    if (isSaving) return;
+    if (selectedCardId && hasUnsavedChanges() && (!draft.durable || !isCardPersonalNoteDraftDurable(cardAnnotationService.getScope(), selectedCardId))) {
       setSaveError('暂存失败，请先复制内容或释放存储空间后保存。');
       return;
     }
@@ -134,6 +152,9 @@ export const CardAnnotationEditor: React.FC<CardAnnotationEditorProps> = ({
     try {
       const card = TAROT_CARDS.find(c => c.id === selectedCardId);
       const cardName = card?.name || selectedCardId;
+      if (!writeCardPersonalNoteDraft(cardAnnotationService.getScope(), selectedCardId, editForm.personalNotes)) {
+        throw new Error('个人笔记暂存失败');
+      }
       
       cardAnnotationService.saveUserAnnotation(selectedCardId, {
         numerology: editForm.numerology || null,
@@ -144,9 +165,10 @@ export const CardAnnotationEditor: React.FC<CardAnnotationEditorProps> = ({
         uprightMeaning: editForm.uprightMeaning,
         reversedMeaning: editForm.reversedMeaning,
         keywords: editForm.keywords.split(/[、,，]/).filter(k => k.trim()),
-        personalNotes: editForm.personalNotes,
+        ...cardPersonalNotesPatch(editForm.personalNotes),
       });
       draft.clear();
+      clearCardPersonalNoteDrafts(cardAnnotationService.getScope(), selectedCardId, cardName);
       setSavedForm(getAnnotationForm(selectedCardId));
 
       setSaveSuccessMessage(`《${cardName}》的注解已保存`);
@@ -167,7 +189,9 @@ export const CardAnnotationEditor: React.FC<CardAnnotationEditorProps> = ({
   };
 
   const handleReset = () => {
-    if (!selectedCardId) return;
+    if (!selectedCardId || isSaving) return false;
+    setIsSaving(true);
+    setRestoreError('');
     try {
     
     const card = TAROT_CARDS.find(c => c.id === selectedCardId);
@@ -175,18 +199,24 @@ export const CardAnnotationEditor: React.FC<CardAnnotationEditorProps> = ({
     
     cardAnnotationService.resetAnnotationToOfficial(selectedCardId);
     draft.clear();
-    setSavedForm(getAnnotationForm(selectedCardId));
-    setEditForm(getAnnotationForm(selectedCardId));
+    const restored = getAnnotationForm(selectedCardId);
+    setSavedForm(restored);
+    setEditForm({ ...restored, personalNotes: editForm.personalNotes });
+    setSaveError('');
     setRefreshTick(prev => prev + 1);
     onAnnotationsUpdated?.();
     
-    setSaveSuccessMessage(`《${cardName}》已恢复官方注解`);
+    setSaveSuccessMessage(`《${cardName}》已恢复官方字段，个人笔记已保留`);
     setShowSaveSuccess(true);
     
     setTimeout(() => {
       setShowSaveSuccess(false);
     }, 2000);
-    } catch { setSaveError('恢复失败，原注解已保留，请稍后重试。'); }
+    return true;
+    } catch {
+      setRestoreError('恢复失败，原注解与当前输入都已保留，请重试。');
+      return false;
+    } finally { setIsSaving(false); }
   };
 
   const getArcanaInfo = (cardId: string) => {
@@ -481,10 +511,14 @@ export const CardAnnotationEditor: React.FC<CardAnnotationEditorProps> = ({
 
                   {/* Personal Notes */}
                   <div>
-                    <label className="block text-sm font-bold text-amber-600 mb-1">个人注解</label>
+                    <label className="block text-sm font-bold text-amber-600 mb-1">我的牌义笔记</label>
                     <AutoResizeTextarea
                       value={editForm.personalNotes}
-                      onChange={(e) => setEditForm({ ...editForm, personalNotes: e.target.value })}
+                      onChange={(e) => {
+                        const text = e.target.value;
+                        setEditForm({ ...editForm, personalNotes: text });
+                        writeCardPersonalNoteDraft(cardAnnotationService.getScope(), selectedCardId, text);
+                      }}
                       minRows={2}
                       maxRows={10}
                       className="w-full px-3 py-2 bg-amber-50 rounded-lg border border-amber-200 focus:border-amber-400 focus:ring-2 focus:ring-amber-200 outline-none resize-none"
@@ -516,7 +550,8 @@ export const CardAnnotationEditor: React.FC<CardAnnotationEditorProps> = ({
                   
                   <div className="grid grid-cols-2 items-center gap-2 sm:flex sm:justify-between sm:gap-3">
                     <button
-                      onClick={handleReset}
+                      onClick={() => { setRestoreError(''); setShowRestoreConfirm(true); }}
+                      disabled={isSaving}
                       className="min-h-11 flex items-center justify-center gap-2 px-4 py-2 bg-white text-forest-muted rounded-lg border border-forest-accent/20 hover:bg-forest-accent/5 transition-colors"
                     >
                       <RotateCcw size={16} />
@@ -554,6 +589,15 @@ export const CardAnnotationEditor: React.FC<CardAnnotationEditorProps> = ({
             )}
           </div>
         </div>
+        <ConfirmDialog
+          isOpen={showRestoreConfirm}
+          title="恢复官方字段"
+          message="将恢复这张牌的灵数、行星、星座、宫位、元素、关键词及正逆位释义。已保存和正在填写的个人笔记、日运例证都会保留。"
+          confirmText="恢复官方字段"
+          error={restoreError}
+          onConfirm={handleReset}
+          onClose={() => { if (!isSaving) setShowRestoreConfirm(false); }}
+        />
     </PageView>
   );
 };

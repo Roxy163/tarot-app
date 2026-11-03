@@ -79,6 +79,20 @@ describe('SpreadDesigner', () => {
     expect(props.onClose).toHaveBeenCalledOnce();
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
+
+  it('asks before replacing an unsaved template and keeps the design when cancelled', async () => {
+    const user = userEvent.setup();
+    const props = renderDesigner({ spreads: [...OFFICIAL_SPREADS, ...spreads] });
+    props.update({ newSpreadName: '未保存设计', cardSlots: [{ ...props.cardSlots[0], x: 280 }] });
+    await user.selectOptions(screen.getByRole('combobox', { name: '基于已有改造' }), '时间流牌阵');
+    expect(props.onSelectSpread).not.toHaveBeenCalled();
+    await user.click(screen.getByRole('button', { name: '保留当前设计' }));
+    expect(screen.getByRole('textbox', { name: '名称' })).toHaveValue('未保存设计');
+    expect(props.onSelectSpread).not.toHaveBeenCalled();
+    await user.selectOptions(screen.getByRole('combobox', { name: '基于已有改造' }), '时间流牌阵');
+    await user.click(screen.getByRole('button', { name: '继续替换' }));
+    expect(props.onSelectSpread).toHaveBeenCalledWith(OFFICIAL_SPREADS.find(spread => spread.name === '时间流牌阵'), { useAsTemplate: false });
+  });
   afterEach(() => {
     setViewportWidth(1024);
     vi.restoreAllMocks();

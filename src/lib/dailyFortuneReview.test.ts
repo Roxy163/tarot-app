@@ -6,6 +6,8 @@ import {
   exportDailyFortunesToMarkdown,
   getDailyFortuneMonthlyCardStats,
   getDailyFortunesByCard,
+  dailyFortuneMatchesSearch,
+  getFortunesForMonth,
 } from './dailyFortuneReview';
 
 const fortune = (overrides: Partial<DailyFortune>): DailyFortune => ({
@@ -108,5 +110,19 @@ describe('daily fortune review helpers', () => {
 
     expect(lines[0].text).toBe('见习阁主的日运复盘');
     expect(lines.some(line => line.text === '阁主：见习阁主')).toBe(true);
+  });
+
+  it.each(['隐士', '隐者', ' HERMIT ', '早上', '面试', '旧的补充', '注疏经验', '2026/11/3', '11月3日', '逆位', '  '])('finds daily draws using %s', query => {
+    expect(dailyFortuneMatchesSearch(fortune({
+      cardName: '隐士', date: '2026-11-03', isReversed: true, initialImpression: '早上安静观察', dailyReview: '面试需要慢下来', reflection: '旧的补充', cardAnnotationNote: '注疏经验',
+    }), query)).toBe(true);
+  });
+
+  it('does not match another day or unrelated text and includes local month boundaries', () => {
+    const item = fortune({ date: new Date(2026, 10, 1, 0, 5).toISOString() });
+    expect(getFortunesForMonth([item], '2026-11')).toHaveLength(1);
+    expect(getFortunesForMonth([item], '2026-10')).toHaveLength(0);
+    expect(dailyFortuneMatchesSearch(fortune({ date: '2026-11-30' }), '11/3')).toBe(false);
+    expect(dailyFortuneMatchesSearch(item, '没有写过的经历')).toBe(false);
   });
 });

@@ -88,13 +88,15 @@ export function BackupPage({ isOpen, onBack, ready, restoreReady = ready, onRefr
           </div>
           <dl className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm">
             {[
-              ['手记', preview.data.readings.filter(item => !item.isExample).length], ['日运', preview.data.fortunes.length],
+              ['手记', preview.data.readings.filter(item => !item.isExample).length], ['日运', preview.data.fortunes.filter(item => !item.deletedAt).length],
+              ['保留的日运例证', preview.data.fortunes.filter(item => item.deletedAt && item.savedToCardAnnotationAt).length],
               ['牌阵', preview.data.spreads.length], ['牌面资料', preview.data.cardMetadata.length],
               ['牌义注疏', Object.keys(preview.data.annotations).length], ['自定义灵数', Object.keys(preview.data.numerology).length],
               ['关键词记录', preview.data.cardKeywordMemory.length], ['练习记录', preview.data.quizMemory.length],
             ].map(([label, count]) => <div key={label} className="flex items-center justify-between gap-2"><dt>{label}</dt><dd className="font-medium text-forest-ink">{count}</dd></div>)}
           </dl>
           <p className="text-xs">以上为文件中的数量；与现有资料重复的项目会跳过。同名但布局不同的自定义牌阵会另存。</p>
+          {preview.data.fortunes.some(item => item.deletedAt) && <p className="text-xs">已删除日运不会重新出现在日运档案；已归入的例证会留在牌义注疏中。</p>}
           <p className="text-xs">{preview.numerologyCoverage === 'local' ? '灵数来自导出时的本机资料。' : preview.numerologyCoverage === 'cached' ? `灵数来自本机缓存${preview.numerologyCheckedAt ? `，最近完整读取云端于 ${new Date(preview.numerologyCheckedAt).toLocaleString('zh-CN')}` : '，未记录完整云端读取时间'}，不保证包含其他设备的最新修改。` : '此旧版备份未标注灵数覆盖范围。'}</p>
           <button type="button" disabled={!restoreReady || busy} onClick={() => void run(async () => {
             await onRestore(preview);

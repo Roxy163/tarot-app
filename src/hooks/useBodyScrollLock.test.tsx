@@ -1,12 +1,26 @@
 import { renderHook } from '@testing-library/react';
 import { afterEach, describe, expect, it } from 'vitest';
-import { useBodyScrollLock } from './useBodyScrollLock';
+import { restoreBodyScrollPosition, useBodyScrollLock } from './useBodyScrollLock';
 
 describe('useBodyScrollLock', () => {
   afterEach(() => {
     document.body.style.cssText = '';
     document.documentElement.scrollTop = 0;
     document.body.scrollTop = 0;
+  });
+
+  it('keeps a restored source position after the saving lock and nested page both release', () => {
+    document.documentElement.scrollTop = 140;
+    const saving = renderHook(({ locked }) => useBodyScrollLock(locked), { initialProps: { locked: true } });
+    const page = renderHook(({ locked }) => useBodyScrollLock(locked), { initialProps: { locked: true } });
+    restoreBodyScrollPosition(1840);
+    expect(document.body.style.top).toBe('-1840px');
+    saving.rerender({ locked: false });
+    expect(document.body.style.position).toBe('fixed');
+    page.rerender({ locked: false });
+    expect(document.body.style.position).toBe('');
+    expect(document.documentElement.scrollTop).toBe(1840);
+    expect(document.body.scrollTop).toBe(1840);
   });
 
   it('locks and restores body scroll styles', () => {

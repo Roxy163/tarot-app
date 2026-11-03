@@ -20,9 +20,9 @@ import { DailyFortuneArchiveModal } from './DailyFortuneArchiveModal';
 import { TarotCardImage } from './TarotCardImage';
 import { AutoResizeTextarea } from './ui/AutoResizeTextarea';
 import {
+  appendNoObviousDailyMatch,
   getDailyReflectionParts,
   hasDailyReflectionContent,
-  NO_OBVIOUS_DAILY_MATCH_TEXT,
 } from '../lib/dailyFortuneReflection';
 import { markPwaInstallPromptReady } from '../hooks/usePwaInstallPrompt';
 import { readLocalDraft, useLocalDraft } from '../hooks/useLocalDraft';
@@ -1052,7 +1052,7 @@ export const DailyFortuneCard: React.FC<DailyFortuneCardProps> = ({
 
                 <button
                   type="button"
-                  onClick={() => setArchiveDailyReview(NO_OBVIOUS_DAILY_MATCH_TEXT)}
+                  onClick={() => setArchiveDailyReview(appendNoObviousDailyMatch)}
                   className="min-h-11 rounded-full bg-forest-accent/8 px-3 text-xs font-semibold text-forest-accent transition-colors hover:bg-forest-accent/13"
                 >
                   今天暂未看见明显对应

@@ -1,4 +1,4 @@
-import { Suspense, lazy, useCallback, useMemo, useState, useEffect, useRef } from 'react';
+import { Suspense, lazy, useCallback, useMemo, useState, useEffect, useLayoutEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import { X, User, ChevronRight, LogOut, Database, ShieldCheck, ArrowRight, LogIn, CheckCircle, AlertTriangle, Mail, Eye, EyeOff, Settings } from 'lucide-react';
@@ -33,7 +33,7 @@ import {
 } from './lib/spreadPersistence';
 import { getAuthorDisplayName, syncReadingAuthorProfile } from './lib/readingAuthor';
 import { warmTarotDeckImages } from './lib/tarotImagePreload';
-import { useBodyScrollLock } from './hooks/useBodyScrollLock';
+import { restoreBodyScrollPosition, useBodyScrollLock } from './hooks/useBodyScrollLock';
 import { closeTopModal } from './hooks/useModalFocus';
 import { useMobileFocusScroll } from './hooks/useMobileFocusScroll';
 import { usePwaInstallPrompt } from './hooks/usePwaInstallPrompt';
@@ -129,6 +129,11 @@ function AppContent() {
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [selectedReadingDetail, setSelectedReadingDetail] = useState<TarotReading | null>(null);
   const returnToDailyArchive = useRef<'home' | 'private' | null>(null);
+  const [privateEditSource, setPrivateEditSource] = useState<{ scope: string; scrollY: number } | null>(null);
+  const privateEditSourceRef = useRef(privateEditSource);
+  privateEditSourceRef.current = privateEditSource;
+  const restoredArchiveTab = useRef(false);
+  const scrollToTopFrameRef = useRef<number | null>(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isFeedbackModalOpen, setIsFeedbackModalOpen] = useState(false);
   const [isInstallGuideOpen, setIsInstallGuideOpen] = useState(false);
@@ -241,7 +246,7 @@ function AppContent() {
   const backupRestoreReady = backupReady && readingsReady && dailyFortune.isDataReady
     && !isProcessing && readingsCloudSyncInfo.status !== 'syncing';
   const backupSnapshot = { scope: backupScope, ready: backupReady, restoreReady: backupRestoreReady, readingsReady,
-    fortunesReady: dailyFortune.isDataReady, readings, spreads, cardMetadata, cardKeywordMemory, quizMemory, fortunes: dailyFortune.fortunes };
+    fortunesReady: dailyFortune.isDataReady, readings, spreads, cardMetadata, cardKeywordMemory, quizMemory, fortunes: dailyFortune.allFortunes };
   const backupSource = useRef(backupSnapshot);
   backupSource.current = backupSnapshot;
   const collectBackupData = async (): Promise<TarotBackupData> => {
@@ -540,10 +545,15 @@ function AppContent() {
     if (highlightTimerRef.current !== null) {
       window.clearTimeout(highlightTimerRef.current);
     }
+    if (scrollToTopFrameRef.current !== null) {
+      window.cancelAnimationFrame(scrollToTopFrameRef.current);
+    }
   }, []);
 
   const scrollPageToTop = useCallback((behavior: ScrollBehavior = 'smooth') => {
-    window.requestAnimationFrame(() => {
+    if (scrollToTopFrameRef.current !== null) window.cancelAnimationFrame(scrollToTopFrameRef.current);
+    scrollToTopFrameRef.current = window.requestAnimationFrame(() => {
+      scrollToTopFrameRef.current = null;
       if (navigator.userAgent.toLowerCase().includes('jsdom')) {
         document.documentElement.scrollTop = 0;
         document.body.scrollTop = 0;
@@ -559,7 +569,39 @@ function AppContent() {
     });
   }, []);
 
+  useLayoutEffect(() => {
+    const source = privateEditSourceRef.current;
+    if (source && source.scope !== (session?.uid || 'guest')) {
+      privateEditSourceRef.current = null;
+      setPrivateEditSource(null);
+      restoredArchiveTab.current = false;
+      return;
+    }
+    if (activeTab === 'private' && source?.scope === (session?.uid || 'guest')) {
+      restoredArchiveTab.current = true;
+      if (scrollToTopFrameRef.current !== null) {
+        window.cancelAnimationFrame(scrollToTopFrameRef.current);
+        scrollToTopFrameRef.current = null;
+      }
+      restoreBodyScrollPosition(source.scrollY);
+      privateEditSourceRef.current = null;
+      setPrivateEditSource(null);
+      setEditingReading(null);
+      // History traversal can apply scroll anchoring after layout effects.
+      // Reapply once before the next paint, after the source is visible again.
+      const restoreFrame = window.requestAnimationFrame(() => restoreBodyScrollPosition(source.scrollY));
+      return () => window.cancelAnimationFrame(restoreFrame);
+    } else if (activeTab !== 'private') {
+      restoredArchiveTab.current = false;
+      if (source && (source.scope !== (session?.uid || 'guest') || !['add', 'settings'].includes(activeTab))) {
+        privateEditSourceRef.current = null;
+        setPrivateEditSource(null);
+      }
+    }
+  }, [activeTab, session?.uid]);
+
   useEffect(() => {
+    if (activeTab === 'private' && restoredArchiveTab.current) return;
     scrollPageToTop('smooth');
   }, [activeTab, scrollPageToTop]);
 
@@ -596,7 +638,7 @@ function AppContent() {
     if (tab !== 'metadata') setMetadataInitialCardId(undefined);
     dismissTip();
     setActiveTab(tab);
-    scrollPageToTop('smooth');
+    if (tab !== 'private' || !privateEditSourceRef.current) scrollPageToTop('smooth');
   }, [dismissTip, scrollPageToTop, setEditingReading, setActiveTab]);
 
   const handleOpenCardLibrary = useCallback((cardId?: string) => {
@@ -646,12 +688,17 @@ function AppContent() {
     if (!hasEnteredApp || isJsdom) return;
 
     const createState = (tab: AppTab, root = false) => ({ tarotPavilionApp: true, tab, root });
+    const previousScrollRestoration = window.history.scrollRestoration;
 
     try {
+      // This SPA owns tab and source-list positions. Browser restoration runs
+      // after popstate and would overwrite the source with a locked body's 0.
+      window.history.scrollRestoration = 'manual';
       window.history.replaceState(createState(activeTabRef.current, true), '', window.location.href);
       window.history.pushState(createState(activeTabRef.current), '', window.location.href);
       appHistoryReadyRef.current = true;
     } catch {
+      window.history.scrollRestoration = previousScrollRestoration;
       return;
     }
 
@@ -694,7 +741,7 @@ function AppContent() {
       if (incomingTab !== currentTab) {
         skipNextHistoryPushRef.current = true;
         setActiveTab(incomingTab);
-        scrollPageToTop('auto');
+        if (incomingTab !== 'private' || !privateEditSourceRef.current) scrollPageToTop('auto');
         return;
       }
 
@@ -725,6 +772,7 @@ function AppContent() {
     return () => {
       appHistoryReadyRef.current = false;
       window.removeEventListener('popstate', handlePopState);
+      window.history.scrollRestoration = previousScrollRestoration;
     };
   }, [hasEnteredApp, scrollPageToTop, setActiveTab]);
 
@@ -1059,7 +1107,7 @@ function AppContent() {
 
     const archiveSource = returnToDailyArchive.current;
     setEditingReading(null);
-    if (!archiveSource) {
+    if (!archiveSource && !privateEditSourceRef.current) {
       setSearchQuery('');
       setSearchTags([]);
     }
@@ -1074,6 +1122,12 @@ function AppContent() {
 
   // Handle edit reading navigation
   const handleEditReadingNavigate = (reading: TarotReading) => {
+    if (activeTabRef.current === 'private' && !privateEditSourceRef.current) {
+      const fixedOffset = document.body.style.position === 'fixed' ? -(Number.parseFloat(document.body.style.top) || 0) : 0;
+      const source = { scope: session?.uid || 'guest', scrollY: fixedOffset || window.scrollY || document.documentElement.scrollTop || 0 };
+      privateEditSourceRef.current = source;
+      setPrivateEditSource(source);
+    }
     setLocalStorageValue(`tarot_editing_reading_${session?.uid || 'guest'}`, reading.id);
     setSelectedReadingDetail(null);
     handleEditReading(reading);
@@ -1134,6 +1188,13 @@ function AppContent() {
   const ownAuthorName = getAuthorDisplayName(profile, session);
   const ownAuthorBio = (profile?.bio || profile?.signature || '').trim();
   const sidebarAvatarUrl = profile?.avatar_url?.trim();
+  const sidebarAvatarKey = `${session?.uid || 'guest'}:${sidebarAvatarUrl || ''}`;
+  const [failedSidebarAvatar, setFailedSidebarAvatar] = useState<string | null>(null);
+  useEffect(() => {
+    const retryAvatar = () => setFailedSidebarAvatar(null);
+    window.addEventListener('online', retryAvatar);
+    return () => window.removeEventListener('online', retryAvatar);
+  }, []);
   const sidebarAccountName = session ? ownAuthorName : '未登录';
   const sidebarAccountSubtitle = session
     ? ownAuthorBio || session.email || '还没有写个性签名'
@@ -1228,12 +1289,13 @@ function AppContent() {
         aria-label={session ? '打开账号设置' : '登录开启同步'}
       >
         <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-forest-accent/8 bg-forest-accent/8 text-forest-accent shadow-sm">
-          {sidebarAvatarUrl ? (
+          {sidebarAvatarUrl && failedSidebarAvatar !== sidebarAvatarKey ? (
             <img
               src={sidebarAvatarUrl}
               alt="用户头像"
               className="h-full w-full object-cover"
               draggable={false}
+              onError={() => setFailedSidebarAvatar(sidebarAvatarKey)}
             />
           ) : session ? (
             <User size={22} />
@@ -1824,9 +1886,12 @@ function AppContent() {
           />
         )}
 
-        {contentTab === 'private' && (
+        {(contentTab === 'private' || privateEditSource?.scope === (session?.uid || 'guest')) && (
+          <div key={`private-source-${session?.uid || 'guest'}`} hidden={contentTab !== 'private'} inert={contentTab !== 'private'} aria-hidden={contentTab !== 'private' ? true : undefined}>
           <Suspense fallback={<SuspenseFallback />}>
             <PrivateTab
+              key={session?.uid || 'guest'}
+              isActive={contentTab === 'private'}
               readings={readings}
               dailyFortuneCount={dailyFortune.fortunes.length + readings.filter(isDailyReading).length}
               onOpenDailyArchive={() => { setIsDailyArchiveOpen(true); trackEvent('daily_archive_opened', { source: 'library' }); }}
@@ -1851,6 +1916,7 @@ function AppContent() {
               highlightedReadingId={highlightedReadingId}
             />
           </Suspense>
+          </div>
         )}
 
         {contentTab === 'public' && (
@@ -1960,6 +2026,7 @@ function AppContent() {
                 onUpdate={setCardMetadata}
                 readings={readings}
                 dailyFortunes={dailyFortune.fortunes}
+                dailyFortuneExamples={dailyFortune.annotationExamples}
                 cardKeywordMemory={cardKeywordMemory}
                 isLoggedIn={!!session}
                 userId={session?.uid}
@@ -1981,6 +2048,7 @@ function AppContent() {
           onUpdate={setCardMetadata}
           readings={readings}
           dailyFortunes={dailyFortune.fortunes}
+          dailyFortuneExamples={dailyFortune.annotationExamples}
           cardKeywordMemory={cardKeywordMemory}
           userId={session?.uid}
           isLoggedIn={Boolean(session)}

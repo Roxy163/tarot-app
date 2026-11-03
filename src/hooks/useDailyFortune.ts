@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { DailyFortune, DailyFortuneReflectionParts, FortuneSummary } from '../types';
 import { TAROT_CARDS } from '../constants';
 import {
@@ -6,10 +6,10 @@ import {
   hasDailyReflectionContent,
 } from '../lib/dailyFortuneReflection';
 import { buildDailyFortuneAnnotationNote } from '../lib/dailyFortuneReview';
-import { mergeDailyFortuneSources } from '../lib/dailyFortuneCloudSync';
+import { markDailyFortuneDeleted, mergeDailyFortuneSources } from '../lib/dailyFortuneCloudSync';
 import { trackEvent } from '../lib/analytics';
 import { getUserDailyFortunes, saveUserDailyFortunes } from '../lib/firebaseData';
-import { readJsonArrayWithBackup, writeJsonWithBackup, requireLocalSave } from '../lib/safeLocalStorage';
+import { readJsonArrayWithBackup, writeJsonWithBackup, requireLocalSave, removeJsonWithBackup } from '../lib/safeLocalStorage';
 import { toLocalReadingDate } from '../lib/readingDate';
 
 const STORAGE_KEY = 'tarot_daily_fortunes';
@@ -85,11 +85,13 @@ export const useDailyFortune = (
 ) => {
   const activeDataKey = isAuthLoading ? 'auth-loading' : (session?.uid || 'guest');
   const storageKey = getDailyFortuneStorageKey(session?.uid);
-  const [fortunes, setFortunesState] = useState<DailyFortune[]>(() => {
+  const [allFortunes, setFortunesState] = useState<DailyFortune[]>(() => {
     return readJsonArrayWithBackup<DailyFortune>(storageKey) || [];
   });
   // Network callbacks must see edits immediately, including before React commits a batched event.
-  const latestFortunesRef = useRef(fortunes);
+  const latestFortunesRef = useRef(allFortunes);
+  const activeDataKeyRef = useRef(activeDataKey);
+  activeDataKeyRef.current = activeDataKey;
   const setFortunes = useCallback((update: DailyFortune[] | ((previous: DailyFortune[]) => DailyFortune[])) => {
     const next = typeof update === 'function' ? update(latestFortunesRef.current) : update;
     latestFortunesRef.current = next;
@@ -100,6 +102,9 @@ export const useDailyFortune = (
   const [isCloudSyncPaused, setIsCloudSyncPaused] = useState(false);
   const pendingGuestFortunesSyncRef = useRef(false);
   const cloudFortunesSnapshotRef = useRef<string | null>(null);
+  const isDataReady = !isAuthLoading && loadedDataKey === activeDataKey;
+  const fortunes = useMemo(() => isDataReady ? allFortunes.filter(fortune => !fortune.deletedAt) : [], [allFortunes, isDataReady]);
+  const annotationExamples = useMemo(() => isDataReady ? allFortunes.filter(fortune => fortune.savedToCardAnnotationAt) : [], [allFortunes, isDataReady]);
 
   useEffect(() => {
     let cancelled = false;
@@ -191,7 +196,7 @@ export const useDailyFortune = (
     if (isAuthLoading) return;
     if (loadedDataKey !== activeDataKey) return;
 
-    writeJsonWithBackup(storageKey, fortunes);
+    writeJsonWithBackup(storageKey, allFortunes);
     if (!session?.uid) {
       localStorage.setItem(GUEST_DAILY_FORTUNES_OWNER_KEY, 'guest');
     }
@@ -199,7 +204,7 @@ export const useDailyFortune = (
     if (!session?.uid || isCloudSyncPaused || isLocalFallback) return;
 
     const uid = session.uid;
-    const cloudFortunes = mergeDailyFortuneSources(uid, [fortunes]);
+    const cloudFortunes = mergeDailyFortuneSources(uid, [allFortunes]);
     const nextSnapshot = serializeCloudFortunes(cloudFortunes);
     const shouldSaveCloudFortunes = (
       pendingGuestFortunesSyncRef.current
@@ -210,15 +215,17 @@ export const useDailyFortune = (
     const timer = window.setTimeout(() => {
       saveUserDailyFortunes(uid, cloudFortunes)
         .then(() => {
+          if (activeDataKeyRef.current !== activeDataKey) return;
           cloudFortunesSnapshotRef.current = nextSnapshot;
           if (pendingGuestFortunesSyncRef.current) {
-            localStorage.removeItem(STORAGE_KEY);
+            removeJsonWithBackup(STORAGE_KEY);
             localStorage.removeItem(GUEST_DAILY_FORTUNES_OWNER_KEY);
             pendingGuestFortunesSyncRef.current = false;
           }
         })
         .catch(error => {
           console.warn('Daily fortune cloud save failed; local copy was kept:', error);
+          if (activeDataKeyRef.current !== activeDataKey) return;
           setIsCloudSyncPaused(true);
         });
     }, CLOUD_SAVE_DEBOUNCE_MS);
@@ -226,7 +233,7 @@ export const useDailyFortune = (
     return () => window.clearTimeout(timer);
   }, [
     activeDataKey,
-    fortunes,
+    allFortunes,
     isAuthLoading,
     isCloudSyncPaused,
     isLocalFallback,
@@ -259,7 +266,7 @@ export const useDailyFortune = (
     isReversed: boolean,
     source: DailyFortune['source'] = 'app-draw'
   ) => {
-    if (isAuthLoading || loadedDataKey !== activeDataKey) throw new Error('账号正在恢复，请稍后再抽牌。');
+    if (isAuthLoading || loadedDataKey !== activeDataKey || activeDataKeyRef.current !== activeDataKey) throw new Error('账号正在恢复，请稍后再抽牌。');
     const today = toLocalReadingDate();
     const now = new Date().toISOString();
     
@@ -277,7 +284,11 @@ export const useDailyFortune = (
       isRevealed: true
     };
 
-    const next = [...latestFortunesRef.current.filter(f => f.date !== today), fortune];
+    const previousFortunes = latestFortunesRef.current.flatMap(previous => {
+      if (previous.date !== today || previous.deletedAt) return [previous];
+      return previous.savedToCardAnnotationAt ? [markDailyFortuneDeleted(previous, now)] : [];
+    });
+    const next = [...previousFortunes, fortune];
     requireLocalSave(storageKey, next);
     setFortunes(next);
     trackEvent('daily_fortune_saved', {
@@ -358,7 +369,7 @@ export const useDailyFortune = (
     const updatedAt = new Date().toISOString();
 
     setFortunes(prev => prev.map(f => (
-      f.id === fortuneId
+      f.id === fortuneId && !f.deletedAt
         ? {
             ...f,
             cardName: card.name,
@@ -376,14 +387,14 @@ export const useDailyFortune = (
   const addReflection = useCallback((fortuneId: string, reflection: string | DailyFortuneReflectionParts) => {
     const updatedAt = new Date().toISOString();
     setFortunes(prev => prev.map(f => 
-      f.id === fortuneId ? { ...f, ...createDailyReflectionPatch(reflection), updatedAt } : f
+      f.id === fortuneId && !f.deletedAt ? { ...f, ...createDailyReflectionPatch(reflection), updatedAt } : f
     ));
     trackEvent('daily_reflection_saved', getReflectionAnalyticsFlags(reflection));
   }, []);
 
   const archiveDailyFortune = useCallback((fortuneId: string, reflection?: string | DailyFortuneReflectionParts) => {
-    if (loadedDataKey !== activeDataKey || isAuthLoading) throw new Error('记录正在恢复，请稍后再保存。');
-    if (!latestFortunesRef.current.some(item => item.id === fortuneId)) throw new Error('这条日运已变更，请保留文字后重新打开记录。');
+    if (loadedDataKey !== activeDataKey || isAuthLoading || activeDataKeyRef.current !== activeDataKey) throw new Error('记录正在恢复，请稍后再保存。');
+    if (!latestFortunesRef.current.some(item => item.id === fortuneId && !item.deletedAt)) throw new Error('这条日运已变更，请保留文字后重新打开记录。');
     const archivedAt = new Date().toISOString();
 
     const next = latestFortunesRef.current.map(f => (
@@ -405,8 +416,8 @@ export const useDailyFortune = (
   }, [activeDataKey, isAuthLoading, loadedDataKey, storageKey, setFortunes]);
 
   const updateDailyFortuneReflection = useCallback((fortuneId: string, reflection: string | DailyFortuneReflectionParts) => {
-    if (loadedDataKey !== activeDataKey || isAuthLoading) throw new Error('记录正在恢复，请稍后再保存。');
-    if (!latestFortunesRef.current.some(item => item.id === fortuneId)) throw new Error('这条日运已变更，请保留文字后重新打开记录。');
+    if (loadedDataKey !== activeDataKey || isAuthLoading || activeDataKeyRef.current !== activeDataKey) throw new Error('记录正在恢复，请稍后再保存。');
+    if (!latestFortunesRef.current.some(item => item.id === fortuneId && !item.deletedAt)) throw new Error('这条日运已变更，请保留文字后重新打开记录。');
     const updatedAt = new Date().toISOString();
     const next = latestFortunesRef.current.map(f => (
       f.id === fortuneId ? { ...f, ...createDailyReflectionPatch(reflection), updatedAt } : f
@@ -417,10 +428,14 @@ export const useDailyFortune = (
   }, [activeDataKey, isAuthLoading, loadedDataKey, storageKey, setFortunes]);
 
   const saveDailyFortuneToCardAnnotation = useCallback((fortuneId: string, note?: string) => {
+    if (!isDataReady || activeDataKeyRef.current !== activeDataKey) throw new Error('记录正在恢复，请稍后再保存。');
+    const existing = latestFortunesRef.current.find(fortune => fortune.id === fortuneId && !fortune.deletedAt);
+    if (!existing) throw new Error('这条日运已变更，请重新打开记录。');
+    if (!hasDailyReflectionContent(existing)) return;
     const updatedAt = new Date().toISOString();
 
-    setFortunes(prev => prev.map(fortune => {
-      if (fortune.id !== fortuneId || !hasDailyReflectionContent(fortune)) return fortune;
+    const next = latestFortunesRef.current.map(fortune => {
+      if (fortune.id !== fortuneId) return fortune;
 
       return {
         ...fortune,
@@ -428,20 +443,28 @@ export const useDailyFortune = (
         cardAnnotationNote: (note || buildDailyFortuneAnnotationNote(fortune)).trim(),
         updatedAt,
       };
-    }));
+    });
+    requireLocalSave(storageKey, next);
+    setFortunes(next);
     trackEvent('daily_annotation_saved');
-  }, []);
+  }, [activeDataKey, isDataReady, setFortunes, storageKey]);
 
   const deleteDailyFortunes = useCallback((fortuneIds: string[]) => {
+    if (!isDataReady || activeDataKeyRef.current !== activeDataKey) throw new Error('记录正在恢复，请稍后再删除。');
     const idsToDelete = new Set(fortuneIds.filter(Boolean));
     if (idsToDelete.size === 0) return;
 
-    setFortunes(prev => prev.filter(fortune => !idsToDelete.has(fortune.id)));
+    const deletedAt = new Date().toISOString();
+    const next = latestFortunesRef.current.map(fortune => (
+      idsToDelete.has(fortune.id) && !fortune.deletedAt ? markDailyFortuneDeleted(fortune, deletedAt) : fortune
+    ));
+    requireLocalSave(storageKey, next);
+    setFortunes(next);
     trackEvent('daily_fortune_deleted', {
       record_count: idsToDelete.size,
       auth_state: session?.uid ? 'signed_in' : 'guest',
     });
-  }, [session?.uid]);
+  }, [activeDataKey, isDataReady, session?.uid, setFortunes, storageKey]);
 
   const deleteDailyFortune = useCallback((fortuneId: string) => {
     deleteDailyFortunes([fortuneId]);
@@ -622,8 +645,10 @@ export const useDailyFortune = (
 
   return {
     fortunes,
+    allFortunes: isDataReady ? allFortunes : [],
+    annotationExamples,
     restoreFortunes: setFortunes,
-    isDataReady: !isAuthLoading && loadedDataKey === activeDataKey,
+    isDataReady,
     shuffledDeck,
     shuffleDeck,
     getToday,

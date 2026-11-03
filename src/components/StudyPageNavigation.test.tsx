@@ -31,11 +31,11 @@ describe('study page navigation', () => {
     await waitFor(() => expect(screen.queryByRole('main', { name: '编辑牌义' })).not.toBeInTheDocument());
     expect(screen.getByRole('main', { name: '愚者研习资料' })).toBe(detail);
     expect(scroll.scrollTop).toBe(240);
-    expect(screen.getByPlaceholderText('在此记录你对这张牌的独特见解、私人感悟或研习心得...')).toHaveValue('保留我的独特见解');
+    expect(screen.getByPlaceholderText('在此记录你对这张牌的独特见解、私人感悟或研习心得...')).toHaveValue('保留我的独特见解稍后继续写');
     expect(detail.inert).toBe(false);
     expect(container.inert).toBe(true);
     await user.click(screen.getByRole('button', { name: '编辑这张牌义' }));
-    expect(screen.getByPlaceholderText('记录你个人对这张牌的理解和感悟...')).toHaveValue('稍后继续写');
+    expect(screen.getByPlaceholderText('记录你个人对这张牌的理解和感悟...')).toHaveValue('保留我的独特见解稍后继续写');
     await user.keyboard('{Escape}');
     await waitFor(() => expect(screen.queryByRole('main', { name: '编辑牌义' })).not.toBeInTheDocument());
     await user.click(screen.getByRole('button', { name: '返回（愚者研习资料）' }));

@@ -37,7 +37,7 @@ const reading = shape({
 const fortune = shape({
   id, date, cardName: id, isReversed: bool, interpretation: text, keywords: list(text),
   ...fields(['initialImpression', 'dailyReview', 'reflection', 'cardAnnotationNote'], text),
-  ...fields(['createdAt', 'updatedAt', 'archivedAt', 'savedToCardAnnotationAt'], date),
+  ...fields(['createdAt', 'updatedAt', 'archivedAt', 'savedToCardAnnotationAt', 'deletedAt'], date),
   source: oneOf('app-draw', 'physical-draw'), isRevealed: bool, isLocked: bool,
 }, ['id', 'date', 'cardName', 'isReversed', 'interpretation', 'keywords', 'createdAt']);
 const spread = shape({

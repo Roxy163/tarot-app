@@ -17,14 +17,16 @@ import {
   Trash2,
   Search,
   ChevronRight,
+  CalendarDays,
+  X,
 } from 'lucide-react';
 import { DailyFortune, DailyFortuneReflectionParts, TarotReading } from '../types';
 import { TAROT_CARDS, getCardImageUrl } from '../constants';
 import { TarotCardImage } from './TarotCardImage';
 import {
+  appendNoObviousDailyMatch,
   getDailyReflectionParts,
   hasDailyReflectionContent,
-  NO_OBVIOUS_DAILY_MATCH_TEXT,
 } from '../lib/dailyFortuneReflection';
 import {
   buildDailyFortunePdfLines,
@@ -34,6 +36,7 @@ import {
   getDailyFortuneMonthlyCardStats,
   getDailyFortunesByCard,
   getFortunesForMonth,
+  dailyFortuneMatchesSearch,
 } from '../lib/dailyFortuneReview';
 import { createExportPdfBlobFromLines } from '../lib/pdfExport';
 import { useClickOutside } from '../hooks/useClickOutside';
@@ -45,7 +48,7 @@ import { readLocalDraft, useLocalDraft } from '../hooks/useLocalDraft';
 import { PageView } from './PageView';
 import { scrollFocusedFieldIntoView } from '../lib/mobileFocus';
 import { DailyReflectionCard } from './DailyReflectionCard';
-import { isDailyReading, readingMatchesSearch } from '../lib/readingSearch';
+import { getRecordCalendarDate, isDailyReading, readingMatchesSearch } from '../lib/readingSearch';
 import { ReadingDetailModal } from './ReadingDetailModal';
 
 interface DailyFortuneArchiveModalProps {
@@ -95,6 +98,30 @@ const matchesReviewFilter = (fortune: DailyFortune, filter: ReviewFilter) => {
   if (filter === 'saved') return Boolean(fortune.savedToCardAnnotationAt);
   return true;
 };
+
+function ArchiveSearchControls({ sourceLabel, query, date, month, dateControlsOpen, forceDateControls = false,
+  onQueryChange, onDateChange, onMonthChange, onToggleDates, onClear,
+}: {
+  sourceLabel: string; query: string; date: string; month: string; dateControlsOpen: boolean; forceDateControls?: boolean;
+  onQueryChange: (value: string) => void; onDateChange: (value: string) => void; onMonthChange: (value: string) => void;
+  onToggleDates: () => void; onClear: () => void;
+}) {
+  return <div className="mb-4 space-y-2">
+    <div className="relative">
+      <Search size={18} className="pointer-events-none absolute left-3 top-3.5 text-forest-accent" />
+      <input aria-label={`搜索${sourceLabel}`} placeholder="搜索牌名、日期或记录内容" value={query} onChange={event => onQueryChange(event.target.value)} className="min-h-11 w-full rounded-lg border border-forest-accent/15 bg-white/60 py-2 pl-10 pr-12 text-base text-forest-ink" />
+      {query && <button type="button" aria-label={`清空${sourceLabel}搜索`} onClick={() => onQueryChange('')} className="absolute right-0 top-0 flex h-11 w-11 items-center justify-center text-forest-muted"><X size={17} /></button>}
+    </div>
+    <div className="flex flex-wrap items-center gap-x-4">
+      {!forceDateControls && <button type="button" aria-expanded={dateControlsOpen} onClick={onToggleDates} className="inline-flex min-h-11 items-center gap-1.5 text-xs text-forest-accent"><CalendarDays size={15} />按日期查找{(date || month) && ` · ${date || month}`}</button>}
+      {(query || date || month) && <button type="button" aria-label={`清空${sourceLabel}查找`} onClick={onClear} className="min-h-11 text-xs text-forest-muted hover:text-forest-accent">清空查找</button>}
+    </div>
+    {(dateControlsOpen || forceDateControls) && <div className="grid grid-cols-2 gap-3">
+      <label className="min-w-0 text-xs text-forest-muted">日期<input type="date" aria-label={`${sourceLabel}日期`} value={date} onChange={event => onDateChange(event.target.value)} className="mt-1 min-h-11 w-full min-w-0 rounded-lg border border-forest-accent/15 bg-white/60 px-2 text-base text-forest-ink" /></label>
+      <label className="min-w-0 text-xs text-forest-muted">月份<input type="month" aria-label={`${sourceLabel}月份`} value={month} onChange={event => onMonthChange(event.target.value)} className="mt-1 min-h-11 w-full min-w-0 rounded-lg border border-forest-accent/15 bg-white/60 px-2 text-base text-forest-ink" /></label>
+    </div>}
+  </div>;
+}
 
 const getFortunePreviewText = (fortune: DailyFortune) => {
   const parts = getDailyReflectionParts(fortune);
@@ -160,6 +187,7 @@ interface FortuneArchiveItemProps {
   isOrganizing: boolean;
   isSelected: boolean;
   resetSwipeToken: number;
+  saveError?: string;
   onToggle: () => void;
   onToggleSelected: () => void;
   onEdit: (fortune: DailyFortune) => void;
@@ -173,6 +201,7 @@ const FortuneArchiveItem = ({
   isOrganizing,
   isSelected,
   resetSwipeToken,
+  saveError,
   onToggle,
   onToggleSelected,
   onEdit,
@@ -395,6 +424,7 @@ const FortuneArchiveItem = ({
                   {isSavedToAnnotation ? '已归入牌义注疏' : canSaveToAnnotation ? '归入牌义注疏' : '先补写再归入'}
                 </button>
               </div>
+              {saveError && <p role="alert" className="mt-2 text-xs leading-relaxed text-forest-muted">{saveError}</p>}
             </motion.div>
           )}
         </AnimatePresence>
@@ -417,10 +447,18 @@ export const DailyFortuneArchiveModal: React.FC<DailyFortuneArchiveModalProps> =
   onUpdateReadingFeedback,
 }) => {
   const dailyReadings = useMemo(() => readings.filter(isDailyReading).sort((a, b) =>
-    (b.readingDate || b.date).localeCompare(a.readingDate || a.date)), [readings]);
+    getRecordCalendarDate(b.readingDate || b.date).localeCompare(getRecordCalendarDate(a.readingDate || a.date))
+    || b.date.localeCompare(a.date)), [readings]);
   const [source, setSource] = useState<'draws' | 'readings'>('draws');
   const openedOnce = useRef(false);
   const [readingQuery, setReadingQuery] = useState('');
+  const [readingDate, setReadingDate] = useState('');
+  const [readingMonth, setReadingMonth] = useState('');
+  const [readingDatesOpen, setReadingDatesOpen] = useState(false);
+  const [drawQuery, setDrawQuery] = useState('');
+  const [drawDate, setDrawDate] = useState('');
+  const [drawMonth, setDrawMonth] = useState('');
+  const [drawDatesOpen, setDrawDatesOpen] = useState(false);
   const [readingFilter, setReadingFilter] = useState<'all' | 'pending' | 'reviewed'>('all');
   const [selectedReadingId, setSelectedReadingId] = useState<string | null>(null);
   const archiveAnchor = useRef<HTMLDivElement>(null);
@@ -441,6 +479,8 @@ export const DailyFortuneArchiveModal: React.FC<DailyFortuneArchiveModalProps> =
     if (!fortunes.length && dailyReadings.length) setSource('readings');
   }, [isOpen, fortunes.length, dailyReadings.length]);
   const visibleReadings = dailyReadings.filter(reading => readingMatchesSearch(reading, readingQuery)
+    && (!readingDate || getRecordCalendarDate(reading.readingDate || reading.date) === readingDate)
+    && (!readingMonth || getRecordCalendarDate(reading.readingDate || reading.date).startsWith(readingMonth))
     && (readingFilter === 'all' || Boolean(reading.userFeedback?.trim()) === (readingFilter === 'reviewed')));
 
   const [activeView, setActiveView] = useState<ReviewView>('timeline');
@@ -459,35 +499,34 @@ export const DailyFortuneArchiveModal: React.FC<DailyFortuneArchiveModalProps> =
   const [isOrganizing, setIsOrganizing] = useState(false);
   const [selectedDeleteIds, setSelectedDeleteIds] = useState<string[]>([]);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [deleteError, setDeleteError] = useState('');
+  const [annotationError, setAnnotationError] = useState<{ id: string; message: string } | null>(null);
   const [swipeResetToken, setSwipeResetToken] = useState(0);
   const exportMenuRef = useRef<HTMLDivElement | null>(null);
   const closeExportMenu = useCallback(() => setIsExportMenuOpen(false), []);
   useClickOutside(exportMenuRef, closeExportMenu, isExportMenuOpen);
 
   const currentMonthKey = getCurrentMonthKey();
+  const selectedMonthKey = drawMonth || currentMonthKey;
+  const searchedFortunes = useMemo(() => fortunes.filter(fortune => dailyFortuneMatchesSearch(fortune, drawQuery)
+    && (!drawDate || getRecordCalendarDate(fortune.date) === drawDate)
+    && (!(drawMonth || activeView === 'month') || getRecordCalendarDate(fortune.date).startsWith(selectedMonthKey))),
+  [fortunes, drawQuery, drawDate, drawMonth, activeView, selectedMonthKey]);
   const visibleFortunes = useMemo(
-    () => fortunes.filter(fortune => matchesReviewFilter(fortune, reviewFilter)),
-    [fortunes, reviewFilter],
-  );
-  const allMonthFortunes = useMemo(
-    () => getFortunesForMonth(fortunes, currentMonthKey),
-    [currentMonthKey, fortunes],
+    () => searchedFortunes.filter(fortune => matchesReviewFilter(fortune, reviewFilter)),
+    [searchedFortunes, reviewFilter],
   );
   const monthFortunes = useMemo(
-    () => getFortunesForMonth(visibleFortunes, currentMonthKey),
-    [currentMonthKey, visibleFortunes],
+    () => getFortunesForMonth(visibleFortunes, selectedMonthKey),
+    [selectedMonthKey, visibleFortunes],
   );
   const cardGroups = useMemo(
-    () => getDailyFortunesByCard(visibleFortunes, currentMonthKey),
-    [currentMonthKey, visibleFortunes],
+    () => getDailyFortunesByCard(visibleFortunes, selectedMonthKey),
+    [selectedMonthKey, visibleFortunes],
   );
   const monthlyStats = useMemo(
-    () => getDailyFortuneMonthlyCardStats(visibleFortunes, currentMonthKey),
-    [currentMonthKey, visibleFortunes],
-  );
-  const allMonthlyStats = useMemo(
-    () => getDailyFortuneMonthlyCardStats(fortunes, currentMonthKey),
-    [currentMonthKey, fortunes],
+    () => getDailyFortuneMonthlyCardStats(visibleFortunes, selectedMonthKey),
+    [selectedMonthKey, visibleFortunes],
   );
 
   const selectedCardGroup = cardGroups.find(group => group.cardName === selectedCardName) || null;
@@ -503,29 +542,29 @@ export const DailyFortuneArchiveModal: React.FC<DailyFortuneArchiveModalProps> =
       ? selectedCardName ? cardViewFortunes : []
       : monthFortunes;
 
-  const savedCount = fortunes.filter(fortune => Boolean(fortune.savedToCardAnnotationAt)).length;
-  const reviewedCount = fortunes.filter(hasDailyReview).length;
-  const pendingReviewCount = fortunes.filter(isDailyReviewPending).length;
-  const monthReversedCount = allMonthFortunes.filter(fortune => fortune.isReversed).length;
-  const monthReversedRatio = allMonthFortunes.length > 0
-    ? Math.round((monthReversedCount / allMonthFortunes.length) * 100)
+  const savedCount = searchedFortunes.filter(fortune => Boolean(fortune.savedToCardAnnotationAt)).length;
+  const reviewedCount = searchedFortunes.filter(hasDailyReview).length;
+  const pendingReviewCount = searchedFortunes.filter(isDailyReviewPending).length;
+  const monthReversedCount = monthFortunes.filter(fortune => fortune.isReversed).length;
+  const monthReversedRatio = monthFortunes.length > 0
+    ? Math.round((monthReversedCount / monthFortunes.length) * 100)
     : 0;
-  const monthPendingReviewCount = allMonthFortunes.filter(isDailyReviewPending).length;
-  const monthTopCards = allMonthlyStats.slice(0, 3);
+  const monthPendingReviewCount = monthFortunes.filter(isDailyReviewPending).length;
+  const monthTopCards = monthlyStats.slice(0, 3);
 
   const stats = useMemo(() => ([
-    ['已归档', fortunes.length, '天'],
-    ['本月', allMonthFortunes.length, '天'],
-    ['待回看', pendingReviewCount, '天'],
-    ['入注疏', savedCount, '条'],
-  ]), [allMonthFortunes.length, fortunes.length, pendingReviewCount, savedCount]);
+    ['当前结果', exportFortunes.length, '天'],
+    ['已回看', exportFortunes.filter(hasDailyReview).length, '天'],
+    ['待回看', exportFortunes.filter(isDailyReviewPending).length, '天'],
+    ['入注疏', exportFortunes.filter(fortune => Boolean(fortune.savedToCardAnnotationAt)).length, '条'],
+  ]), [exportFortunes]);
 
   const reviewFilterOptions = useMemo(() => ([
-    { id: 'all' as const, label: '全部', count: fortunes.length },
+    { id: 'all' as const, label: '全部', count: searchedFortunes.length },
     { id: 'pending' as const, label: '待回看', count: pendingReviewCount },
     { id: 'reviewed' as const, label: '已回看', count: reviewedCount },
     { id: 'saved' as const, label: '入注疏', count: savedCount },
-  ]), [fortunes.length, pendingReviewCount, reviewedCount, savedCount]);
+  ]), [searchedFortunes.length, pendingReviewCount, reviewedCount, savedCount]);
 
   useEffect(() => {
     const availableIds = new Set(fortunes.map(fortune => fortune.id));
@@ -587,7 +626,12 @@ export const DailyFortuneArchiveModal: React.FC<DailyFortuneArchiveModalProps> =
     if (!hasDailyReflectionContent(fortune) || fortune.savedToCardAnnotationAt) return;
     resetSwipeActions();
     setIsExportMenuOpen(false);
-    onSaveToCardAnnotation(fortune.id);
+    setAnnotationError(null);
+    try {
+      onSaveToCardAnnotation(fortune.id);
+    } catch (error) {
+      setAnnotationError({ id: fortune.id, message: error instanceof Error && error.message ? error.message : '归入暂未完成，请稍后重试。' });
+    }
   };
 
   const closeOrganizing = () => {
@@ -595,11 +639,13 @@ export const DailyFortuneArchiveModal: React.FC<DailyFortuneArchiveModalProps> =
     setIsOrganizing(false);
     setSelectedDeleteIds([]);
     setShowDeleteConfirm(false);
+    setDeleteError('');
   };
 
   const closeArchive = () => {
     closeEdit();
     closeOrganizing();
+    setAnnotationError(null);
     setIsExportMenuOpen(false);
     onClose();
   };
@@ -609,6 +655,10 @@ export const DailyFortuneArchiveModal: React.FC<DailyFortuneArchiveModalProps> =
     setActiveView(view);
     setExpandedId(null);
     setIsExportMenuOpen(false);
+    if (view === 'month') {
+      setDrawMonth(selectedMonthKey);
+      setDrawDatesOpen(true);
+    }
   };
 
   const handleReviewFilterChange = (filter: ReviewFilter) => {
@@ -655,14 +705,21 @@ export const DailyFortuneArchiveModal: React.FC<DailyFortuneArchiveModalProps> =
 
   const requestDeleteFortune = (fortune: DailyFortune) => {
     setIsExportMenuOpen(false);
+    setDeleteError('');
     setSelectedDeleteIds([fortune.id]);
     setShowDeleteConfirm(true);
   };
 
   const confirmDeleteFortunes = () => {
-    if (selectedDeleteIds.length === 0) return;
+    if (selectedDeleteIds.length === 0) return false;
 
-    onDeleteFortunes(selectedDeleteIds);
+    setDeleteError('');
+    try {
+      onDeleteFortunes(selectedDeleteIds);
+    } catch (error) {
+      setDeleteError(error instanceof Error && error.message ? error.message : '删除暂未完成，记录已保留，请稍后重试。');
+      return false;
+    }
     if (editingFortune && selectedDeleteIds.includes(editingFortune.id)) {
       closeEdit();
     }
@@ -721,8 +778,8 @@ export const DailyFortuneArchiveModal: React.FC<DailyFortuneArchiveModalProps> =
     items.length === 0 ? (
       <QuietEmptyState
         icon={reviewFilter === 'pending' ? <Clock3 size={23} /> : <Archive size={23} />}
-        title={reviewFilter === 'all' ? '这里还没有日运记录' : '没有符合筛选的日运'}
-        description={reviewFilter === 'all'
+        title={fortunes.length === 0 ? '这里还没有日运记录' : '没有符合条件的日运'}
+        description={fortunes.length === 0
           ? '抽牌或录入现实牌后，就能在这里形成你的日运手札。'
           : '换一个筛选条件，或回到全部记录继续查看。'}
         className="py-8"
@@ -735,6 +792,7 @@ export const DailyFortuneArchiveModal: React.FC<DailyFortuneArchiveModalProps> =
         isOrganizing={isOrganizing}
         isSelected={selectedDeleteIds.includes(fortune.id)}
         resetSwipeToken={swipeResetToken}
+        saveError={annotationError?.id === fortune.id ? annotationError.message : undefined}
         onToggle={() => setExpandedId(expandedId === fortune.id ? null : fortune.id)}
         onToggleSelected={() => toggleDeleteSelection(fortune.id)}
         onEdit={openEdit}
@@ -751,11 +809,20 @@ export const DailyFortuneArchiveModal: React.FC<DailyFortuneArchiveModalProps> =
           <button key={value} type="button" role="tab" aria-selected={source === value} onClick={() => setSource(value)} className={`min-h-11 border-b-2 px-3 text-sm ${source === value ? 'border-forest-accent font-medium text-forest-accent' : 'border-transparent text-forest-muted'}`}>{label} {count}</button>
         ))}
       </div>
+      {source === 'readings' ? <ArchiveSearchControls
+        sourceLabel="日运手记" query={readingQuery} date={readingDate} month={readingMonth} dateControlsOpen={readingDatesOpen}
+        onQueryChange={setReadingQuery} onToggleDates={() => setReadingDatesOpen(value => !value)}
+        onDateChange={value => { setReadingDate(value); if (value) setReadingMonth(value.slice(0, 7)); }}
+        onMonthChange={value => { setReadingMonth(value); if (!readingDate.startsWith(value)) setReadingDate(''); }}
+        onClear={() => { setReadingQuery(''); setReadingDate(''); setReadingMonth(''); }}
+      /> : <ArchiveSearchControls
+        sourceLabel="日运抽牌" query={drawQuery} date={drawDate} month={activeView === 'month' ? selectedMonthKey : drawMonth} dateControlsOpen={drawDatesOpen} forceDateControls={activeView === 'month'}
+        onQueryChange={setDrawQuery} onToggleDates={() => setDrawDatesOpen(value => !value)}
+        onDateChange={value => { setDrawDate(value); if (value) setDrawMonth(value.slice(0, 7)); }}
+        onMonthChange={value => { setDrawMonth(value); if (!drawDate.startsWith(value || (activeView === 'month' ? currentMonthKey : ''))) setDrawDate(''); }}
+        onClear={() => { setDrawQuery(''); setDrawDate(''); setDrawMonth(''); }}
+      />}
       {source === 'readings' ? <section aria-label="日运手记" className="space-y-4">
-        <div className="relative">
-          <Search size={18} className="pointer-events-none absolute left-3 top-3.5 text-forest-accent" />
-          <input aria-label="搜索日运手记" placeholder="搜索牌名、标签或记录内容" value={readingQuery} onChange={event => setReadingQuery(event.target.value)} className="min-h-11 w-full rounded-lg border border-forest-accent/15 bg-white/60 py-2 pl-10 pr-3 text-base text-forest-ink" />
-        </div>
         <div role="group" aria-label="日运手记复盘筛选" className="flex gap-2">
           {([['all', '全部'], ['pending', '待复盘'], ['reviewed', '已复盘']] as const).map(([value, label]) => <button key={value} type="button" aria-pressed={readingFilter === value} onClick={() => setReadingFilter(value)} className={`min-h-11 rounded-lg px-3 ${readingFilter === value ? 'bg-forest-accent text-white' : 'text-forest-muted hover:bg-forest-accent/5'}`}>{label}</button>)}
         </div>
@@ -763,7 +830,7 @@ export const DailyFortuneArchiveModal: React.FC<DailyFortuneArchiveModalProps> =
         <div className="divide-y divide-forest-accent/10">
           {visibleReadings.map(reading => <button key={reading.id} type="button" onClick={() => setSelectedReadingId(reading.id)} className="flex min-h-20 w-full items-center gap-3 py-4 text-left">
             <span className="min-w-0 flex-1">
-              <span className="block text-xs text-forest-muted">{(reading.readingDate || reading.date).slice(0, 10)} · {reading.userFeedback?.trim() ? '已复盘' : '待复盘'}</span>
+              <span className="block text-xs text-forest-muted">{getRecordCalendarDate(reading.readingDate || reading.date)} · {reading.userFeedback?.trim() ? '已复盘' : '待复盘'}</span>
               <span className="mt-1 block break-words font-serif text-base font-bold text-forest-ink">{reading.question}</span>
               <span className="mt-1 block break-words text-xs text-forest-muted">{reading.cards.filter(card => card.name).map(card => `${card.name}${card.isReversed ? '（逆位）' : ''}`).join(' · ')} · {reading.spread}</span>
             </span>
@@ -797,7 +864,7 @@ export const DailyFortuneArchiveModal: React.FC<DailyFortuneArchiveModalProps> =
                   {([
                     ['timeline', '时间线', Archive],
                     ['cards', '按牌', Library],
-                    ['month', '本月', BarChart3],
+                    ['month', '按月', BarChart3],
                   ] as const).map(([view, label, Icon]) => (
                     <button
                       key={view}
@@ -839,7 +906,7 @@ export const DailyFortuneArchiveModal: React.FC<DailyFortuneArchiveModalProps> =
                       </button>
                       <button
                         type="button"
-                        onClick={() => setShowDeleteConfirm(true)}
+                        onClick={() => { setDeleteError(''); setShowDeleteConfirm(true); }}
                         disabled={selectedDeleteIds.length === 0}
                         aria-label={`删除选中 ${selectedDeleteIds.length} 条日运记录`}
                         className="flex min-h-11 items-center justify-center gap-1.5 rounded-full bg-red-50 px-3 text-xs font-medium text-red-500 transition-colors hover:bg-red-100 disabled:opacity-45"
@@ -1003,7 +1070,7 @@ export const DailyFortuneArchiveModal: React.FC<DailyFortuneArchiveModalProps> =
                                   <div>
                                     <p className="font-serif text-base font-semibold text-forest-ink">{group.cardName}</p>
                                     <p className="mt-1 text-xs text-forest-muted">
-                                      历史 {group.totalCount} 次 · 本月 {group.currentMonthCount} 次
+                                      当前 {group.totalCount} 次 · {selectedMonthKey} {group.currentMonthCount} 次
                                     </p>
                                   </div>
                                   <span className="rounded-full bg-forest-accent/10 px-2.5 py-1 text-[10px] font-medium text-forest-accent">
@@ -1034,7 +1101,7 @@ export const DailyFortuneArchiveModal: React.FC<DailyFortuneArchiveModalProps> =
                           <div className="rounded-[1.25rem] border border-forest-accent/7 bg-white/32 p-3">
                             <p className="font-serif text-base font-semibold text-forest-ink">{selectedCardGroup.cardName}</p>
                             <p className="mt-1 text-xs text-forest-muted">
-                              历史 {selectedCardGroup.totalCount} 次 · 本月 {selectedCardGroup.currentMonthCount} 次 · 已归入注疏 {selectedCardGroup.savedToAnnotationCount} 条
+                              当前 {selectedCardGroup.totalCount} 次 · {selectedMonthKey} {selectedCardGroup.currentMonthCount} 次 · 已归入注疏 {selectedCardGroup.savedToAnnotationCount} 条
                             </p>
                             {selectedCardGroup.fortunes[0] && (
                               <p className="mt-2 line-clamp-2 text-xs leading-relaxed text-forest-text/70">
@@ -1050,8 +1117,8 @@ export const DailyFortuneArchiveModal: React.FC<DailyFortuneArchiveModalProps> =
                 ) : (
                   <>
                     <div className="rounded-[1.25rem] border border-forest-accent/7 bg-white/32 p-3">
-                      <p className="font-serif text-base font-semibold text-forest-ink">{currentMonthKey} 月度回看</p>
-                      <p className="mt-1 text-xs text-forest-muted">本月主题：{monthTopCards.length > 0 ? monthTopCards.map(stat => `${stat.cardName}×${stat.count}`).join(' · ') : '待积累'}</p>
+                      <p className="font-serif text-base font-semibold text-forest-ink">{selectedMonthKey} 月度回看</p>
+                      <p className="mt-1 text-xs text-forest-muted">当前主题：{monthTopCards.length > 0 ? monthTopCards.map(stat => `${stat.cardName}×${stat.count}`).join(' · ') : '待积累'}</p>
                       <div className="mt-3 grid grid-cols-3 gap-2">
                         <div className="rounded-2xl bg-white/34 px-3 py-2">
                           <p className="text-[10px] text-forest-muted">逆位比例</p>
@@ -1063,7 +1130,7 @@ export const DailyFortuneArchiveModal: React.FC<DailyFortuneArchiveModalProps> =
                         </div>
                         <div className="rounded-2xl bg-white/34 px-3 py-2">
                           <p className="text-[10px] text-forest-muted">记录</p>
-                          <p className="mt-1 font-serif text-base font-semibold text-forest-accent">{allMonthFortunes.length}天</p>
+                          <p className="mt-1 font-serif text-base font-semibold text-forest-accent">{monthFortunes.length}天</p>
                         </div>
                       </div>
                       {monthlyStats.length > 0 ? (
@@ -1073,6 +1140,7 @@ export const DailyFortuneArchiveModal: React.FC<DailyFortuneArchiveModalProps> =
                               key={stat.cardName}
                               type="button"
                               onClick={() => {
+                                setDrawMonth(selectedMonthKey);
                                 setActiveView('cards');
                                 setSelectedCardName(stat.cardName);
                                 setExpandedId(null);
@@ -1088,17 +1156,17 @@ export const DailyFortuneArchiveModal: React.FC<DailyFortuneArchiveModalProps> =
                         </div>
                       ) : (
                         <p className="mt-3 rounded-2xl border border-dashed border-forest-accent/14 bg-white/34 px-3 py-4 text-center text-xs text-forest-muted">
-                          本月暂时没有符合筛选的日运。
+                          所选月份暂时没有符合条件的日运。
                         </p>
                       )}
                     </div>
 
-                    {allMonthFortunes.length > 0 && (
+                    {monthFortunes.length > 0 && (
                       <div className="rounded-[1.25rem] border border-forest-accent/7 bg-white/32 p-3">
                         <p className="font-serif text-base font-semibold text-forest-ink">月末回看提纲</p>
                         <div className="mt-3 space-y-2">
                           {[
-                            '哪张牌最像本月反复出现的主题？',
+                            '哪张牌最像这个月反复出现的主题？',
                             '哪些逆位提醒，后来在生活里有了答案？',
                             '哪一条日运值得归入牌义注疏？',
                           ].map(prompt => (
@@ -1148,7 +1216,7 @@ export const DailyFortuneArchiveModal: React.FC<DailyFortuneArchiveModalProps> =
 
                     <button
                       type="button"
-                      onClick={() => setEditDailyReview(NO_OBVIOUS_DAILY_MATCH_TEXT)}
+                      onClick={() => setEditDailyReview(appendNoObviousDailyMatch)}
                       className="min-h-11 rounded-full bg-forest-accent/10 px-3 text-xs font-medium text-forest-accent transition-colors hover:bg-forest-accent/15"
                     >
                       今天暂未看见明显对应
@@ -1185,8 +1253,9 @@ export const DailyFortuneArchiveModal: React.FC<DailyFortuneArchiveModalProps> =
             confirmText="删除"
             cancelText="取消"
             destructive
+            error={deleteError}
             onConfirm={confirmDeleteFortunes}
-            onClose={() => setShowDeleteConfirm(false)}
+            onClose={() => { setShowDeleteConfirm(false); setDeleteError(''); }}
           />
       </>}
     </PageView>

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { BookOpen, Check, ChevronDown, PencilLine, Save } from 'lucide-react';
+import { BookOpen, Check, ChevronDown, LayoutGrid, PencilLine, Save } from 'lucide-react';
 import type { TarotReading } from '../types';
 import { TAROT_CARDS, getCardImageUrl } from '../constants';
 import { formatReadingDateTime } from '../lib/dateFormat';
@@ -11,6 +11,7 @@ import { AutoResizeTextarea } from './ui/AutoResizeTextarea';
 import { FoldableSection } from './FoldableSection';
 import { TarotCardImage } from './TarotCardImage';
 import { ConfirmDialog } from './ConfirmDialog';
+import { ReadingReviewSpread } from './ReadingReviewSpread';
 
 interface ReadingReviewPageProps {
   reading: TarotReading;
@@ -35,12 +36,26 @@ export function ReadingReviewPage({ reading, ownerScope = 'guest', onClose, onEd
   const [showCards, setShowCards] = useState(false);
   const [showAi, setShowAi] = useState(false);
   const [showExtra, setShowExtra] = useState(false);
+  const [showAllThoughts, setShowAllThoughts] = useState(false);
+  const [discardChanges, setDiscardChanges] = useState(false);
+  const spreadRef = useRef<HTMLElement>(null);
+  const thoughtsRef = useRef<HTMLElement>(null);
+  const feedbackRef = useRef<HTMLElement>(null);
   const active = useRef(true);
   const saving = useRef(false);
   useEffect(() => { active.current = true; return () => { active.current = false; }; }, []);
   useEffect(() => { setSavedFeedback(reading.userFeedback || ''); }, [reading.userFeedback]);
   const hasChanges = text.trim() !== savedFeedback.trim();
   const draft = useLocalDraft(draftKey, { text }, isEditing);
+  const jumpTo = (element: HTMLElement | null) => element?.scrollIntoView?.({ behavior: 'auto', block: 'start' });
+  const startEditing = () => {
+    if (!isEditing) { setText(savedFeedback); setIsEditing(true); setNotice(''); }
+    // Only a deliberate action moves the page. Restoring a draft never scrolls.
+    requestAnimationFrame(() => jumpTo(feedbackRef.current));
+  };
+  const cancelEditing = () => {
+    draft.clear(); setText(savedFeedback); setIsEditing(false); setDiscardChanges(false); setNotice('');
+  };
   const requestLeave = (action: 'close' | 'edit') => {
     if (saving.current) return;
     if (hasChanges && !draft.durable) { setLeaveAction(action); return; }
@@ -83,6 +98,11 @@ export function ReadingReviewPage({ reading, ownerScope = 'guest', onClose, onEd
 
   return <PageView isOpen onBack={() => requestLeave('close')} title="手记回看" width="wide" backDisabled={isSaving}>
     <div className="space-y-5 text-forest-ink">
+      <nav aria-label="回看快捷操作" className="sticky -top-5 z-40 -mx-4 flex min-h-14 items-center gap-1 border-b border-forest-accent/8 bg-forest-bg/95 px-4 py-1 backdrop-blur-sm sm:-top-7 sm:-mx-6 sm:px-6">
+        <button type="button" onClick={() => jumpTo(spreadRef.current)} className="inline-flex min-h-11 items-center gap-1.5 rounded-lg px-2 text-xs text-forest-accent hover:bg-forest-accent/5"><LayoutGrid size={15} />看牌阵</button>
+        {(overview || firstNote) && <button type="button" onClick={() => jumpTo(thoughtsRef.current)} className="min-h-11 rounded-lg px-2 text-xs text-forest-muted hover:bg-forest-accent/5">当时想法</button>}
+        {onSaveFeedback && <button type="button" disabled={isSaving} onClick={startEditing} className="ml-auto inline-flex min-h-11 items-center gap-1.5 rounded-lg px-2 text-xs text-forest-accent hover:bg-forest-accent/5 disabled:opacity-50"><PencilLine size={15} />{isEditing ? '继续写复盘' : '写复盘'}</button>}
+      </nav>
       <header className="space-y-2 border-b border-forest-accent/8 pb-4">
         <div className="flex items-start justify-between gap-3">
           <h2 className="min-w-0 break-words font-serif text-xl font-bold">{reading.question}</h2>
@@ -93,21 +113,25 @@ export function ReadingReviewPage({ reading, ownerScope = 'guest', onClose, onEd
         {isReadingIncomplete(reading) && <p className="text-xs text-forest-muted">牌面 {reading.cards.filter(card => card.name?.trim()).length}/{reading.cards.length}</p>}
       </header>
 
-      {(overview || firstNote) && <section className="space-y-2" aria-label="当时的想法">
+      <section ref={spreadRef} className="scroll-mt-16" aria-label="原牌阵"><ReadingReviewSpread reading={reading} /></section>
+
+      {(overview || firstNote) && <section ref={thoughtsRef} className="scroll-mt-16 space-y-2" aria-label="当时的想法">
         <h3 className="font-serif text-sm font-bold text-forest-accent">当时的想法</h3>
         {!overview && <p className="text-xs text-forest-muted">{reading.slotLabels?.[firstNoteIndex] || `第 ${firstNoteIndex + 1} 张`} · {reading.cards[firstNoteIndex]?.name}</p>}
-        <p className="whitespace-pre-wrap break-words text-sm leading-relaxed">{overview || firstNote}</p>
+        <p className={`whitespace-pre-wrap break-words text-sm leading-relaxed ${!showAllThoughts && (overview || firstNote).length > 260 ? 'line-clamp-6' : ''}`}>{overview || firstNote}</p>
+        {(overview || firstNote).length > 260 && <button type="button" aria-expanded={showAllThoughts} onClick={() => setShowAllThoughts(previous => !previous)} className="min-h-11 text-xs text-forest-accent">{showAllThoughts ? '收起原解读' : '展开完整原解读'}</button>}
       </section>}
 
-      {(onSaveFeedback || savedFeedback.trim()) && <section className="space-y-2 border-t border-forest-accent/8 pt-4" aria-label="后来的经历">
+      {(onSaveFeedback || savedFeedback.trim()) && <section ref={feedbackRef} className="scroll-mt-16 space-y-2 border-t border-forest-accent/8 pt-4" aria-label="后来的经历">
         <div className="flex min-h-11 items-center justify-between gap-2">
           <h3 className="font-serif text-sm font-bold text-forest-accent">后来的经历</h3>
-          {!isEditing && onSaveFeedback && <button type="button" onClick={() => { setText(savedFeedback); setIsEditing(true); setNotice(''); }} className="inline-flex min-h-11 items-center gap-1.5 text-xs text-forest-accent"><PencilLine size={15} />{savedFeedback.trim() ? '补写复盘' : '添加复盘'}</button>}
+          {!isEditing && onSaveFeedback && <button type="button" onClick={startEditing} className="inline-flex min-h-11 items-center gap-1.5 text-xs text-forest-accent"><PencilLine size={15} />{savedFeedback.trim() ? '补写复盘' : '添加复盘'}</button>}
         </div>
         {isEditing ? <div className="space-y-2">
           <AutoResizeTextarea aria-label="后来发生了什么" minRows={3} maxRows={12} value={text} disabled={isSaving} onChange={event => { setText(event.target.value); setNotice(''); }} placeholder="后来发生了什么？记下一点就好。" className="w-full rounded-lg border border-forest-accent/10 bg-white/60 px-3 py-2.5 text-base leading-relaxed focus:ring-2 focus:ring-forest-accent/15 sm:text-sm" />
           {!draft.durable && <p role="status" className="text-xs text-forest-muted">草稿暂存失败，请先不要关闭页面。</p>}
           <div className="flex items-center justify-end gap-3">
+            <button type="button" disabled={isSaving} onClick={() => hasChanges ? setDiscardChanges(true) : cancelEditing()} className="min-h-11 px-2 text-xs text-forest-muted disabled:opacity-50">取消修改</button>
             <button type="button" disabled={isSaving} onClick={() => requestLeave('close')} className="min-h-11 px-2 text-xs text-forest-muted disabled:opacity-50">稍后继续</button>
             <button type="button" disabled={isSaving || !hasChanges} onClick={saveFeedback} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg bg-forest-accent px-4 text-sm text-white disabled:opacity-50"><Save size={16} />{isSaving ? '保存中...' : '保存复盘'}</button>
           </div>
@@ -143,6 +167,7 @@ export function ReadingReviewPage({ reading, ownerScope = 'guest', onClose, onEd
         </FoldableSection>}
       </div>
     </div>
+    <ConfirmDialog isOpen={discardChanges} title="放弃这次修改？" message="已保存的复盘会保留，本次尚未保存的修改将被清除。" confirmText="放弃修改" cancelText="继续填写" onConfirm={cancelEditing} onClose={() => setDiscardChanges(false)} />
     <ConfirmDialog isOpen={Boolean(leaveAction)} title="草稿尚未保存" message="当前浏览器无法暂存这段修改，离开会丢失未保存的文字。" confirmText="离开" cancelText="继续填写" onConfirm={() => { if (leaveAction === 'edit') onEdit?.(reading); else onClose(); }} onClose={() => setLeaveAction(null)} />
   </PageView>;
 }

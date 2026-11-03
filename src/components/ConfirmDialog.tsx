@@ -12,7 +12,8 @@ interface ConfirmDialogProps {
   confirmText?: string;
   cancelText?: string;
   destructive?: boolean;
-  onConfirm: () => void | Promise<void>;
+  error?: string;
+  onConfirm: () => void | boolean | Promise<void | boolean>;
   onClose: () => void;
 }
 
@@ -23,6 +24,7 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
   confirmText = '确认',
   cancelText = '取消',
   destructive = false,
+  error,
   onConfirm,
   onClose,
 }) => {
@@ -32,8 +34,7 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
   useModalFocus(isOpen, dialogRef, onClose);
 
   const handleConfirm = async () => {
-    await onConfirm();
-    onClose();
+    if (await onConfirm() !== false) onClose();
   };
 
   const dialog = (
@@ -76,6 +77,7 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
             </div>
 
             <p className="text-sm text-forest-muted leading-relaxed">{message}</p>
+            {error && <p role="alert" className="text-xs leading-relaxed text-forest-muted">{error}</p>}
 
             <div className="flex gap-3 pt-1">
               <button

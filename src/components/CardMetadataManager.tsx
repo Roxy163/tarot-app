@@ -12,8 +12,9 @@ import { CardAnnotationEditor } from './CardAnnotationEditor';
 import { ConfirmDialog } from './ConfirmDialog';
 import { TarotCardImage } from './TarotCardImage';
 import { requireLocalSave } from '../lib/safeLocalStorage';
-import { readLocalDraft, useLocalDraft } from '../hooks/useLocalDraft';
 import { useAnnotationRevision } from '../hooks/useAnnotationSync';
+import { cardPersonalNotesPatch, getCardPersonalNotes } from '../lib/cardPersonalNotes';
+import { clearCardPersonalNoteDrafts, isCardPersonalNoteDraftDurable, readCardPersonalNoteText, useCardPersonalNoteRevision, writeCardPersonalNoteDraft } from '../lib/cardPersonalNoteDrafts';
 import {
   getCurrentMonthKey,
   getDailyFortunesByCard,
@@ -36,12 +37,14 @@ import { QuietEmptyState } from './ui/SoftUI';
 import { AutoResizeTextarea } from './ui/AutoResizeTextarea';
 import { trackEvent } from '../lib/analytics';
 import { Modal } from './Modal';
+import { DailyFortuneReadingPage } from './DailyFortuneReadingPage';
 
 interface CardMetadataManagerProps {
   metadata: TarotCardMetadata[];
   onUpdate: (updated: TarotCardMetadata[]) => void;
   readings: TarotReading[];
   dailyFortunes?: DailyFortune[];
+  dailyFortuneExamples?: DailyFortune[];
   cardKeywordMemory?: CardKeywordMemory[];
   onShowSnackbar?: (message: string) => void;
   isLoggedIn?: boolean;
@@ -95,6 +98,36 @@ const getSuitLabel = (cardId: string) => {
 const uniqueTexts = (items: Array<string | undefined | null>) => (
   Array.from(new Set(items.map(item => item?.trim()).filter(Boolean) as string[]))
 );
+
+function DailyFortunePreview({ fortune, kind, onOpen }: { fortune: DailyFortune; kind: '例证' | '历史'; onOpen: () => void }) {
+  const parts = getDailyReflectionParts(fortune);
+  const previews = [
+    { label: '第一直觉', value: parts.initialImpression },
+    { label: '今日回看', value: parts.dailyReview },
+  ].filter(part => part.value);
+
+  return (
+    <button
+      type="button"
+      onClick={onOpen}
+      aria-label={`查看${fortune.date}日运${kind}`}
+      className="min-h-11 w-full rounded-xl border border-forest-accent/10 bg-forest-bg/40 p-2.5 text-left transition-colors hover:bg-forest-accent/6 focus-visible:outline-2 focus-visible:outline-forest-accent"
+    >
+      <span className="flex items-center justify-between gap-2">
+        <span className="text-[10px] font-medium text-forest-accent">{fortune.date}</span>
+        <span className={`rounded-full px-2 py-0.5 text-[9px] font-medium ${fortune.isReversed ? 'bg-forest-pink/8 text-forest-pink' : 'bg-forest-accent/10 text-forest-accent'}`}>
+          {fortune.isReversed ? '逆位' : '正位'}
+        </span>
+      </span>
+      <span className="mt-2 block space-y-1 text-xs leading-relaxed text-forest-ink/80">
+        {previews.length > 0 ? previews.map(part => (
+          <span key={part.label} className="line-clamp-2 whitespace-pre-wrap break-words"><span className="text-forest-accent">{part.label}：</span>{part.value}</span>
+        )) : <span className="line-clamp-2 whitespace-pre-wrap break-words">{fortune.interpretation}</span>}
+      </span>
+      <span className="mt-1.5 flex items-center justify-end gap-1 text-[10px] text-forest-accent">查看完整记录<ChevronRight size={12} aria-hidden="true" /></span>
+    </button>
+  );
+}
 
 function CardNumerologyCard({ cardName, isLoggedIn, userId }: CardNumerologyCardProps) {
   const { numerology, meaning, keywords, isCustom, saveNumerology, restoreDefault } = useCardNumerology(cardName, isLoggedIn, userId);
@@ -287,21 +320,22 @@ function CardNumerologyCard({ cardName, isLoggedIn, userId }: CardNumerologyCard
   );
 }
 
-export function CardMetadataManager({ metadata, onUpdate, readings, dailyFortunes = [], cardKeywordMemory = [], onShowSnackbar, isLoggedIn, userId, initialCardId, ownerName = '见习阁主', detailOnly = false, onClose }: CardMetadataManagerProps) {
+export function CardMetadataManager({ metadata, onUpdate, readings, dailyFortunes = [], dailyFortuneExamples, cardKeywordMemory = [], onShowSnackbar, isLoggedIn, userId, initialCardId, ownerName = '见习阁主', detailOnly = false, onClose }: CardMetadataManagerProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [detailCardId, setDetailCardId] = useState<string | null>(null);
   const [isDetailSheetOpen, setIsDetailSheetOpen] = useState(false);
+  const [readingFortune, setReadingFortune] = useState<DailyFortune | null>(null);
+  const [isFortuneReadingOpen, setIsFortuneReadingOpen] = useState(false);
   const [localMetadata, setLocalMetadata] = useState<TarotCardMetadata[]>(() => buildCardLibrary(metadata));
   const [filterType, setFilterType] = useState<'all' | 'major' | 'wands' | 'cups' | 'swords' | 'pentacles'>('all');
   const [libraryViewMode, setLibraryViewMode] = useState<'grid' | 'list'>('grid');
   const annotationRevision = useAnnotationRevision();
-  const personalDraftKey = `tarot_personal_meaning_draft_${userId || 'guest'}`;
-  const [personalMeaningDrafts, setPersonalMeaningDrafts] = useState<Record<string, string>>(() => readLocalDraft(personalDraftKey) || {});
-  const personalDraft = useLocalDraft(personalDraftKey, personalMeaningDrafts);
-  const personalMeanings = useMemo(() => ({
-    ...Object.fromEntries(TAROT_CARDS.map(card => [card.name, cardAnnotationService.getUserAnnotation(card.id)?.personalMeaning || ''])),
-    ...personalMeaningDrafts,
-  }), [annotationRevision, personalMeaningDrafts]);
+  const noteScope = userId || 'guest';
+  const personalNoteRevision = useCardPersonalNoteRevision();
+  const personalMeanings = useMemo(() => Object.fromEntries(TAROT_CARDS.map(card => [
+    card.name,
+    readCardPersonalNoteText(noteScope, card.id, card.name, cardAnnotationService.getUserAnnotation(card.id)),
+  ])), [annotationRevision, personalNoteRevision, noteScope]);
   const [isSaving, setIsSaving] = useState(false);
   const [isExportMenuOpen, setIsExportMenuOpen] = useState(false);
   const [isToolsMenuOpen, setIsToolsMenuOpen] = useState(false);
@@ -321,6 +355,10 @@ export function CardMetadataManager({ metadata, onUpdate, readings, dailyFortune
   const dailyFortuneGroupMap = useMemo(
     () => new Map(dailyFortuneGroups.map(group => [group.cardName, group])),
     [dailyFortuneGroups],
+  );
+  const dailyFortuneExampleGroupMap = useMemo(
+    () => new Map(getDailyFortunesByCard(getSavedDailyFortuneExamples(dailyFortuneExamples ?? dailyFortunes), currentMonthKey).map(group => [group.cardName, group])),
+    [currentMonthKey, dailyFortuneExamples, dailyFortunes],
   );
   const readingCountByCardName = useMemo(() => {
     const counts = new Map<string, number>();
@@ -413,11 +451,6 @@ export function CardMetadataManager({ metadata, onUpdate, readings, dailyFortune
         element: hasUserAnnotation ? annotation.element || card.astrology?.element : card.astrology?.element || annotation.element || undefined,
       };
       const dailyFortuneGroup = dailyFortuneGroupMap.get(card.name);
-      const personalNoteBlocks = [
-        annotation.personalNotes,
-        personalMeanings[card.name],
-      ].map(text => text?.trim()).filter(Boolean);
-
       return {
         card: {
           ...card,
@@ -429,14 +462,14 @@ export function CardMetadataManager({ metadata, onUpdate, readings, dailyFortune
         keywords: uniqueTexts([...(annotation.keywords || []), ...(card.keywords || [])]),
         uprightMeaning: annotation.uprightMeaning || card.meaning || '',
         reversedMeaning: annotation.reversedMeaning || card.reversedMeaning || '',
-        personalNotes: personalNoteBlocks.join('\n\n'),
+        personalNotes: personalMeanings[card.name] ?? getCardPersonalNotes(annotation),
         readingCount: readingCountByCardName.get(card.name) || 0,
         dailyFortuneTotal: dailyFortuneGroup?.totalCount || 0,
         dailyFortuneCurrentMonth: dailyFortuneGroup?.currentMonthCount || 0,
-        dailyFortuneSavedExamples: dailyFortuneGroup?.savedToAnnotationCount || 0,
+        dailyFortuneSavedExamples: dailyFortuneExampleGroupMap.get(card.name)?.totalCount || 0,
       };
     })
-  ), [dailyFortuneGroupMap, localMetadata, personalMeanings, readingCountByCardName, modifiedCount]);
+  ), [dailyFortuneGroupMap, dailyFortuneExampleGroupMap, localMetadata, personalMeanings, readingCountByCardName, modifiedCount]);
 
   const exportItemById = useMemo(
     () => new Map(exportItems.map(item => [item.card.id, item])),
@@ -465,10 +498,8 @@ export function CardMetadataManager({ metadata, onUpdate, readings, dailyFortune
   };
 
   const handlePersonalMeaningChange = (cardName: string, value: string) => {
-    setPersonalMeaningDrafts(prev => ({
-      ...prev,
-      [cardName]: value
-    }));
+    const card = TAROT_CARDS.find(item => item.name === cardName);
+    if (card) writeCardPersonalNoteDraft(noteScope, card.id, value);
   };
 
   const getCardKeywordMemory = (cardName: string) => (
@@ -489,28 +520,26 @@ export function CardMetadataManager({ metadata, onUpdate, readings, dailyFortune
     [detailCard, cardKeywordMemory],
   );
   const detailDailyFortuneGroup = detailCard ? dailyFortuneGroupMap.get(detailCard.name) : undefined;
-  const detailDailyFortuneExamples = getSavedDailyFortuneExamples(detailDailyFortuneGroup?.fortunes || []);
+  const detailDailyFortuneExamples = detailCard ? dailyFortuneExampleGroupMap.get(detailCard.name)?.fortunes || [] : [];
   const detailDailyFortuneHistory = detailDailyFortuneGroup?.fortunes || [];
+  const openFortuneReading = (fortune: DailyFortune) => {
+    setReadingFortune(fortune);
+    setIsFortuneReadingOpen(true);
+  };
   const closeCardDetail = useCallback(() => {
-    if (!personalDraft.durable) {
+    if (detailCard && !isCardPersonalNoteDraftDurable(noteScope, detailCard.id)) {
       onShowSnackbar?.('暂存失败，请先复制个人注疏或释放存储空间后保存。');
       return;
     }
     setIsDetailSheetOpen(false);
-  }, [personalDraft.durable, onShowSnackbar]);
+  }, [detailCard, noteScope, onShowSnackbar]);
 
 
 
   const appendKeywordToPersonalMeaning = (cardName: string, keyword: string) => {
-    setPersonalMeaningDrafts(prev => {
-      const current = prev[cardName] ?? personalMeanings[cardName] ?? '';
-      if (current.includes(keyword)) return prev;
-
-      return {
-        ...prev,
-        [cardName]: current ? `${current}\n- ${keyword}` : `- ${keyword}`
-      };
-    });
+    const current = personalMeanings[cardName] || '';
+    if (current.includes(keyword)) return;
+    handlePersonalMeaningChange(cardName, current ? `${current}\n- ${keyword}` : `- ${keyword}`);
   };
 
   const savePersonalMeaning = async (cardName: string) => {
@@ -519,8 +548,9 @@ export function CardMetadataManager({ metadata, onUpdate, readings, dailyFortune
     try {
       const card = TAROT_CARDS.find(item => item.name === cardName);
       if (!card) throw new Error('Card not found');
-      cardAnnotationService.saveUserAnnotation(card.id, { personalMeaning: meaning });
-      setPersonalMeaningDrafts(prev => { const next = { ...prev }; delete next[cardName]; return next; });
+      if (!writeCardPersonalNoteDraft(noteScope, card.id, meaning)) throw new Error('个人笔记暂存失败');
+      cardAnnotationService.saveUserAnnotation(card.id, cardPersonalNotesPatch(meaning));
+      clearCardPersonalNoteDrafts(noteScope, card.id, cardName);
       onShowSnackbar?.(`《${cardName}》的注疏已保存在本机${isLoggedIn ? '，将自动同步。' : '。'}`);
     } catch {
       onShowSnackbar?.('保存失败，内容仍保留在编辑区，请释放存储空间后重试。');
@@ -778,6 +808,7 @@ export function CardMetadataManager({ metadata, onUpdate, readings, dailyFortune
           const insights = getDetailedInsights(card.name);
           const personalKeywordStats = getCardKeywordMemory(card.name).slice(0, 8);
           const dailyFortuneGroup = dailyFortuneGroupMap.get(card.name);
+          const savedExampleCount = dailyFortuneExampleGroupMap.get(card.name)?.totalCount || 0;
           return (
             <motion.div 
               key={card.id}
@@ -829,21 +860,21 @@ export function CardMetadataManager({ metadata, onUpdate, readings, dailyFortune
                       <span>{insights.length} 条研习记录</span>
                     </div>
                   )}
-                  {dailyFortuneGroup && (
+                  {(dailyFortuneGroup || savedExampleCount > 0) && (
                     <div className={`mt-1 flex flex-wrap gap-1 sm:mt-2 ${
                       libraryViewMode === 'grid' ? 'justify-center' : ''
                     }`}>
-                      <span className="rounded-full border border-forest-accent/10 bg-forest-accent/10 px-1.5 py-0.5 text-[7.5px] text-forest-accent sm:px-2 sm:text-[8px]">
+                      {dailyFortuneGroup && <span className="rounded-full border border-forest-accent/10 bg-forest-accent/10 px-1.5 py-0.5 text-[7.5px] text-forest-accent sm:px-2 sm:text-[8px]">
                         日运 ×{dailyFortuneGroup.totalCount}
-                      </span>
-                      {dailyFortuneGroup.currentMonthCount > 0 && (
+                      </span>}
+                      {dailyFortuneGroup && dailyFortuneGroup.currentMonthCount > 0 && (
                         <span className="rounded-full border border-forest-accent/10 bg-forest-bg px-1.5 py-0.5 text-[7.5px] text-forest-muted sm:px-2 sm:text-[8px]">
                           本月 ×{dailyFortuneGroup.currentMonthCount}
                         </span>
                       )}
-                      {dailyFortuneGroup.savedToAnnotationCount > 0 && (
+                      {savedExampleCount > 0 && (
                         <span className="rounded-full border border-forest-pink/10 bg-forest-pink/10 px-1.5 py-0.5 text-[7.5px] text-forest-pink sm:px-2 sm:text-[8px]">
-                          例证 ×{dailyFortuneGroup.savedToAnnotationCount}
+                          例证 ×{savedExampleCount}
                         </span>
                       )}
                     </div>
@@ -1033,6 +1064,7 @@ export function CardMetadataManager({ metadata, onUpdate, readings, dailyFortune
                     value={personalMeanings[detailCard.name] || ''}
                     onChange={e => handlePersonalMeaningChange(detailCard.name, e.target.value)}
                   />
+                  {!isCardPersonalNoteDraftDurable(noteScope, detailCard.id) && <p role="status" className="text-xs text-forest-muted">暂存失败，内容仍在此页，请先保存或复制。</p>}
                 </section>
 
                 <section className="grid gap-3 sm:grid-cols-2">
@@ -1050,24 +1082,9 @@ export function CardMetadataManager({ metadata, onUpdate, readings, dailyFortune
                     </div>
                     {detailDailyFortuneExamples.length > 0 ? (
                       <div className="custom-scrollbar max-h-44 space-y-2 overflow-y-auto pr-1">
-                        {detailDailyFortuneExamples.map(fortune => {
-                          const parts = getDailyReflectionParts(fortune);
-                          return (
-                            <div key={fortune.id} className="rounded-xl border border-forest-accent/10 bg-forest-bg/45 p-2.5">
-                              <div className="flex items-center justify-between gap-2">
-                                <span className="text-[10px] font-medium text-forest-accent">{fortune.date}</span>
-                                <span className={`rounded-full px-2 py-0.5 text-[9px] font-medium ${
-                                  fortune.isReversed ? 'bg-red-50 text-red-400' : 'bg-forest-accent/10 text-forest-accent'
-                                }`}>
-                                  {fortune.isReversed ? '逆位' : '正位'}
-                                </span>
-                              </div>
-                              <p className="mt-2 line-clamp-3 whitespace-pre-wrap text-xs leading-relaxed text-forest-ink/80">
-                                {parts.initialImpression || parts.dailyReview || fortune.reflection || fortune.interpretation}
-                              </p>
-                            </div>
-                          );
-                        })}
+                        {detailDailyFortuneExamples.map(fortune => (
+                          <DailyFortunePreview key={fortune.id} fortune={fortune} kind="例证" onOpen={() => openFortuneReading(fortune)} />
+                        ))}
                       </div>
                     ) : (
                       <QuietEmptyState
@@ -1092,24 +1109,9 @@ export function CardMetadataManager({ metadata, onUpdate, readings, dailyFortune
                     </div>
                     {detailDailyFortuneHistory.length > 0 ? (
                       <div className="custom-scrollbar max-h-44 space-y-2 overflow-y-auto pr-1">
-                        {detailDailyFortuneHistory.map(fortune => {
-                          const parts = getDailyReflectionParts(fortune);
-                          return (
-                            <div key={fortune.id} className="rounded-xl border border-forest-accent/5 bg-forest-bg/35 p-2.5">
-                              <div className="flex items-center justify-between gap-2">
-                                <span className="text-[10px] font-medium text-forest-muted">{fortune.date}</span>
-                                <span className={`rounded-full px-2 py-0.5 text-[9px] font-medium ${
-                                  fortune.isReversed ? 'bg-red-50 text-red-400' : 'bg-forest-accent/10 text-forest-accent'
-                                }`}>
-                                  {fortune.isReversed ? '逆位' : '正位'}
-                                </span>
-                              </div>
-                              <p className="mt-2 line-clamp-2 whitespace-pre-wrap text-xs leading-relaxed text-forest-text/75">
-                                {parts.initialImpression || parts.dailyReview || fortune.reflection || fortune.interpretation}
-                              </p>
-                            </div>
-                          );
-                        })}
+                        {detailDailyFortuneHistory.map(fortune => (
+                          <DailyFortunePreview key={fortune.id} fortune={fortune} kind="历史" onOpen={() => openFortuneReading(fortune)} />
+                        ))}
                       </div>
                     ) : (
                       <QuietEmptyState
@@ -1152,6 +1154,11 @@ export function CardMetadataManager({ metadata, onUpdate, readings, dailyFortune
                   )}
                 </section>
               </div>
+          {readingFortune && <DailyFortuneReadingPage
+            fortune={readingFortune}
+            isOpen={isFortuneReadingOpen}
+            onBack={() => setIsFortuneReadingOpen(false)}
+          />}
           <CardAnnotationEditor
             isOpen={showAnnotationEditor}
             onClose={() => { setShowAnnotationEditor(false); refreshModifiedCount(); }}

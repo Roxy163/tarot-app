@@ -81,6 +81,7 @@ interface PrivateTabProps {
   dailyFortuneCount?: number;
   onOpenDailyArchive?: () => void;
   onOpenCardHistory?: (cardName: string) => void;
+  isActive?: boolean;
 }
 
 export const PrivateTab: React.FC<PrivateTabProps> = ({
@@ -104,6 +105,7 @@ export const PrivateTab: React.FC<PrivateTabProps> = ({
   dailyFortuneCount = 0,
   onOpenDailyArchive,
   onOpenCardHistory,
+  isActive = true,
 }) => {
   const [reviewFilter, setReviewFilter] = useState<'all' | 'incomplete' | 'reviewed' | 'unreviewed'>('all');
   const [audienceFilter, setAudienceFilter] = useState<'all' | 'self' | 'client'>('all');
@@ -191,18 +193,20 @@ export const PrivateTab: React.FC<PrivateTabProps> = ({
     hasMore,
     sentinelRef,
     visibleItems: visibleReadings,
-  } = useProgressiveList(filteredReadings);
+  } = useProgressiveList(filteredReadings, { resetKey: JSON.stringify({ reviewFilter, audienceFilter, clientFilter, activeIndexFilter, searchQuery, searchTags }) });
 
   const selectableReadings = useMemo(() => (
     filteredReadings.filter(reading => !reading.isExample)
   ), [filteredReadings]);
+  const allSelectableReadings = useMemo(() => readings.filter(reading => !reading.isExample), [readings]);
   const selectedReadings = useMemo(() => (
-    selectableReadings.filter(reading => selectedReadingIds.includes(reading.id))
-  ), [selectableReadings, selectedReadingIds]);
+    allSelectableReadings.filter(reading => selectedReadingIds.includes(reading.id))
+  ), [allSelectableReadings, selectedReadingIds]);
   const canExport = selectedReadings.length > 0;
-  const shouldShowSelectionToolbar = isSelectionMode && selectableReadings.length > 0;
+  const shouldShowSelectionToolbar = isSelectionMode && (selectableReadings.length > 0 || selectedReadings.length > 0);
   const allSelectableSelected = selectableReadings.length > 0
     && selectableReadings.every(reading => selectedReadingIds.includes(reading.id));
+  const selectedOutsideResults = selectedReadings.filter(reading => !selectableReadings.some(item => item.id === reading.id)).length;
   const closeFilterMenu = useCallback(() => setIsReviewFilterOpen(false), []);
   const closeExportMenu = useCallback(() => setIsExportMenuOpen(false), []);
   const closeIndexPanel = useCallback(() => setIsIndexOpen(false), []);
@@ -212,9 +216,16 @@ export const PrivateTab: React.FC<PrivateTabProps> = ({
   useClickOutside(exportMenuRef, closeExportMenu, isExportMenuOpen);
 
   useEffect(() => {
-    const availableIds = new Set(selectableReadings.map(reading => reading.id));
+    const availableIds = new Set(allSelectableReadings.map(reading => reading.id));
     setSelectedReadingIds(prev => prev.filter(id => availableIds.has(id)));
-  }, [selectableReadings]);
+  }, [allSelectableReadings]);
+
+  useEffect(() => {
+    if (isActive) return;
+    setIsReviewFilterOpen(false);
+    setIsExportMenuOpen(false);
+    setIsIndexOpen(false);
+  }, [isActive]);
 
   useEffect(() => () => {
     if (longPressTimerRef.current) window.clearTimeout(longPressTimerRef.current);
@@ -334,12 +345,13 @@ export const PrivateTab: React.FC<PrivateTabProps> = ({
   };
 
   const toggleSelectAll = () => {
+    const currentIds = new Set(selectableReadings.map(reading => reading.id));
     if (allSelectableSelected) {
-      setSelectedReadingIds([]);
+      setSelectedReadingIds(previous => previous.filter(id => !currentIds.has(id)));
       return;
     }
 
-    setSelectedReadingIds(selectableReadings.map(reading => reading.id));
+    setSelectedReadingIds(previous => [...new Set([...previous, ...currentIds])]);
   };
 
   const cancelReadingLongPress = () => {
@@ -1005,15 +1017,17 @@ export const PrivateTab: React.FC<PrivateTabProps> = ({
       {shouldShowSelectionToolbar && (
         <div className="flex flex-wrap items-center gap-2 rounded-[1.25rem] border border-forest-accent/7 bg-white/18 px-2.5 py-2 text-[10px] font-normal text-forest-muted">
           <span className="rounded-full bg-white/42 px-2.5 py-1">
-            已选 {selectedReadings.length} / 当前 {selectableReadings.length}
+            已选 {selectedReadings.length} 条 · 当前结果 {selectableReadings.length} 条
           </span>
           <button
             type="button"
+            disabled={selectableReadings.length === 0}
             onClick={toggleSelectAll}
-            className="min-h-11 rounded-full bg-forest-accent/8 px-3 text-forest-accent hover:bg-forest-accent/12"
+            className="min-h-11 rounded-full bg-forest-accent/8 px-3 text-forest-accent hover:bg-forest-accent/12 disabled:opacity-50"
           >
-            {allSelectableSelected ? '取消全选' : '全选当前'}
+            {allSelectableSelected ? '取消当前选择' : '全选当前'}
           </button>
+          {selectedOutsideResults > 0 && <span role="status">另有 {selectedOutsideResults} 条已选记录不在当前结果中</span>}
           {selectedReadings.length > 0 && (
             <button
               type="button"
@@ -1068,6 +1082,7 @@ export const PrivateTab: React.FC<PrivateTabProps> = ({
             return (
               <div
                 key={reading.id}
+                data-reading-id={reading.id}
                 data-reading-selection-target={isSelectable ? 'true' : undefined}
                 onPointerDown={event => startReadingLongPress(reading, event)}
                 onPointerUp={cancelReadingLongPress}

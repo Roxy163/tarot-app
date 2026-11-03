@@ -18,12 +18,13 @@ export const TarotCardImage: React.FC<TarotCardImageProps> = ({
   loading = 'lazy',
   fetchPriority = 'auto',
 }) => {
-  const [failedSrc, setFailedSrc] = useState<string | null>(null);
+  const [attempt, setAttempt] = useState({ src, format: 0 });
+  const format = attempt.src === src ? attempt.format : 0;
   const [isLoaded, setIsLoaded] = useState(false);
   const imageRef = useRef<HTMLImageElement | null>(null);
 
   useEffect(() => {
-    setFailedSrc(null);
+    setAttempt({ src, format: 0 });
     setIsLoaded(false);
 
     const image = imageRef.current;
@@ -32,7 +33,21 @@ export const TarotCardImage: React.FC<TarotCardImageProps> = ({
     }
   }, [src]);
 
-  if (failedSrc === src) {
+  useEffect(() => {
+    const retry = () => {
+      if (format === 0) return;
+      setIsLoaded(false);
+      setAttempt({ src, format: 0 });
+    };
+    window.addEventListener('online', retry);
+    navigator.serviceWorker?.addEventListener('controllerchange', retry);
+    return () => {
+      window.removeEventListener('online', retry);
+      navigator.serviceWorker?.removeEventListener('controllerchange', retry);
+    };
+  }, [src, format]);
+
+  if (format >= 3) {
     return (
       <div
         data-testid="tarot-card-image-fallback"
@@ -73,9 +88,9 @@ export const TarotCardImage: React.FC<TarotCardImageProps> = ({
           <span className="h-1 w-5 rounded-full bg-forest-accent/10" />
         </span>
       </span>
-      <picture>
-        {avifSrc && <source srcSet={avifSrc} type="image/avif" />}
-        {webpSrc && <source srcSet={webpSrc} type="image/webp" />}
+      <picture key={`${src}:${format}`}>
+        {avifSrc && format === 0 && <source srcSet={avifSrc} type="image/avif" />}
+        {webpSrc && format < 2 && <source srcSet={webpSrc} type="image/webp" />}
         <img
           src={src}
           alt={alt}
@@ -88,7 +103,17 @@ export const TarotCardImage: React.FC<TarotCardImageProps> = ({
           ref={imageRef}
           referrerPolicy="no-referrer"
           onLoad={() => setIsLoaded(true)}
-          onError={() => setFailedSrc(src)}
+          onError={event => {
+            setIsLoaded(false);
+            const failedUrl = event.currentTarget.currentSrc;
+            // A picture does not try its next source after a network failure.
+            // Remove the failed format so a cached, compatible copy can load.
+            const nextFormat = !avifSrc && !webpSrc ? 3
+              : /\.avif(?:[?#]|$)/.test(failedUrl) ? 1
+                : /\.webp(?:[?#]|$)/.test(failedUrl) ? 2
+                  : failedUrl ? 3 : format + 1;
+            setAttempt({ src, format: Math.max(format + 1, nextFormat) });
+          }}
         />
       </picture>
     </span>

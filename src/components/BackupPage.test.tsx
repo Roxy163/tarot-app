@@ -62,6 +62,21 @@ describe('backup page', () => {
     expect(await screen.findByRole('status')).toHaveTextContent('恢复完成');
     expect(callbacks.onRestore).toHaveBeenCalledTimes(2);
   });
+  it('counts deleted examples separately from visible daily records in the restore preview', async () => {
+    const entry = { id: 'day', userId: 'local', date: '2026-07-02', cardName: '隐士', isReversed: false,
+      interpretation: '', keywords: [], createdAt: '2026-07-02T07:00:00Z' };
+    const file = createTarotBackup({ ...backup.data, fortunes: [
+      entry,
+      { ...entry, id: 'saved-deleted', deletedAt: '2026-07-02T09:00:00Z', savedToCardAnnotationAt: '2026-07-02T08:00:00Z', dailyReview: '保留的例证' },
+      { ...entry, id: 'plain-deleted', deletedAt: '2026-07-02T09:00:00Z' },
+    ] });
+    render(<BackupPage {...props()} />);
+    chooseFile(JSON.stringify(file));
+    await screen.findByRole('button', { name: '确认合并恢复' });
+    expect(screen.getByText('日运').parentElement).toHaveTextContent('日运1');
+    expect(screen.getByText('保留的日运例证').parentElement).toHaveTextContent('保留的日运例证1');
+    expect(screen.getByText('已删除日运不会重新出现在日运档案；已归入的例证会留在牌义注疏中。')).toBeInTheDocument();
+  });
   it('rejects a broken file without applying it and keeps account loading actions disabled', async () => {
     const callbacks = props();
     const view = render(<BackupPage {...callbacks} />);

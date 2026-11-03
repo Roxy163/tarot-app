@@ -2,6 +2,12 @@ import { DailyFortune, DailyFortuneReflectionParts } from '../types';
 
 export const NO_OBVIOUS_DAILY_MATCH_TEXT = '今天暂未看见明显对应';
 
+export const appendNoObviousDailyMatch = (text: string) => {
+  if (!text.trim()) return NO_OBVIOUS_DAILY_MATCH_TEXT;
+  if (text.split(/\r?\n/).some(line => line.trim() === NO_OBVIOUS_DAILY_MATCH_TEXT)) return text;
+  return `${text}${text.endsWith('\n') ? '' : '\n'}${NO_OBVIOUS_DAILY_MATCH_TEXT}`;
+};
+
 const normalize = (value?: string) => (value || '').trim();
 
 export const buildDailyReflection = ({

@@ -1,5 +1,8 @@
 import { DailyFortune } from '../types';
 import type { ExportLine } from './pdfExport';
+import { TAROT_CARDS } from '../constants';
+import { cardMatchesSearch } from './cardSearch';
+import { getRecordCalendarDate, recordDateMatchesSearch } from './readingSearch';
 import {
   getDailyReflectionParts,
   hasDailyReflectionContent,
@@ -23,7 +26,7 @@ export interface DailyFortuneMonthlyCardStat {
 }
 
 const sortFortunesNewestFirst = (fortunes: DailyFortune[]) => (
-  [...fortunes].sort((a, b) => b.date.localeCompare(a.date) || b.createdAt.localeCompare(a.createdAt))
+  [...fortunes].sort((a, b) => getRecordCalendarDate(b.date).localeCompare(getRecordCalendarDate(a.date)) || b.createdAt.localeCompare(a.createdAt))
 );
 
 export const getCurrentMonthKey = (date = new Date()) => (
@@ -31,8 +34,20 @@ export const getCurrentMonthKey = (date = new Date()) => (
 );
 
 export const getFortunesForMonth = (fortunes: DailyFortune[], monthKey = getCurrentMonthKey()) => (
-  sortFortunesNewestFirst(fortunes.filter(fortune => fortune.date.startsWith(monthKey)))
+  sortFortunesNewestFirst(fortunes.filter(fortune => getRecordCalendarDate(fortune.date).startsWith(monthKey)))
 );
+
+export const dailyFortuneMatchesSearch = (fortune: DailyFortune, search: string) => {
+  const query = search.trim().normalize('NFKC').toLowerCase();
+  if (!query) return true;
+  const parts = getDailyReflectionParts(fortune);
+  const fields = [fortune.cardName, ...fortune.keywords, fortune.interpretation,
+    parts.initialImpression, parts.dailyReview, fortune.reflection, fortune.cardAnnotationNote,
+    fortune.isReversed ? '逆位' : '正位'];
+  if (fields.some(value => value?.normalize('NFKC').toLowerCase().includes(query)) || recordDateMatchesSearch(fortune.date, query)) return true;
+  const card = TAROT_CARDS.find(item => item.name === fortune.cardName || item.id === fortune.cardName);
+  return card ? cardMatchesSearch(card, query) : false;
+};
 
 export const getDailyFortunesByCard = (
   fortunes: DailyFortune[],
@@ -51,7 +66,7 @@ export const getDailyFortunesByCard = (
       cardName,
       fortunes: cardFortunes,
       totalCount: cardFortunes.length,
-      currentMonthCount: cardFortunes.filter(fortune => fortune.date.startsWith(monthKey)).length,
+      currentMonthCount: cardFortunes.filter(fortune => getRecordCalendarDate(fortune.date).startsWith(monthKey)).length,
       savedToAnnotationCount: cardFortunes.filter(fortune => Boolean(fortune.savedToCardAnnotationAt)).length,
       uprightCount: cardFortunes.filter(fortune => !fortune.isReversed).length,
       reversedCount: cardFortunes.filter(fortune => fortune.isReversed).length,

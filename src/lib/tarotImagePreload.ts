@@ -17,6 +17,8 @@ interface PreloadOptions {
 const preloadedUrls = new Set<string>();
 const pendingUrls = new Map<string, Promise<void>>();
 let hasScheduledDeckWarmup = false;
+let isDeckWarmupRunning = false;
+let repeatDeckWarmupAfterOnline = false;
 
 const isTestEnvironment = () => (
   typeof navigator !== 'undefined' && navigator.userAgent.toLowerCase().includes('jsdom')
@@ -72,31 +74,39 @@ export const preloadTarotImageUrl = (
   if (pending) return pending;
 
   if (!canPreloadImages()) {
-    preloadedUrls.add(src);
     return Promise.resolve();
   }
 
-  const promise = new Promise<void>((resolve) => {
+  let resolvePreload!: () => void;
+  const promise = new Promise<void>(resolve => { resolvePreload = resolve; });
+  // Register before assigning a source: cached images can finish immediately.
+  pendingUrls.set(src, promise);
+  {
     const avifSrc = getCardImageFormatUrl(src, 'avif');
     const webpSrc = getCardImageFormatUrl(src, 'webp');
     const image = document.createElement('img');
     const picture = avifSrc || webpSrc ? document.createElement('picture') : null;
     let isSettled = false;
+    let timeoutId: number | null = null;
 
-    const finish = () => {
+    const finish = (succeeded: boolean) => {
       if (isSettled) return;
       isSettled = true;
-      preloadedUrls.add(src);
+      if (succeeded) preloadedUrls.add(src);
+      if (timeoutId !== null) window.clearTimeout(timeoutId);
       pendingUrls.delete(src);
+      image.onload = null;
+      image.onerror = null;
       picture?.remove();
-      resolve();
+      resolvePreload();
     };
 
     image.decoding = 'async';
     image.referrerPolicy = 'no-referrer';
     (image as HTMLImageElement & { fetchPriority?: ImageFetchPriority }).fetchPriority = priority;
-    image.onload = finish;
-    image.onerror = finish;
+    image.onload = () => finish(true);
+    image.onerror = () => finish(false);
+    timeoutId = window.setTimeout(() => finish(false), 15000);
 
     if (picture) {
       if (avifSrc) {
@@ -117,14 +127,14 @@ export const preloadTarotImageUrl = (
 
     image.src = src;
 
-    if (image.decode) {
-      void image.decode().then(finish, finish);
+    if (!isSettled && image.decode) {
+      try {
+        void image.decode().then(() => finish(true), () => finish(false));
+      } catch {
+        finish(false);
+      }
     }
-
-    window.setTimeout(finish, 15000);
-  });
-
-  pendingUrls.set(src, promise);
+  }
   return promise;
 };
 
@@ -156,9 +166,13 @@ export const preloadTarotCardImages = (
   options?: PreloadOptions,
 ) => preloadTarotImageUrls(cardIds.map(getCardImageUrl), options);
 
-export const warmTarotDeckImages = () => {
-  if (hasScheduledDeckWarmup || typeof window === 'undefined') return;
-  hasScheduledDeckWarmup = true;
+const scheduleDeckWarmup = () => {
+  if (!canPreloadImages()) return;
+  if (isDeckWarmupRunning) {
+    repeatDeckWarmupAfterOnline = true;
+    return;
+  }
+  isDeckWarmupRunning = true;
   const networkProfile = getTarotImageWarmupNetworkProfile();
 
   const firstInteractionIds = Array.from(new Set([
@@ -175,22 +189,32 @@ export const warmTarotDeckImages = () => {
     .map(card => card.id)
     .filter(id => !firstInteractionIds.includes(id));
 
+  let remainingPhases = 2;
+  const finishPhase = () => {
+    remainingPhases -= 1;
+    if (remainingPhases > 0) return;
+    isDeckWarmupRunning = false;
+    if (repeatDeckWarmupAfterOnline) {
+      repeatDeckWarmupAfterOnline = false;
+      scheduleDeckWarmup();
+    }
+  };
+
+  // Apply the profile budget before skipping successes so reconnects do not expand its target set.
   const warmInitialDeck = () => {
-    void preloadTarotCardImages(firstInteractionIds, {
+    void preloadTarotCardImages(firstInteractionIds.slice(0, networkProfile === 'constrained' ? 4 : undefined), {
       concurrency: networkProfile === 'constrained' ? 1 : 3,
-      limit: networkProfile === 'constrained' ? 4 : undefined,
       priority: 'high',
-    });
+    }).finally(finishPhase);
   };
 
   const warmRemainingDeck = () => {
-    if (networkProfile === 'constrained') return;
+    if (networkProfile === 'constrained') { finishPhase(); return; }
 
-    void preloadTarotCardImages(remainingIds, {
+    void preloadTarotCardImages(remainingIds.slice(0, networkProfile === 'moderate' ? 18 : undefined), {
       concurrency: networkProfile === 'moderate' ? 1 : 2,
-      limit: networkProfile === 'moderate' ? 18 : undefined,
       priority: 'low',
-    });
+    }).finally(finishPhase);
   };
 
   const idleWindow = window as Window & {
@@ -205,4 +229,11 @@ export const warmTarotDeckImages = () => {
 
   window.setTimeout(warmInitialDeck, 900);
   window.setTimeout(warmRemainingDeck, 4500);
+};
+
+export const warmTarotDeckImages = () => {
+  if (hasScheduledDeckWarmup || !canPreloadImages()) return;
+  hasScheduledDeckWarmup = true;
+  window.addEventListener('online', scheduleDeckWarmup);
+  scheduleDeckWarmup();
 };

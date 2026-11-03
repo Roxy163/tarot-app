@@ -16,6 +16,7 @@ import type {
 import { getFirebaseApp } from './firebase';
 import { isFirebaseOfflineError } from './firebaseErrors';
 import { createUserReadingSyncPlan, UserReadingSyncOptions } from './readingCloudSync';
+import { mergeDailyFortuneSources } from './dailyFortuneCloudSync';
 import { readJsonRecordWithBackup, writeJsonWithBackup } from './safeLocalStorage';
 
 type FirestoreApi = typeof import('firebase/firestore');
@@ -778,7 +779,25 @@ export const getUserQuizMemory = (uid: string) => getUserSetting<QuizMemoryEntry
 export const saveUserQuizMemory = (uid: string, memory: QuizMemoryEntry[]) => saveUserSetting(uid, 'quizMemory', memory);
 
 export const getUserDailyFortunes = (uid: string) => getUserSetting<DailyFortune>(uid, 'dailyFortunes');
-export const saveUserDailyFortunes = (uid: string, fortunes: DailyFortune[]) => saveUserSetting(uid, 'dailyFortunes', fortunes);
+export const saveUserDailyFortunes = async (uid: string, fortunes: DailyFortune[]): Promise<void> => {
+  const { doc, runTransaction } = await loadFirestore();
+  const db = await getFirebaseDb();
+  const ref = doc(db, 'users', uid, 'settings', 'dailyFortunes');
+  // A device that loaded before another device deleted an entry must keep that deletion when it saves.
+  await runTransaction(db, async transaction => {
+    const snapshot = await transaction.get(ref);
+    const current = snapshot.exists() ? snapshot.data() : null;
+    const previous = Array.isArray(current?.items) ? current.items as DailyFortune[] : [];
+    const items = mergeDailyFortuneSources(uid, [previous, fortunes]);
+    const updatedAt = new Date().toISOString();
+    if (current && Array.isArray(current.items)) {
+      transaction.set(doc(db, 'users', uid, 'settingsBackups', 'dailyFortunes'), {
+        items: current.items, sourceKey: 'dailyFortunes', updatedAt: current.updatedAt || null, backupAt: updatedAt,
+      });
+    }
+    transaction.set(ref, { items: withoutUndefined(items), updatedAt });
+  });
+};
 
 export const getUserAnnotations = (uid: string) => getUserSetting<Partial<CardAnnotation>>(uid, 'cardAnnotations');
 

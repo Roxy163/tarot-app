@@ -1,7 +1,7 @@
 import { act, renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useDailyFortune } from './useDailyFortune';
-import { getLocalStorageBackupKey } from '../lib/safeLocalStorage';
+import { getLocalStorageBackupKey, getLocalStorageLatestBackupKey } from '../lib/safeLocalStorage';
 import { getUserDailyFortunes, saveUserDailyFortunes } from '../lib/firebaseData';
 import type { DailyFortune } from '../types';
 
@@ -279,6 +279,8 @@ describe('useDailyFortune', () => {
         isRevealed: true,
       },
     ]));
+    localStorage.setItem(getLocalStorageLatestBackupKey('tarot_daily_fortunes'), localStorage.getItem('tarot_daily_fortunes')!);
+    localStorage.setItem(getLocalStorageBackupKey('tarot_daily_fortunes'), localStorage.getItem('tarot_daily_fortunes')!);
 
     const { result } = renderHook(() => useDailyFortune({ uid: 'user-1' }, false));
 
@@ -300,6 +302,8 @@ describe('useDailyFortune', () => {
       expect.objectContaining({ id: 'fortune-guest', userId: 'user-1' }),
     ]);
     expect(localStorage.getItem('tarot_daily_fortunes')).toBeNull();
+    expect(localStorage.getItem(getLocalStorageLatestBackupKey('tarot_daily_fortunes'))).toBeNull();
+    expect(localStorage.getItem(getLocalStorageBackupKey('tarot_daily_fortunes'))).toBeNull();
     expect(localStorage.getItem('tarot_daily_fortunes_owner')).toBeNull();
   });
 
@@ -507,5 +511,142 @@ describe('useDailyFortune', () => {
 
     expect(result.current.fortunes).toHaveLength(0);
     expect(result.current.getToday()).toBeUndefined();
+  });
+
+  it('keeps the full annotated example after deleting its daily record, redrawing and remounting', () => {
+    const first = renderHook(() => useDailyFortune());
+    act(() => { first.result.current.createDailyFortuneFromCard('ar02', false); });
+    const id = first.result.current.getToday()!.id;
+    act(() => {
+      first.result.current.archiveDailyFortune(id, { initialImpression: '早上安静观察', dailyReview: '晚上对应到一次真实沟通' });
+      first.result.current.saveDailyFortuneToCardAnnotation(id);
+      first.result.current.deleteDailyFortune(id);
+    });
+    expect(first.result.current.fortunes).toEqual([]);
+    expect(first.result.current.getToday()).toBeUndefined();
+    expect(first.result.current.getArchivedFortunes()).toEqual([]);
+    expect(first.result.current.getMonthlySummary(2026, 6)).toBeNull();
+    expect(first.result.current.annotationExamples[0]).toMatchObject({ id, initialImpression: '早上安静观察', dailyReview: '晚上对应到一次真实沟通', deletedAt: '2026-07-02T08:00:00.000Z' });
+    expect(first.result.current.allFortunes).toHaveLength(1);
+
+    act(() => { first.result.current.createDailyFortuneFromCard('ar04', true); });
+    expect(first.result.current.getToday()?.cardName).toBe('皇帝');
+    expect(first.result.current.annotationExamples[0].id).toBe(id);
+    first.unmount();
+    const second = renderHook(() => useDailyFortune());
+    expect(second.result.current.fortunes).toHaveLength(1);
+    expect(second.result.current.annotationExamples[0].dailyReview).toBe('晚上对应到一次真实沟通');
+    expect(second.result.current.allFortunes).toHaveLength(2);
+  });
+
+  it('keeps an annotated example when today is redrawn without an explicit deletion first', () => {
+    const { result } = renderHook(() => useDailyFortune());
+    act(() => { result.current.createDailyFortuneFromCard('ar02', false); });
+    const id = result.current.getToday()!.id;
+    act(() => {
+      result.current.archiveDailyFortune(id, '仍要保留的经验');
+      result.current.saveDailyFortuneToCardAnnotation(id);
+      result.current.createDailyFortuneFromCard('ar04', true);
+    });
+    expect(result.current.fortunes).toHaveLength(1);
+    expect(result.current.getToday()?.cardName).toBe('皇帝');
+    expect(result.current.annotationExamples[0]).toMatchObject({ id, reflection: '仍要保留的经验', deletedAt: '2026-07-02T08:00:00.000Z' });
+  });
+
+  it('clears personal text from a deleted record that was never saved as an example', () => {
+    const { result } = renderHook(() => useDailyFortune());
+    act(() => { result.current.createDailyFortuneFromCard('ar02', false); });
+    const id = result.current.getToday()!.id;
+    act(() => {
+      result.current.archiveDailyFortune(id, { initialImpression: '删除的直觉', dailyReview: '删除的回看' });
+      result.current.deleteDailyFortune(id);
+    });
+    expect(result.current.fortunes).toEqual([]);
+    expect(result.current.annotationExamples).toEqual([]);
+    const stored = JSON.parse(localStorage.getItem('tarot_daily_fortunes')!)[0];
+    expect(stored).toMatchObject({ id, deletedAt: '2026-07-02T08:00:00.000Z' });
+    expect(stored).not.toHaveProperty('initialImpression');
+    expect(stored).not.toHaveProperty('dailyReview');
+    expect(stored).not.toHaveProperty('reflection');
+  });
+
+  it.each(['delete', 'annotation'] as const)('keeps the original record and reports a failed %s when local storage rejects the write', operation => {
+    const { result } = renderHook(() => useDailyFortune());
+    act(() => { result.current.createDailyFortuneFromCard('ar02', false); });
+    const id = result.current.getToday()!.id;
+    act(() => { result.current.archiveDailyFortune(id, '写好的复盘'); });
+    const before = localStorage.getItem('tarot_daily_fortunes');
+    const setItem = Storage.prototype.setItem;
+    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(function (key, value) {
+      if (key === 'tarot_daily_fortunes') throw new Error('storage full');
+      return setItem.call(this, key, value);
+    });
+    expect(() => act(() => {
+      if (operation === 'delete') result.current.deleteDailyFortune(id);
+      else result.current.saveDailyFortuneToCardAnnotation(id);
+    })).toThrow('本机保存失败');
+    expect(result.current.fortunes).toHaveLength(1);
+    expect(result.current.fortunes[0]).toMatchObject({ id, reflection: '写好的复盘' });
+    expect(result.current.fortunes[0].deletedAt).toBeUndefined();
+    expect(result.current.fortunes[0].savedToCardAnnotationAt).toBeUndefined();
+    expect(localStorage.getItem('tarot_daily_fortunes')).toBe(before);
+  });
+
+  it('keeps a deleted example when a slow initial cloud read returns the old visible record', async () => {
+    const stored: DailyFortune = {
+      id: 'local-example', userId: 'user-1', date: '2026-07-02', cardName: '女祭司',
+      isReversed: false, interpretation: '', keywords: [], reflection: '保留的复盘',
+      createdAt: '2026-07-02T07:00:00Z', updatedAt: '2026-07-02T07:00:00Z',
+    };
+    localStorage.setItem('tarot_daily_fortunes_user-1', JSON.stringify([stored]));
+    let finish!: (items: DailyFortune[]) => void;
+    vi.mocked(getUserDailyFortunes).mockReturnValue(new Promise(resolve => { finish = resolve; }));
+    const { result } = renderHook(() => useDailyFortune({ uid: 'user-1' }));
+    act(() => {
+      result.current.saveDailyFortuneToCardAnnotation(stored.id);
+      result.current.deleteDailyFortune(stored.id);
+    });
+    await act(async () => { finish([stored]); });
+    expect(result.current.fortunes).toEqual([]);
+    expect(result.current.annotationExamples[0]).toMatchObject({ id: stored.id, reflection: '保留的复盘', savedToCardAnnotationAt: '2026-07-02T08:00:00.000Z', deletedAt: '2026-07-02T08:00:00.000Z' });
+    await act(async () => { await vi.advanceTimersByTimeAsync(1200); });
+    expect(saveUserDailyFortunes).toHaveBeenCalledWith('user-1', [expect.objectContaining({ id: stored.id, deletedAt: '2026-07-02T08:00:00.000Z' })]);
+  });
+
+  it('does not revive a locally deleted record after remounting against an old cloud snapshot', async () => {
+    const first = renderHook(() => useDailyFortune({ uid: 'user-1' }));
+    await act(async () => { await Promise.resolve(); });
+    act(() => { first.result.current.createDailyFortuneFromCard('ar02', false); });
+    const old = first.result.current.getToday()!;
+    act(() => { first.result.current.deleteDailyFortune(old.id); });
+    first.unmount();
+    vi.mocked(getUserDailyFortunes).mockResolvedValue([old]);
+    const second = renderHook(() => useDailyFortune({ uid: 'user-1' }));
+    await act(async () => { await Promise.resolve(); });
+    expect(second.result.current.fortunes).toEqual([]);
+    expect(second.result.current.allFortunes).toHaveLength(1);
+    expect(second.result.current.allFortunes[0].deletedAt).toBeDefined();
+  });
+
+  it('isolates retained examples across account changes and rejects callbacks from the old account', async () => {
+    const { result, rerender } = renderHook(({ uid }) => useDailyFortune({ uid }), { initialProps: { uid: 'user-1' } });
+    await act(async () => { await Promise.resolve(); });
+    act(() => { result.current.createDailyFortuneFromCard('ar02', false); });
+    const id = result.current.getToday()!.id;
+    act(() => {
+      result.current.archiveDailyFortune(id, '账号一的例证');
+      result.current.saveDailyFortuneToCardAnnotation(id);
+      result.current.deleteDailyFortune(id);
+    });
+    const oldDelete = result.current.deleteDailyFortune;
+    const oldSave = result.current.saveDailyFortuneToCardAnnotation;
+    rerender({ uid: 'user-2' });
+    await act(async () => { await Promise.resolve(); });
+    expect(result.current.fortunes).toEqual([]);
+    expect(result.current.annotationExamples).toEqual([]);
+    expect(result.current.allFortunes).toEqual([]);
+    expect(() => oldDelete(id)).toThrow('记录正在恢复');
+    expect(() => oldSave(id)).toThrow('记录正在恢复');
+    expect(JSON.parse(localStorage.getItem('tarot_daily_fortunes_user-1')!)[0].reflection).toBe('账号一的例证');
   });
 });
