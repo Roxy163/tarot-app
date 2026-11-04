@@ -30,7 +30,7 @@ const reading = shape({
   ...fields(['id', 'spread'], id), date, question: text, cards: list(slot, 2000), interpretation,
   ...fields(['cardInterpretations', 'cardQuestions', 'keywords', 'manualTags', 'slotLabels', 'slotPositions'], list(text, 2000)),
   ...fields(['isPublic', 'isAnonymous', 'isForClient', 'isAiProcessed', 'processedByAi', 'skipAi', 'showSlotNumbers', 'isExample'], bool),
-  ...fields(['authorName', 'authorBio', 'clientName', 'clientFeedback', 'userFeedback', 'aiAnswer', 'choicePathA', 'choicePathB', 'layoutType', 'category'], text),
+  ...fields(['authorName', 'authorBio', 'clientName', 'clientFeedback', 'userFeedback', 'aiAnswer', 'aiContext', 'choicePathA', 'choicePathB', 'layoutType', 'category'], text),
   ...fields(['updatedAt', 'readingDate', 'aiAnswerUpdatedAt'], date), rotatedSlots: list(number, 2000),
   status: oneOf('draft', 'complete'), aiAnswerMode: oneOf('mentor', 'consultant'),
 }, ['id', 'date', 'question', 'spread', 'cards', 'interpretation', 'keywords', 'isPublic', 'isAnonymous', 'authorName']);

@@ -61,6 +61,13 @@ describe('reading session merge', () => {
       userId: 'user-1',
     });
   });
+  it('preserves an explicit context clear when merging a newer local edit with older cloud context', () => {
+    const merged = mergeReadingsForSignedInUser('user-1', [
+      [createReading({ aiContext: '旧的背景', updatedAt: '2026-11-03T08:00:00Z' })],
+      [createReading({ aiContext: '', updatedAt: '2026-11-04T08:00:00Z' })],
+    ]);
+    expect(merged[0]).toMatchObject({ aiContext: '', userId: 'user-1' });
+  });
 
   it('preserves local custom spreads when cloud spreads already exist', () => {
     const officialSpreads: SpreadDefinition[] = [

@@ -12,12 +12,14 @@ const renderForm = (overrides: {
   spreads?: SpreadDefinition[];
   initialData?: Partial<TarotReading>;
   existingReadings?: TarotReading[];
+  userId?: string;
 } = {}) => {
   const props = {
     onSubmit: vi.fn(),
     onCancel: vi.fn(),
     isLoading: false,
     isLoggedIn: false,
+    userId: overrides.userId,
     spreads: overrides.spreads || OFFICIAL_SPREADS,
     onUpdateSpreads: vi.fn(),
     cardMetadata: [],
@@ -1048,11 +1050,97 @@ describe('AddReadingForm spread designer flow', () => {
     await user.click(screen.getByRole('button', { name: '生成咨询提示词' }));
 
     const prompt = screen.getByLabelText('生成的 AI 解牌提示词：咨询解牌') as HTMLTextAreaElement;
-    expect(prompt.value).toContain('围绕问题解读牌面');
+    expect(prompt.value).toContain('先回应核心问题');
     expect(prompt.value).toContain('1. 主牌：愚者（正位）');
     expect(prompt.value).not.toContain('这是我自己的思路');
     expect(prompt.value).not.toContain('这里也不应该给到咨询版');
     expect(prompt.value).not.toContain('我的理解');
+  });
+
+  it('keeps AI context optional, shares it between modes, and updates only unedited prompts', async () => {
+    const user = userEvent.setup();
+    const writeText = vi.spyOn(navigator.clipboard, 'writeText').mockResolvedValue();
+    renderForm({ initialData: makeReading('context-modes', [], '2026-11-04', { cardInterpretations: ['我想先观察'] }) });
+    await user.click(screen.getByRole('button', { name: /添加复盘/ }));
+    const toggle = screen.getByRole('button', { name: '补充背景与关注点（选填）' });
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.queryByRole('textbox', { name: '补充背景与关注点' })).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: '咨询解牌直接看牌阵' }));
+    await user.click(screen.getByRole('button', { name: '生成咨询提示词' }));
+    const consultant = screen.getByLabelText('生成的 AI 解牌提示词：咨询解牌');
+    expect((consultant as HTMLTextAreaElement).value).not.toContain('背景与关注点');
+    await user.click(toggle);
+    const context = screen.getByRole('textbox', { name: '补充背景与关注点' });
+    const firstContext = '目前准备转行。\n这次希望了解可迁移的能力。';
+    fireEvent.change(context, { target: { value: firstContext } });
+    expect((consultant as HTMLTextAreaElement).value).toContain(firstContext);
+    expect((consultant as HTMLTextAreaElement).value).not.toContain('我想先观察');
+    await user.click(screen.getByRole('button', { name: '复制提示词' }));
+    expect(writeText).toHaveBeenLastCalledWith((consultant as HTMLTextAreaElement).value);
+    await user.click(screen.getByRole('button', { name: '导师复盘看我的解读' }));
+    await user.click(screen.getByRole('button', { name: '生成导师提示词' }));
+    const mentor = screen.getByLabelText('生成的 AI 解牌提示词：导师复盘');
+    expect((mentor as HTMLTextAreaElement).value).toContain(firstContext);
+    expect((mentor as HTMLTextAreaElement).value).toContain('我想先观察');
+    fireEvent.change(mentor, { target: { value: '保留我手动写下的解读要求。' } });
+    fireEvent.change(context, { target: { value: '背景已改变，这次更关心合作。' } });
+    expect(mentor).toHaveValue('保留我手动写下的解读要求。');
+    expect(screen.getByText('手记内容已变化，当前保留你修改的提示词。')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: '重新生成提示词' }));
+    await user.click(screen.getByRole('button', { name: '保留修改' }));
+    expect(mentor).toHaveValue('保留我手动写下的解读要求。');
+    await user.click(screen.getByRole('button', { name: '重新生成提示词' }));
+    await user.click(screen.getByRole('button', { name: '重新生成' }));
+    expect((mentor as HTMLTextAreaElement).value).toContain('背景已改变，这次更关心合作。');
+    expect((mentor as HTMLTextAreaElement).value).not.toContain(firstContext);
+    fireEvent.change(context, { target: { value: '' } });
+    expect((mentor as HTMLTextAreaElement).value).not.toContain('背景与关注点');
+  });
+
+  it('restores context drafts only for their current account and reading, and saves explicit clearing', async () => {
+    const user = userEvent.setup();
+    const initialData = makeReading('context-scope', [], '2026-11-04', { aiContext: '已保存的背景' });
+    const first = renderForm({ initialData, userId: 'owner-a' });
+    await user.click(screen.getByRole('button', { name: /添加复盘/ }));
+    const context = screen.getByRole('textbox', { name: '补充背景与关注点' });
+    expect(context).toHaveValue('已保存的背景');
+    fireEvent.change(context, { target: { value: '未保存的新背景\n还有一个关注点' } });
+    expect(readLocalDraft<any>('tarot_reading_draft_owner-a_context-scope').formData.aiContext).toBe('未保存的新背景\n还有一个关注点');
+    first.unmount();
+    resetDraftMemory();
+    const otherReading = renderForm({ initialData: makeReading('context-other', [], '2026-11-04'), userId: 'owner-a' });
+    await user.click(screen.getByRole('button', { name: /添加复盘/ }));
+    expect(screen.getByRole('button', { name: '补充背景与关注点（选填）' })).toHaveAttribute('aria-expanded', 'false');
+    otherReading.unmount();
+    const otherAccount = renderForm({ initialData: { ...initialData, aiContext: undefined }, userId: 'owner-b' });
+    await user.click(screen.getByRole('button', { name: /添加复盘/ }));
+    await user.click(screen.getByRole('button', { name: '补充背景与关注点（选填）' }));
+    expect(screen.getByRole('textbox', { name: '补充背景与关注点' })).toHaveValue('');
+    otherAccount.unmount();
+    const restored = renderForm({ initialData, userId: 'owner-a' });
+    await user.click(screen.getByRole('button', { name: /添加复盘/ }));
+    const restoredContext = screen.getByRole('textbox', { name: '补充背景与关注点' });
+    expect(restoredContext).toHaveValue('未保存的新背景\n还有一个关注点');
+    fireEvent.change(restoredContext, { target: { value: '' } });
+    fireEvent.submit(restored.container.querySelector('form')!);
+    await waitFor(() => expect(restored.onSubmit).toHaveBeenCalledWith(expect.objectContaining({ aiContext: '' })));
+    expect(initialData.aiContext).toBe('已保存的背景');
+  });
+
+  it('keeps saved context when restoring a legacy draft without that field', async () => {
+    const user = userEvent.setup();
+    const initialData = makeReading('legacy-context', [], '2026-11-04', { aiContext: '后来保存的背景' });
+    const first = renderForm({ initialData });
+    first.unmount();
+    const key = 'tarot_reading_draft_guest_legacy-context';
+    const legacy = JSON.parse(localStorage.getItem(key)!);
+    delete legacy.formData.aiContext;
+    localStorage.setItem(key, JSON.stringify(legacy));
+    sessionStorage.clear();
+    resetDraftMemory();
+    renderForm({ initialData });
+    await user.click(screen.getByRole('button', { name: /添加复盘/ }));
+    expect(screen.getByRole('textbox', { name: '补充背景与关注点' })).toHaveValue('后来保存的背景');
   });
 
   it('copies edited prompt text, preserves it across source changes, mode switches and reopening, and never changes the reading', async () => {

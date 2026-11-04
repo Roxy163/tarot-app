@@ -1,9 +1,9 @@
 import { scrollFocusedFieldIntoView } from '../lib/mobileFocus';
 import { revealReadingSpread } from '../lib/revealReadingSpread';
-import React, { useState, useEffect, FormEvent, useRef, useMemo } from 'react';
+import React, { useState, useEffect, FormEvent, useRef, useMemo, useId } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'motion/react';
-import { Sparkles, Layers, User, MessageSquare, BookOpen, Settings, Save, Hash, Orbit, Home, Wind, Info, Copy, X, Undo2, RefreshCw } from 'lucide-react';
+import { Sparkles, Layers, User, MessageSquare, BookOpen, Settings, Save, Hash, Orbit, Home, Wind, Info, Copy, X, Undo2, RefreshCw, ChevronDown } from 'lucide-react';
 import { CardKeywordMemory, SpreadDefinition, TarotCardMetadata, ReadingSlotData, TarotReading, ReadingFormData, ReadingEditorDraft, ReadingEditorFields, ReadingSpreadSnapshot, ReadingSpreadSwitch, ReadingAiPromptDraft, ReadingEditorSnapshot, ReadingEditorHistoryEntry, ReadingEditorWorkspaceBackup } from '../types';
 import { readLocalDraft, useLocalDraft } from '../hooks/useLocalDraft';
 import { useModalFocus } from '../hooks/useModalFocus';
@@ -224,7 +224,11 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
   const initialSpreadDefinition = initialData?.spread
     ? spreads.find(spread => spread.name === initialData.spread)
     : defaultSpreadDefinition;
-  const [formData, setFormData] = useState<ReadingEditorFields>(() => restoredDraft ? { ...restoredDraft.formData, userFeedback: feedbackState.value } : ({
+  const [formData, setFormData] = useState<ReadingEditorFields>(() => restoredDraft ? {
+    ...restoredDraft.formData,
+    aiContext: restoredDraft.formData.aiContext ?? initialData?.aiContext ?? '',
+    userFeedback: feedbackState.value,
+  } : ({
     question: initialData?.question || '',
     spread: initialData?.spread || defaultSpreadDefinition.name,
     layoutType: initialData?.layoutType || initialSpreadDefinition?.layout || 'horizontal',
@@ -244,6 +248,7 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
     aiAnswer: initialData?.aiAnswer || '',
     aiAnswerMode: initialData?.aiAnswerMode || 'mentor',
     aiAnswerUpdatedAt: initialData?.aiAnswerUpdatedAt,
+    aiContext: initialData?.aiContext || '',
     choicePathA: initialData?.choicePathA || '',
     choicePathB: initialData?.choicePathB || '',
     readingDate: toLocalReadingDate(initialData?.readingDate),
@@ -283,6 +288,8 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [showFeedback, setShowFeedback] = useState(false);
   const [showAiPrompt, setShowAiPrompt] = useState(false);
+  const aiContextId = useId();
+  const [showAiContext, setShowAiContext] = useState(Boolean((restoredDraft?.formData.aiContext ?? initialData?.aiContext)?.trim()));
   const [showAiReference, setShowAiReference] = useState(Boolean(initialData?.aiAnswer?.trim()));
   const [aiPromptMode, setAiPromptMode] = useState<ReadingAiPromptMode>(restoredDraft?.aiPromptMode || initialData?.aiAnswerMode || 'mentor');
   const [aiPromptDrafts, setAiPromptDrafts] = useState<Partial<Record<ReadingAiPromptMode, ReadingAiPromptDraft>>>(restoredDraft?.aiPromptDrafts || {});
@@ -1058,12 +1065,12 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
     ? {
         label: '导师复盘',
         buttonText: '生成导师提示词',
-        description: '带上你的想法，让 AI 帮你校准、补充。',
+        description: '带上你的想法和疑问，让 AI 检查依据、补充遗漏。',
       }
     : {
         label: '咨询解牌',
         buttonText: '生成咨询提示词',
-        description: '只带问题、牌阵和牌面，让 AI 独立解读。',
+        description: '根据问题、牌阵与选填背景独立解读，不附带你的解读。',
       };
   const aiAnswerModeLabel = formData.aiAnswerMode === 'consultant' ? '咨询解牌' : '导师复盘';
   const handleAiPromptModeChange = (mode: ReadingAiPromptMode) => {
@@ -1612,6 +1619,46 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
             <p className="text-[11px] leading-relaxed text-forest-muted">
               {aiPromptModeMeta.description}
             </p>
+
+            <div className="rounded-xl border border-forest-accent/7 bg-white/24">
+              <button
+                type="button"
+                aria-label="补充背景与关注点（选填）"
+                aria-expanded={showAiContext}
+                aria-controls={aiContextId}
+                onClick={() => setShowAiContext(previous => !previous)}
+                className="flex min-h-11 w-full items-center gap-2 rounded-xl px-3 text-left text-xs text-forest-muted transition-colors hover:bg-white/40 hover:text-forest-accent"
+              >
+                <span className="mr-auto">补充背景与关注点<span className="ml-1 text-[10px] opacity-70">选填</span></span>
+                {formData.aiContext?.trim() && <span className="text-[10px] text-forest-accent">已填写</span>}
+                <ChevronDown size={14} className={`shrink-0 transition-transform ${showAiContext ? 'rotate-180' : ''}`} />
+              </button>
+              <AnimatePresence initial={false}>
+                {showAiContext && (
+                  <motion.div
+                    id={aiContextId}
+                    initial={{ opacity: 0, height: 0 }}
+                    animate={{ opacity: 1, height: 'auto' }}
+                    exit={{ opacity: 0, height: 0 }}
+                    className="overflow-hidden"
+                  >
+                    <div className="space-y-1.5 px-3 pb-3">
+                      <AutoResizeTextarea
+                        aria-label="补充背景与关注点"
+                        minRows={3}
+                        maxRows={8}
+                        value={formData.aiContext || ''}
+                        placeholder="目前的处境、已知情况，或这次最想了解什么……"
+                        onFocus={scrollFocusedFieldIntoView}
+                        onChange={event => setFormData(previous => ({ ...previous, aiContext: event.target.value }))}
+                        className="w-full rounded-xl border border-forest-accent/8 bg-white/55 px-3 py-2 text-base leading-relaxed text-forest-ink focus:ring-2 focus:ring-forest-accent/15 sm:text-sm"
+                      />
+                      <p className="text-[10px] leading-relaxed text-forest-muted">会加入两种提示词，作为本条手记的私人内容保存。</p>
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
 
             {!showAiPrompt && formData.aiAnswer.trim() && (
               <button

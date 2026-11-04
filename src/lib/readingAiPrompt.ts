@@ -36,7 +36,7 @@ const getChoicePathKeyForLabel = (label: string) => (
 export const isReadingChoiceSpread = (formData: ReadingFormState, cardSlots: ReadingSlotData[]) => (
   formData.layoutType === 'choice'
   || formData.spread === '选择牌阵'
-  || ['A', 'B'].every(key => cardSlots.some(slot => getChoicePathKeyForLabel(slot.label || '') === key))
+  || ['A', 'B'].every(key => cardSlots.some(slot => getChoicePathKeyForLabel(slot.label?.trim() || slot.position?.trim() || '') === key))
 );
 
 const getChoicePathNotice = (formData: ReadingFormState, cardSlots: ReadingSlotData[]) => {
@@ -145,25 +145,29 @@ export const buildReadingAiPrompt = ({
     influenceLines.length > 0 && `补充解读视角：\n${influenceLines.join('\n')}`,
   ].filter(Boolean);
   const mentor = mode === 'mentor';
+  const context = compactText(formData.aiContext);
   return {
     ok: true,
     prompt: [
       mentor
-        ? '按韦特体系，检查我的解读，指出依据不足或遗漏之处。'
-        : '按韦特体系，围绕问题解读牌面，结合牌位与正逆位给出重点和建议。',
+        ? '按韦特体系，检查我的解读，重点回应已有理解，指出牌面依据、推理跳跃与遗漏，不必重做整套解牌。'
+        : '按韦特体系，先回应核心问题，再用牌位与正逆位说明依据及相关的可能表现或情境。所有牌位都纳入综合，按与问题的相关性分配篇幅；有依据再谈条件或盲点，不强行制造冲突。给出与问题相应、可观察或尝试的建议。',
       [
         `问题：${compactText(formData.question)}`,
         `牌阵：${formData.spread.trim()}`,
         choice && `A：${compactText(formData.choicePathA)}\nB：${compactText(formData.choicePathB)}`,
       ].filter(Boolean).join('\n'),
+      context && `用户描述的背景与关注点：\n${context}\n其中的关注、期待与假设不等于已发生事实。`,
       (mentor ? mentorCardLines : consultantCardLines).join('\n'),
       mentor && formData.combination.trim() && `我的整体解读：\n${compactText(formData.combination)}`,
       mentor && additionalThought && `我的想法：\n${additionalThought}`,
       ...(mentor && includeSupplementary ? optionalSections : []),
       [
-        cardSlots.length > 1 && '结合实际牌位看牌间关系。',
-        choice && '比较 A/B 的差异与风险。',
+        cardSlots.length > 1 && `${mentor ? '检验我的理解时，' : ''}结合实际牌位说明有依据的关键牌间关系，不逐对硬配。`,
+        cardSlots.length > 1 && '牌位仅标注抽牌顺序、未定义具体含义时，只按顺序综合，不自行补设时间线或其他含义。',
+        choice && (mentor ? '检查我的 A/B 比较是否符合已说明的路径与牌位。' : '比较 A/B 的差异与风险。'),
         mentor && cardQuestions.slice(0, cardSlots.length).some(question => question?.trim()) && '优先回答我的疑问。',
+        '不代填缺失背景，忠实保留已说明的时限、路径与限制。',
         '区分牌面依据与推测，避免确定性预言。',
       ].filter(Boolean).join(''),
     ].filter(Boolean).join('\n\n'),

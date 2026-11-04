@@ -706,8 +706,12 @@ export const useReadings = (
     setIsProcessing(true);
     try {
       const currentAuthorBio = (profile?.bio || profile?.signature || '').trim();
+      const { aiContext, ...submittedData } = newReading;
       const readingData = {
-        ...newReading,
+        ...submittedData,
+        // An omitted legacy field keeps the current record. An explicit empty
+        // string is a real edit and must remain clear after reload or sync.
+        ...(typeof aiContext === 'string' ? { aiContext } : {}),
         cards: newReading.cards || [],
         keywords: newReading.keywords || (editingReading?.keywords || ['塔罗', '研习']),
         manualTags: newReading.manualTags || editingReading?.manualTags || [],

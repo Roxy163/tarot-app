@@ -36,6 +36,25 @@ export const AutoResizeTextarea: React.FC<AutoResizeTextareaProps> = ({
     resize();
   }, [resize, value]);
 
+  useEffect(() => {
+    const textarea = textareaRef.current;
+    if (!textarea) return;
+    let width = textarea.clientWidth;
+    const resizeForWidth = () => {
+      if (textarea.clientWidth === width) return;
+      width = textarea.clientWidth;
+      resize();
+    };
+    // Observe width only: changing our height must not trigger a resize loop.
+    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(resizeForWidth);
+    observer?.observe(textarea);
+    window.addEventListener('resize', resizeForWidth);
+    return () => {
+      observer?.disconnect();
+      window.removeEventListener('resize', resizeForWidth);
+    };
+  }, [resize]);
+
   return (
     <textarea
       {...props}

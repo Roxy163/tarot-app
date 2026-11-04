@@ -8,7 +8,7 @@ export function findResumableReading(scope: string, readings: TarotReading[]) {
     if (!draft?.formData || !Array.isArray(draft.cardSlots) || draft.hasUnsavedChanges === false) return [];
     const filled = draft.cardSlots.filter(slot => typeof slot?.name === 'string' && slot.name.trim()).length;
     const question = typeof draft.formData.question === 'string' ? draft.formData.question.trim() : '';
-    const notes = [draft.formData.singleCard, draft.formData.combination, draft.formData.userFeedback, draft.formData.aiAnswer,
+    const notes = [draft.formData.singleCard, draft.formData.combination, draft.formData.userFeedback, draft.formData.aiAnswer, draft.formData.aiContext,
       draft.formData.clientFeedback, draft.formData.numerologyInfluence, draft.formData.astrologyInfluence,
       draft.formData.houseInfluence, draft.formData.elementInfluence, draft.formData.choicePathA, draft.formData.choicePathB,
       ...(Array.isArray(draft.cardInterpretations) ? draft.cardInterpretations : []), ...(Array.isArray(draft.cardQuestions) ? draft.cardQuestions : [])];

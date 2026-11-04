@@ -29,4 +29,11 @@ describe('resume reading entry', () => {
     put('one', 'new', '', { cardInterpretations: ['只写了解读'] });
     expect(findResumableReading('one', [])).toMatchObject({ id: 'new', question: '未完成的手记' });
   });
+  it('recognizes a context-only draft without requiring a question, cards, or an interpretation', () => {
+    put('one', 'new', '', { formData: { question: '', aiContext: '想关注合作中的沟通边界' } });
+    expect(findResumableReading('one', [])).toMatchObject({ id: 'new', filled: 0, question: '未完成的手记' });
+    expect(findResumableReading('two', [])).toBeNull();
+    put('one', 'new', '', { formData: { question: '', aiContext: '   ' } });
+    expect(findResumableReading('one', [])).toBeNull();
+  });
 });

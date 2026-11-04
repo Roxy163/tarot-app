@@ -159,6 +159,7 @@ export const buildReadingSubmitPayload = ({
     elementInfluence,
     readingDate,
     aiAnswer,
+    aiContext,
     aiAnswerMode,
     aiAnswerUpdatedAt,
     ...rest
@@ -207,6 +208,7 @@ export const buildReadingSubmitPayload = ({
         elementInfluence,
       },
       aiAnswer: submittedAiAnswer || undefined,
+      ...(typeof aiContext === 'string' ? { aiContext } : {}),
       aiAnswerMode: submittedAiAnswer ? submittedAiAnswerMode : undefined,
       aiAnswerUpdatedAt: submittedAiAnswer ? (aiAnswerUpdatedAt || new Date().toISOString()) : undefined,
       manualTags: parseReadingManualTags(formData.category),

@@ -12,6 +12,9 @@ const reading = {
 };
 
 describe('private reading search', () => {
+  it('finds saved private context without adding it to interpretation text', () => {
+    expect(readingMatchesSearch({ ...reading, aiContext: '想关注合伙后的沟通边界' }, '沟通边界')).toBe(true);
+  });
   it.each(['隐士', '隐者', ' HERMIT ', '日运', '无牌阵', '湖边散步', '独处还是', '很有帮助', '留出了', '现在', '   '])('finds %s', query => {
     expect(readingMatchesSearch(reading, query)).toBe(true);
   });

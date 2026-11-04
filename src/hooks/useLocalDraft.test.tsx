@@ -59,4 +59,12 @@ describe('local drafts', () => {
     expect(readLocalDraft('tarot_card_personal_note_draft_user-a_ar00')).toBeNull();
     expect(readLocalDraft('tarot_card_personal_note_draft_user-b_ar00')).toEqual({ text: 'b' });
   });
+  it('clears private context inside reading drafts only for the deleted account', () => {
+    writeLocalDraft('tarot_reading_draft_user-a_new', { formData: { aiContext: 'A 的背景' } });
+    writeLocalDraft('tarot_reading_draft_user-b_new', { formData: { aiContext: 'B 的背景' } });
+    clearAccountDrafts('user-a');
+    resetDraftMemory();
+    expect(readLocalDraft('tarot_reading_draft_user-a_new')).toBeNull();
+    expect(readLocalDraft('tarot_reading_draft_user-b_new')).toEqual({ formData: { aiContext: 'B 的背景' } });
+  });
 });

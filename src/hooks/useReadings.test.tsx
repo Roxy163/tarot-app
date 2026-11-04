@@ -137,8 +137,39 @@ describe('useReadings cloud sync', () => {
     act(() => { expect(staleSave('same-id', '不能跨账号写入')).toBeNull(); });
     expect(result.current.readings).toEqual(before);
     expect(result.current.handleUpdateReadingFeedback('unknown', '不能创建新手记')).toBeNull();
-    await act(async () => { expect(await staleEditorSave({ question: '不能跨账号保存旧编辑页', cards: [{ name: '愚者', isReversed: false }] })).toBeNull(); });
+    await act(async () => { expect(await staleEditorSave({ question: '不能跨账号保存旧编辑页', aiContext: '账号A的私人背景不能写入B', cards: [{ name: '愚者', isReversed: false }] })).toBeNull(); });
     expect(result.current.readings).toEqual(before);
+    expect(localStorage.getItem('tarot_readings_user-b')).not.toContain('账号A的私人背景');
+  });
+
+  it('persists private context, preserves it for legacy partial edits, and durably saves explicit clearing', async () => {
+    const { result, unmount } = renderHook(() => useReadings(null, false));
+    await act(async () => { await Promise.resolve(); });
+    let original!: TarotReading;
+    const context = '  背景是我的描述\n我更关注未来合作的节奏。  ';
+    await act(async () => { original = (await result.current.handleAddReading({ question: '原问题', aiContext: context, cards: [{ name: '隐士', isReversed: false }], interpretation: { singleCard: '自己的想法', combination: '', summary: '' } }))!; });
+    expect(original.aiContext).toBe(context);
+    expect(JSON.parse(localStorage.getItem('tarot_guest_data')!)[0].aiContext).toBe(context);
+    act(() => { result.current.setEditingReading(original); });
+    await act(async () => { await result.current.handleAddReading({ question: '旧调用只修改问题', aiContext: undefined, cards: original.cards }); });
+    expect(result.current.readings[0].aiContext).toBe(context);
+    await act(async () => { await result.current.handleAddReading({ question: '保留解读但清空背景', aiContext: '', cards: original.cards }); });
+    expect(result.current.readings[0].aiContext).toBe('');
+    expect(result.current.readings[0].interpretation.singleCard).toBe('自己的想法');
+    unmount();
+    const reopened = renderHook(() => useReadings(null, false));
+    await act(async () => { await Promise.resolve(); });
+    expect(reopened.result.current.readings[0].aiContext).toBe('');
+  });
+
+  it('keeps private context in the signed-in cloud queue when feedback is edited', async () => {
+    const original: TarotReading = { id: 'private-context', userId: 'user-a', date: '2026-11-04', question: '原问题', aiContext: '这段背景只属于当前手记', spread: '单牌阵', cards: [{ name: '隐士', isReversed: false }], interpretation: { singleCard: '', combination: '', summary: '' }, keywords: [], isPublic: false, isAnonymous: false, authorName: 'Roxy' };
+    vi.mocked(getUserReadings).mockResolvedValue([original]);
+    const { result } = renderHook(() => useReadings({ uid: 'user-a' }, false));
+    await act(async () => { await Promise.resolve(); await Promise.resolve(); });
+    act(() => { result.current.handleUpdateReadingFeedback(original.id, '后来补写的复盘'); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(1500); });
+    expect(replaceUserReadings).toHaveBeenCalledWith('user-a', [expect.objectContaining({ aiContext: original.aiContext, userFeedback: '后来补写的复盘' })], { deletedReadingIds: [] });
   });
 
   it('syncs a signed-in feedback update through the existing cloud queue', async () => {

@@ -108,6 +108,7 @@ describe('reading review export', () => {
   it('prevents user-authored csv cells from becoming spreadsheet formulas', () => {
     const csv = exportReadingsToCsv([createReading({
       question: '=HYPERLINK("https://example.test")',
+      aiContext: '=IMPORTXML("https://private.example.test")',
       cards: [
         { name: '愚者', isReversed: false, label: '=起点' },
         { name: '战车', isReversed: true, label: '阻碍' },
@@ -119,6 +120,18 @@ describe('reading review export', () => {
     expect(csv).toContain('"\'=HYPERLINK(""https://example.test"")"');
     expect(csv).toContain('"\'=起点：+SUM(1,1)');
     expect(csv).not.toContain('\n"=HYPERLINK');
+    expect(csv).toContain('"\'=IMPORTXML(""https://private.example.test"")"');
+  });
+
+  it('keeps private context in owner exports and treats pasted markup as literal Markdown content', () => {
+    const context = '背景原文\n```\n<img src=x onerror=alert(1)>\n[链接](javascript:alert(1))';
+    const reading = createReading({ aiContext: context });
+    const csv = exportReadingsToCsv([reading]);
+    const markdown = exportReadingsToMarkdown([reading]);
+    expect(csv).toContain('"补充背景与关注点（私人）"');
+    expect(csv).toContain(context);
+    expect(markdown).toContain(`### 补充背景与关注点（私人）\n\n\`\`\`\`text\n${context}\n\`\`\`\``);
+    expect(buildReadingReviewPdfLines([reading]).map(line => line.text)).toContain(`补充背景与关注点（私人）：${context}`);
   });
 
   it('builds pdf lines with owner name and review summary', () => {

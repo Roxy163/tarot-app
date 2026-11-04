@@ -142,6 +142,7 @@ export const exportReadingsToCsv = (readings: TarotReading[]) => {
     '组合解读',
     '总结',
     'AI参照',
+    '补充背景与关注点（私人）',
     '我的复盘',
     '客户反馈',
     '是否公开',
@@ -163,6 +164,7 @@ export const exportReadingsToCsv = (readings: TarotReading[]) => {
     reading.interpretation?.combination || '',
     reading.interpretation?.summary || '',
     reading.aiAnswer || '',
+    reading.aiContext || '',
     reading.userFeedback || '',
     reading.clientFeedback || '',
     reading.isPublic ? '是' : '否',
@@ -228,6 +230,14 @@ export const exportReadingsToMarkdown = (
       '',
     );
 
+    if (reading.aiContext?.trim()) {
+      // A user may paste HTML or Markdown. Keep it literal, even when it
+      // includes code fences, rather than adding executable markup to a file.
+      let fenceLength = 3;
+      for (const match of reading.aiContext.matchAll(/`+/g)) fenceLength = Math.max(fenceLength, match[0].length + 1);
+      const fence = '`'.repeat(fenceLength);
+      lines.push('### 补充背景与关注点（私人）', '', `${fence}text`, reading.aiContext, fence, '');
+    }
     if (reading.clientFeedback?.trim()) {
       lines.push('### 客户反馈', reading.clientFeedback.trim(), '');
     }
@@ -329,6 +339,9 @@ export const buildReadingReviewPdfLines = (
     }
     if (reading.aiAnswer?.trim()) {
       lines.push({ text: `AI参照：${reading.aiAnswer}`, style: 'body', indent: 12, gapBefore: 4 });
+    }
+    if (reading.aiContext?.trim()) {
+      lines.push({ text: `补充背景与关注点（私人）：${reading.aiContext}`, style: 'body', indent: 12, gapBefore: 4 });
     }
     lines.push({
       text: `我的复盘：${reading.userFeedback?.trim() || '未填写'}`,

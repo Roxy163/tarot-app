@@ -615,6 +615,7 @@ const toPublicReadingData = (reading: TarotReading) => withoutUndefined({
 
 const toUserReadingData = (uid: string, reading: TarotReading) => withoutUndefined({
   ...reading,
+  aiContext: typeof reading.aiContext === 'string' ? reading.aiContext : undefined,
   userId: uid,
   question: typeof reading.question === 'string' && reading.question.trim() ? reading.question : '未命名手记',
   date: typeof reading.date === 'string' && reading.date.trim()

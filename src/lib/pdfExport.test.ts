@@ -67,4 +67,9 @@ describe('pdf export content', () => {
     expect(text).not.toContain('示例问题');
     expect(text).toContain('真实记录');
   });
+  it('includes private context as PDF text rather than HTML markup to execute', () => {
+    const context = '私人关注点\n<img src=x onerror=alert(1)>';
+    const lines = buildTarotExportLines(createExportData({ readings: [createReading({ aiContext: context })] }));
+    expect(lines).toContainEqual(expect.objectContaining({ text: `补充背景与关注点（私人）：${context}`, style: 'body' }));
+  });
 });

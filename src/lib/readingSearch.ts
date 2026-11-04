@@ -41,7 +41,7 @@ export function readingMatchesSearch(reading: TarotReading, search: string) {
     ...reading.cards.flatMap(card => [card.name, card.label]),
     ...(reading.slotLabels || []), ...(reading.cardInterpretations || []),
     ...(reading.cardQuestions || []), ...Object.values(reading.interpretation || {}),
-    reading.userFeedback, reading.clientFeedback, reading.aiAnswer,
+    reading.userFeedback, reading.clientFeedback, reading.aiAnswer, reading.aiContext,
     reading.choicePathA, reading.choicePathB,
   ];
   return fields.some(value => value?.normalize('NFKC').toLowerCase().includes(query))

@@ -213,6 +213,8 @@ export interface TarotReading {
   clientFeedback?: string;
   userFeedback?: string;
   aiAnswer?: string;
+  // Private, user-supplied context for prompt drafting; never a public fact.
+  aiContext?: string;
   aiAnswerMode?: ReadingAiAnswerMode;
   aiAnswerUpdatedAt?: string;
   choicePathA?: string;
@@ -286,6 +288,7 @@ export interface ReadingFormData {
   clientFeedback: string;
   userFeedback: string;
   aiAnswer?: string;
+  aiContext?: string;
   aiAnswerMode?: ReadingAiAnswerMode;
   aiAnswerUpdatedAt?: string;
   choicePathA: string;

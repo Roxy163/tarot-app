@@ -43,6 +43,18 @@ describe('portable learning backup', () => {
     expect(parsed.data.numerology).toEqual(data().numerology);
     expect(parsed.data.quizMemory).toEqual(data().quizMemory);
   });
+  it('round trips private context and explicit empty text, rebinds the owner and preserves current local content on merge', () => {
+    const source = data();
+    source.readings[0].aiContext = '原始补充背景\n这是关注点，不是已经发生的事实。';
+    source.readings.push({ ...source.readings[0], id: 'empty-context', aiContext: '' });
+    const parsed = parseTarotBackup(JSON.stringify(createTarotBackup(source)));
+    const restored = mergeTarotBackup(empty(), parsed.data, 'new-owner', '现在的名字');
+    expect(restored.readings[0]).toMatchObject({ aiContext: source.readings[0].aiContext, userId: 'new-owner', isPublic: false });
+    expect(restored.readings[1].aiContext).toBe('');
+    const local = empty();
+    local.readings = [{ ...source.readings[0], aiContext: '本机已有的新背景' }];
+    expect(mergeTarotBackup(local, parsed.data, 'new-owner', '现在的名字').readings[0].aiContext).toBe('本机已有的新背景');
+  });
   it('rebinds imported records privately without altering coordinates or source data', () => {
     const incoming = parseTarotBackup(JSON.stringify(createTarotBackup(data()))).data;
     const before = JSON.stringify(incoming);

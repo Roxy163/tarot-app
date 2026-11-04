@@ -255,4 +255,20 @@ describe('buildReadingSubmitPayload', () => {
     expect(result.payload.aiAnswerMode).toBeUndefined();
     expect(result.payload.aiAnswerUpdatedAt).toBeUndefined();
   });
+
+  it('keeps private prompt context separate from interpretations and preserves its original text and explicit clearing', () => {
+    for (const context of ['  我担心合作节奏。\n想关注沟通边界。  ', '']) {
+      const result = buildReadingSubmitPayload({
+        formData: { ...baseFormData, aiContext: context }, cardSlots: [slots[0]], cardInterpretations: ['我自己的解读'],
+      });
+      expect(result.ok).toBe(true);
+      if (!result.ok) continue;
+      expect(result.payload.aiContext).toBe(context);
+      expect(result.payload.interpretation?.singleCard).toBe('我自己的解读');
+      expect(result.payload.cardInterpretations).toEqual(['我自己的解读']);
+    }
+    const legacy = buildReadingSubmitPayload({ formData: baseFormData, cardSlots: [slots[0]], cardInterpretations: [] });
+    expect(legacy.ok).toBe(true);
+    if (legacy.ok) expect(legacy.payload).not.toHaveProperty('aiContext');
+  });
 });
