@@ -14,6 +14,7 @@ import { getCardImageUrl } from '../constants';
 import type { QuizMemoryAttempt, QuizMemoryEntry, TarotCardMetadata, TarotReading } from '../types';
 import { cardAnnotationService } from '../services/cardAnnotationService';
 import { useAnnotationRevision } from '../hooks/useAnnotationSync';
+import { useLocalCalendarDay } from '../hooks/useLocalCalendarDay';
 import { toLocalReadingDate } from '../lib/readingDate';
 import { PageView } from './PageView';
 import {
@@ -156,6 +157,7 @@ export const StudyPavilionModules: React.FC<StudyPavilionModulesProps> = ({
   }, [showArchive]);
 
   const annotationRevision = useAnnotationRevision();
+  const quizDay = useLocalCalendarDay();
   const quizCards = useMemo(
     () => buildQuizTrainingCards(cardMetadata, cardAnnotationService.getAllMergedAnnotations()),
     [annotationRefreshKey, cardMetadata, annotationRevision],
@@ -176,10 +178,11 @@ export const StudyPavilionModules: React.FC<StudyPavilionModulesProps> = ({
     () => getRecentWeakQuizCards(quizMemory, quizCards, 3),
     [quizMemory, quizCards],
   );
-  const todayQuizCount = useMemo(() => {
-    const today = toLocalReadingDate();
-    return quizMemory.filter(entry => entry.lastPracticedAt?.startsWith(today)).length;
-  }, [quizMemory]);
+  const todayQuizCount = useMemo(() => quizMemory.filter(entry => {
+    if (!entry.lastPracticedAt) return false;
+    const practicedAt = new Date(entry.lastPracticedAt);
+    return Number.isFinite(practicedAt.getTime()) && toLocalReadingDate(practicedAt) === quizDay;
+  }).length, [quizDay, quizMemory]);
   const totalPracticeCount = useMemo(
     () => quizMemory.reduce((total, entry) => total + (entry.practiceCount || 0), 0),
     [quizMemory],
@@ -235,6 +238,7 @@ export const StudyPavilionModules: React.FC<StudyPavilionModulesProps> = ({
     ...filters.elements.map(element => `${element}元素`),
     ...filters.planets,
     ...filters.zodiacs,
+    ...filters.houses.map(formatQuizDisplayValue),
     ...(filters.repeatOnly ? ['待温习'] : []),
   ], [filters]);
   const hasActiveFilters = activeFilterLabels.length > 0;
@@ -264,6 +268,7 @@ export const StudyPavilionModules: React.FC<StudyPavilionModulesProps> = ({
     const nextQuestion = createQuizQuestion(activeDeck, quizMemory, Math.random, {
       kinds: [quizMode],
       correctOptionIndex: nextCorrectIndex,
+      optionCards: quizCards,
     });
     if (nextQuestion) {
       const actualCorrectIndex = nextQuestion.options.findIndex(option => option.id === nextQuestion.correctOptionId);
@@ -279,7 +284,7 @@ export const StudyPavilionModules: React.FC<StudyPavilionModulesProps> = ({
     }
     setQuestion(nextQuestion);
     resetLocalAnswerState();
-  }, [activeDeck, activeFilterLabels.length, quizMemory, quizMode]);
+  }, [activeDeck, activeFilterLabels.length, quizCards, quizMemory, quizMode]);
 
   useEffect(() => {
     if (question || activeDeck.length === 0) return;
@@ -579,7 +584,7 @@ export const StudyPavilionModules: React.FC<StudyPavilionModulesProps> = ({
                 <button
                   type="button"
                   onClick={() => {
-                    updateFilters(current => ({ ...current, repeatOnly: true, groups: [] }));
+                    updateFilters(() => ({ ...createDefaultFilters(), repeatOnly: true }));
                     setShowArchive(false);
                   }}
                   className="min-h-11 shrink-0 rounded-full border border-forest-accent/8 bg-white/35 px-3 text-xs font-medium text-forest-accent transition-all hover:bg-white/60 active:scale-[0.97]"
@@ -824,18 +829,7 @@ export const StudyPavilionModules: React.FC<StudyPavilionModulesProps> = ({
       </PageView>
 
       <div className="relative mt-2 rounded-[1.35rem] border border-forest-accent/8 bg-white/20 p-1.5 sm:p-2.5">
-        {activeDeck.length === 0 ? (
-          <div className="rounded-3xl border border-dashed border-forest-accent/20 bg-white/35 p-4 text-center">
-            <p className="font-serif text-base font-bold text-forest-ink">这个专项暂时没有牌</p>
-            <button
-              type="button"
-              onClick={() => updateFilters(() => createDefaultFilters())}
-              className="mt-3 min-h-11 rounded-full bg-forest-accent px-5 text-sm font-bold text-white transition-all active:scale-[0.98]"
-            >
-              回到全牌库
-            </button>
-          </div>
-        ) : question ? (
+        {question && (activeDeck.length > 0 || isAnswered) ? (
           <div className="space-y-2">
             <div className="grid gap-2 sm:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)] sm:items-stretch">
               {questionCard && question.kind !== 'meaning-card' && (
@@ -1019,13 +1013,26 @@ export const StudyPavilionModules: React.FC<StudyPavilionModulesProps> = ({
           </div>
         ) : (
           <div className="rounded-3xl border border-dashed border-forest-accent/20 bg-white/35 p-4 text-center">
-            <p className="font-serif text-base font-bold text-forest-ink">准备抽题中</p>
+            <p className="font-serif text-base font-bold text-forest-ink">
+              {activeDeck.length > 0
+                ? '当前牌库的选项不足，暂时无法出题'
+                : filters.repeatOnly && repeatedCount === 0
+                  ? '没有待温习的牌了'
+                  : '这个专项暂时没有牌'}
+            </p>
             <button
               type="button"
-              onClick={drawQuestion}
+              onClick={() => {
+                if (hasActiveFilters) {
+                  updateFilters(() => createDefaultFilters());
+                } else {
+                  setShowArchive(true);
+                  setShowArchiveSettings(true);
+                }
+              }}
               className="mt-3 min-h-11 rounded-full bg-forest-accent/90 px-5 text-sm font-bold text-white transition-all hover:bg-forest-accent active:scale-[0.98]"
             >
-              抽一题
+              {hasActiveFilters ? '回到全牌库' : '调整出题设置'}
             </button>
           </div>
         )}

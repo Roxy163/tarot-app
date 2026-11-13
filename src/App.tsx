@@ -2022,9 +2022,11 @@ function AppContent() {
           <motion.div key="metadata" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 20 }}>
             <Suspense fallback={<SuspenseFallback />}>
               <CardMetadataManager
+                key={backupScope}
                 metadata={cardMetadata}
                 onUpdate={setCardMetadata}
-                readings={readings}
+                readings={readingsReady ? readings : []}
+                onSaveReadingFeedback={handleSaveReadingFeedback}
                 dailyFortunes={dailyFortune.fortunes}
                 dailyFortuneExamples={dailyFortune.annotationExamples}
                 cardKeywordMemory={cardKeywordMemory}
@@ -2044,9 +2046,11 @@ function AppContent() {
 
       <Suspense fallback={historyCardId ? <PageView isOpen onBack={() => setHistoryCardId(undefined)} title="研习资料"><p role="status">正在加载…</p></PageView> : null}>
         {historyCardId && <CardMetadataManager
+          key={backupScope}
           metadata={cardMetadata}
           onUpdate={setCardMetadata}
-          readings={readings}
+          readings={readingsReady ? readings : []}
+          onSaveReadingFeedback={handleSaveReadingFeedback}
           dailyFortunes={dailyFortune.fortunes}
           dailyFortuneExamples={dailyFortune.annotationExamples}
           cardKeywordMemory={cardKeywordMemory}

@@ -30,6 +30,7 @@ interface BasicInfoSectionProps {
   onToggleClientMode: () => void;
   initialData?: any;
   onCancel?: () => void;
+  cancelDisabled?: boolean;
   highlightedRequiredField?: 'question' | 'spread' | null;
   quickThemeSlot?: React.ReactNode;
   tagSuggestions?: ReadingTagSuggestion[];
@@ -59,6 +60,7 @@ export const BasicInfoSection: React.FC<BasicInfoSectionProps> = ({
   onToggleClientMode,
   initialData,
   onCancel,
+  cancelDisabled = false,
   highlightedRequiredField = null,
   quickThemeSlot,
   tagSuggestions = [],
@@ -86,7 +88,7 @@ export const BasicInfoSection: React.FC<BasicInfoSectionProps> = ({
           <h2 className="font-serif text-base font-semibold text-forest-accent sm:text-2xl">{initialData ? '修改手记' : '抽牌手记'}</h2>
           <div className="flex shrink-0 items-center gap-1.5">
             {initialData && (
-              <button type="button" onClick={onCancel} className="min-h-11 rounded-xl px-2 text-xs font-medium text-forest-muted transition-colors hover:text-forest-accent sm:min-h-10 sm:px-3">取消修改</button>
+              <button type="button" disabled={cancelDisabled} onClick={onCancel} className="min-h-11 rounded-xl px-2 text-xs font-medium text-forest-muted transition-colors hover:text-forest-accent disabled:opacity-50 sm:px-3">取消修改</button>
             )}
             <div
               role="group"

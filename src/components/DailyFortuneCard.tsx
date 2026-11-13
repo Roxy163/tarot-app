@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   Archive,
@@ -15,17 +15,22 @@ import {
 } from 'lucide-react';
 import { DailyFortune, DailyFortuneReflectionParts } from '../types';
 import { TAROT_CARDS, getCardImageUrl } from '../constants';
+import { getDailyCardObservation } from '../constants/dailyCardObservations';
 import { CardPicker } from './CardPicker';
+import { ConfirmDialog } from './ConfirmDialog';
 import { DailyFortuneArchiveModal } from './DailyFortuneArchiveModal';
 import { TarotCardImage } from './TarotCardImage';
 import { AutoResizeTextarea } from './ui/AutoResizeTextarea';
 import {
   appendNoObviousDailyMatch,
+  canRedrawDailyFortune,
   getDailyReflectionParts,
   hasDailyReflectionContent,
+  NO_OBVIOUS_DAILY_MATCH_TEXT,
+  NO_OBVIOUS_PAST_DAILY_MATCH_TEXT,
 } from '../lib/dailyFortuneReflection';
 import { markPwaInstallPromptReady } from '../hooks/usePwaInstallPrompt';
-import { readLocalDraft, useLocalDraft } from '../hooks/useLocalDraft';
+import { clearLocalDraft, readLocalDraft, useLocalDraft } from '../hooks/useLocalDraft';
 import { PageView } from './PageView';
 import { scrollFocusedFieldIntoView } from '../lib/mobileFocus';
 import { DailyReflectionCard } from './DailyReflectionCard';
@@ -35,7 +40,6 @@ import { trackEvent } from '../lib/analytics';
 interface FortuneChoice {
   cardNumber: number;
   cardIndex: number;
-  isRevealed: boolean;
 }
 
 interface DailyFortuneCardProps {
@@ -43,12 +47,14 @@ interface DailyFortuneCardProps {
   fortunes: DailyFortune[];
   ownerName?: string;
   ownerScope?: string;
+  today?: string;
   embedded?: boolean;
-  onGenerateWithNumber: (cardNumber: number, cardIndex?: number, replaceExisting?: boolean) => DailyFortune | null | void;
+  onGenerateWithNumber: (cardNumber: number, cardIndex?: number, expectedRedrawId?: string) => DailyFortune | null | void;
   onCreateFromCard: (
     cardId: string,
     isReversed: boolean,
-    source: NonNullable<DailyFortune['source']>
+    source: NonNullable<DailyFortune['source']>,
+    expectedRedrawId?: string,
   ) => DailyFortune | null | void;
   onUpdateCard: (fortuneId: string, cardId: string, isReversed: boolean) => void;
   onArchive: (id: string, reflection?: string | DailyFortuneReflectionParts) => void;
@@ -114,7 +120,29 @@ const getSourceLabel = (source?: DailyFortune['source']) => (
   source === 'physical-draw' ? '现实抽牌' : '系统抽牌'
 );
 
-const DailyReflectionBlocks = ({ fortune }: { fortune: DailyFortune }) => {
+const getReflectionDraftKey = (scope: string, fortuneId: string) => `tarot_daily_reflection_draft_${scope}_${fortuneId}`;
+
+const hasUnfinishedReflection = (scope: string, fortune: DailyFortune) => {
+  const draft = readLocalDraft<DailyFortuneReflectionParts>(getReflectionDraftKey(scope, fortune.id));
+  if (!draft) return false;
+  const initial = typeof draft.initialImpression === 'string' ? draft.initialImpression.trim() : '';
+  const review = typeof draft.dailyReview === 'string' ? draft.dailyReview.trim() : '';
+  const saved = getDailyReflectionParts(fortune);
+  return Boolean(initial || review) && (initial !== saved.initialImpression || review !== saved.dailyReview);
+};
+
+const readDismissedReviews = (scope: string, key: string, dayKey: string) => {
+  let ids: string[] = [];
+  let day: string | null = null;
+  try {
+    const stored: unknown = JSON.parse(localStorage.getItem(key) || '[]');
+    if (Array.isArray(stored)) ids = stored.filter((id): id is string => typeof id === 'string');
+  } catch { /* No saved record dismissals. */ }
+  try { day = sessionStorage.getItem(dayKey); } catch { /* No saved day dismissal. */ }
+  return { scope, ids, day };
+};
+
+const DailyReflectionBlocks = ({ fortune, hasDraft }: { fortune: DailyFortune; hasDraft: boolean }) => {
   const parts = getDailyReflectionParts(fortune);
   const hasInitialImpression = Boolean(parts.initialImpression);
   const hasDailyReview = Boolean(parts.dailyReview);
@@ -122,7 +150,7 @@ const DailyReflectionBlocks = ({ fortune }: { fortune: DailyFortune }) => {
   if (!hasInitialImpression && !hasDailyReview) {
     return (
       <p className="mt-2 rounded-2xl bg-forest-bg/45 px-3 py-2 text-xs leading-relaxed text-forest-muted">
-        还没写下今天的第一眼感受。可以先记一点，晚上再回看。
+        {hasDraft ? '还有未保存的草稿。' : '还没写下今天的第一眼感受。可以先记一点，晚上再回看。'}
       </p>
     );
   }
@@ -155,7 +183,8 @@ const DailyReflectionBlocks = ({ fortune }: { fortune: DailyFortune }) => {
   );
 };
 
-const getDailyReflectionActionLabel = (fortune: DailyFortune) => {
+const getDailyReflectionActionLabel = (fortune: DailyFortune, hasDraft: boolean) => {
+  if (hasDraft) return '继续写日运';
   const parts = getDailyReflectionParts(fortune);
   if (parts.initialImpression && !parts.dailyReview) return '补写今日回看';
   if (parts.initialImpression || parts.dailyReview || fortune.archivedAt) return '继续补写';
@@ -167,6 +196,7 @@ export const DailyFortuneCard: React.FC<DailyFortuneCardProps> = ({
   fortunes,
   ownerName,
   ownerScope = 'guest',
+  today = toLocalReadingDate(),
   embedded = false,
   onGenerateWithNumber,
   onCreateFromCard,
@@ -180,7 +210,7 @@ export const DailyFortuneCard: React.FC<DailyFortuneCardProps> = ({
 }) => {
   const [cardNumber, setCardNumber] = useState('');
   const [showNumberInput, setShowNumberInput] = useState(false);
-  const [shufflePhase, setShufflePhase] = useState<'idle' | 'shuffling' | 'selected' | 'revealed'>('idle');
+  const [shufflePhase, setShufflePhase] = useState<'idle' | 'shuffling' | 'selected'>('idle');
   const [shuffleCount, setShuffleCount] = useState(0);
   const [fortuneChoice, setFortuneChoice] = useState<FortuneChoice | null>(null);
   const [cardPickerMode, setCardPickerMode] = useState<'create' | 'replace' | null>(null);
@@ -189,16 +219,18 @@ export const DailyFortuneCard: React.FC<DailyFortuneCardProps> = ({
   const [archiveInitialImpression, setArchiveInitialImpression] = useState('');
   const [archiveDailyReview, setArchiveDailyReview] = useState('');
   const [editingFortuneId, setEditingFortuneId] = useState<string | null>(null);
-  const [isRedrawing, setIsRedrawing] = useState(false);
+  const [redrawFortuneId, setRedrawFortuneId] = useState<string | null>(null);
+  const [redrawConfirmationId, setRedrawConfirmationId] = useState<string | null>(null);
   const [saveError, setSaveError] = useState('');
   const [saveNotice, setSaveNotice] = useState('');
   const [savedCardName, setSavedCardName] = useState<string | null>(null);
   const [drawError, setDrawError] = useState('');
-  const today = toLocalReadingDate();
-  const reminderKey = `tarot_daily_review_reminder_${ownerScope}`;
-  const [dismissedReviewDate, setDismissedReviewDate] = useState(() => {
-    try { return sessionStorage.getItem(reminderKey); } catch { return null; }
-  });
+  const reminderKey = `tarot_daily_review_dismissed_${ownerScope}`;
+  const reminderDayKey = `tarot_daily_review_reminder_${ownerScope}`;
+  const [dismissedReminders, setDismissedReminders] = useState(() => readDismissedReviews(ownerScope, reminderKey, reminderDayKey));
+  const { ids: dismissedReviewIds, day: dismissedDay } = dismissedReminders.scope === ownerScope
+    ? dismissedReminders : readDismissedReviews(ownerScope, reminderKey, reminderDayKey);
+  const previousDay = useRef(today);
   const shuffleIntervalRef = useRef<number | null>(null);
   const shuffleEndTimerRef = useRef<number | null>(null);
 
@@ -213,25 +245,47 @@ export const DailyFortuneCard: React.FC<DailyFortuneCardProps> = ({
     () => archivedFortunes.filter(hasDailyReflectionContent).length,
     [archivedFortunes]
   );
-  const pendingReview = archivedFortunes.find(item => item.date < today && !getDailyReflectionParts(item).dailyReview.trim());
+  const reminderCutoff = new Date(`${today}T12:00:00`);
+  reminderCutoff.setDate(reminderCutoff.getDate() - 7);
+  const oldestReminderDay = toLocalReadingDate(reminderCutoff);
+  const recentPastFortunes = archivedFortunes.filter(item => item.date >= oldestReminderDay && item.date < today);
+  const pendingReview = recentPastFortunes.find(item => {
+    const parts = getDailyReflectionParts(item);
+    return !dismissedReviewIds.includes(item.id) && !parts.dailyReview
+      && (Boolean(parts.initialImpression) || hasUnfinishedReflection(ownerScope, item));
+  });
+  const canRedraw = Boolean(fortune && canRedrawDailyFortune(fortune));
+  const isRedrawing = Boolean(canRedraw && fortune && redrawFortuneId === fortune.id);
+  const hasCurrentDraft = fortune ? hasUnfinishedReflection(ownerScope, fortune) : false;
   const cardData = fortune ? getCardData(fortune.cardName) : null;
+  const observation = fortune && (getDailyCardObservation(cardData?.id || '', fortune.isReversed) ?? fortune.interpretation);
+  const cardHistoryButton = fortune && onOpenCardHistory && (
+    <button type="button" onClick={() => onOpenCardHistory(fortune.cardName)} className="inline-flex min-h-11 items-center gap-1.5 text-xs font-medium text-forest-accent hover:underline">
+      <BookOpen size={14} />看这张牌的牌义
+    </button>
+  );
   const canAdjustPhysicalCard = fortune?.source === 'physical-draw';
+  const drawErrorNotice = drawError && !cardPickerMode && (
+    <p role="alert" className="col-span-2 mt-2 basis-full text-xs text-red-600">{drawError}</p>
+  );
   const editingFortune = (
     editingFortuneId
       ? [fortune, ...archivedFortunes].filter(Boolean).find(item => item?.id === editingFortuneId)
       : fortune
   ) || null;
-  const draftKey = `tarot_daily_reflection_draft_${ownerScope}_${editingFortuneId || 'none'}`;
+  const isEditingPast = Boolean(editingFortune && editingFortune.date < today);
+  const reviewLabel = isEditingPast ? '回看' : '今日回看';
+  const noMatchText = isEditingPast ? NO_OBVIOUS_PAST_DAILY_MATCH_TEXT : NO_OBVIOUS_DAILY_MATCH_TEXT;
+  const draftKey = getReflectionDraftKey(ownerScope, editingFortuneId || 'none');
   const draft = useLocalDraft(draftKey, {
     initialImpression: archiveInitialImpression,
     dailyReview: archiveDailyReview,
   }, showArchiveDialog && Boolean(editingFortune));
-  const compactKeywords = fortune ? fortune.keywords.slice(0, 2) : [];
   const containerClassName = embedded
     ? 'w-full overflow-hidden rounded-[1.35rem] border border-white/70 bg-white/44 shadow-none backdrop-blur-sm'
     : 'w-full overflow-hidden rounded-[1.25rem] border border-forest-accent/15 bg-gradient-to-br from-white via-forest-bg/75 to-forest-accent/10 shadow-sm shadow-forest-accent/5';
 
-  const clearShuffleTimers = () => {
+  const clearShuffleTimers = useCallback(() => {
     if (shuffleIntervalRef.current !== null) {
       window.clearInterval(shuffleIntervalRef.current);
       shuffleIntervalRef.current = null;
@@ -240,9 +294,29 @@ export const DailyFortuneCard: React.FC<DailyFortuneCardProps> = ({
       window.clearTimeout(shuffleEndTimerRef.current);
       shuffleEndTimerRef.current = null;
     }
-  };
+  }, []);
 
-  useEffect(() => clearShuffleTimers, []);
+  useEffect(() => clearShuffleTimers, [clearShuffleTimers]);
+
+  const resetDraw = useCallback(() => {
+    clearShuffleTimers();
+    setRedrawFortuneId(null);
+    setFortuneChoice(null);
+    setCardNumber('');
+    setShufflePhase('idle');
+    setShowNumberInput(false);
+    setCardPickerMode(null);
+    setDrawError('');
+  }, [clearShuffleTimers]);
+
+  useLayoutEffect(() => {
+    if (previousDay.current === today) return;
+    previousDay.current = today;
+    resetDraw();
+    setRedrawConfirmationId(null);
+    setSaveNotice('');
+    setSavedCardName(null);
+  }, [today, resetDraw]);
 
   const getShuffledCardIndex = (cardNumber: number) => {
     const deck = [...Array(TAROT_CARDS.length).keys()];
@@ -257,7 +331,6 @@ export const DailyFortuneCard: React.FC<DailyFortuneCardProps> = ({
     setFortuneChoice({
       cardNumber,
       cardIndex: getShuffledCardIndex(cardNumber),
-      isRevealed: false
     });
   };
 
@@ -293,14 +366,18 @@ export const DailyFortuneCard: React.FC<DailyFortuneCardProps> = ({
     }
   };
 
+  const finishDraw = (next: DailyFortune | null | void) => {
+    if (isRedrawing && fortune && next && next.date === fortune.date && next.id !== fortune.id) {
+      clearLocalDraft(getReflectionDraftKey(ownerScope, fortune.id));
+    }
+    resetDraw();
+  };
+
   const handleReveal = () => {
     if (fortuneChoice) {
       setDrawError('');
       try {
-        onGenerateWithNumber(fortuneChoice.cardNumber, fortuneChoice.cardIndex, isRedrawing);
-        setFortuneChoice({ ...fortuneChoice, isRevealed: true });
-        setShufflePhase('revealed');
-        setIsRedrawing(false);
+        finishDraw(onGenerateWithNumber(fortuneChoice.cardNumber, fortuneChoice.cardIndex, redrawFortuneId ?? undefined));
       } catch (error) {
         setDrawError(error instanceof Error ? error.message : '抽牌暂未保存，请重试。');
       }
@@ -320,53 +397,63 @@ export const DailyFortuneCard: React.FC<DailyFortuneCardProps> = ({
     setDrawError('');
     try {
       const number = Math.floor(Math.random() * TAROT_CARDS.length) + 1;
-      onGenerateWithNumber(number, getShuffledCardIndex(number), isRedrawing);
-      trackEvent('daily_quick_draw', { replacing: isRedrawing });
-      setFortuneChoice(null);
-      setShowNumberInput(false);
-      setShufflePhase('revealed');
-      setIsRedrawing(false);
+      finishDraw(onGenerateWithNumber(number, getShuffledCardIndex(number), redrawFortuneId ?? undefined));
+      trackEvent('daily_quick_draw', { replacing: Boolean(redrawFortuneId) });
     } catch (error) {
       setDrawError(error instanceof Error ? error.message : '抽牌暂未保存，请重试。');
     }
   };
 
+  const startRedraw = () => {
+    if (!fortune || !canRedraw || fortune.date !== today || fortune.date !== toLocalReadingDate()) return;
+    resetDraw();
+    setRedrawFortuneId(fortune.id);
+  };
+
   const handleStartRedraw = () => {
-    clearShuffleTimers();
-    setIsRedrawing(true);
-    setFortuneChoice(null);
-    setCardNumber('');
-    setShufflePhase('idle');
-    setShowNumberInput(false);
+    if (!fortune || !canRedraw) return;
+    if (hasUnfinishedReflection(ownerScope, fortune)) {
+      setRedrawConfirmationId(fortune.id);
+    } else {
+      startRedraw();
+    }
+  };
+
+  const openPhysicalCardPicker = (mode: 'create' | 'replace') => {
+    setDrawError('');
+    setCardPickerMode(mode);
   };
 
   const handlePhysicalCardSelect = (card: typeof TAROT_CARDS[0], isReversed: boolean) => {
     clearShuffleTimers();
     setDrawError('');
     try {
-      if (cardPickerMode === 'replace' && fortune) {
+      if (cardPickerMode === 'replace') {
+        if (!fortune || !canAdjustPhysicalCard) throw new Error('这条日运已变更，请重新打开记录。');
         onUpdateCard(fortune.id, card.id, isReversed);
-      } else {
-        onCreateFromCard(card.id, isReversed, 'physical-draw');
+        resetDraw();
+      } else if (cardPickerMode === 'create') {
+        finishDraw(onCreateFromCard(card.id, isReversed, 'physical-draw', redrawFortuneId ?? undefined));
       }
-      setIsRedrawing(false);
-      setCardPickerMode(null);
-      setShufflePhase('revealed');
-      setFortuneChoice(null);
     } catch (error) {
-      setDrawError(error instanceof Error ? error.message : '抽牌暂未保存，请重试。');
+      setDrawError(error instanceof Error ? error.message : '牌面暂未保存，请重试。');
     }
   };
 
   const handleTogglePhysicalDirection = () => {
     if (!fortune) return;
-    onUpdateCard(fortune.id, cardData?.id || fortune.cardName, !fortune.isReversed);
+    setDrawError('');
+    try {
+      onUpdateCard(fortune.id, cardData?.id || fortune.cardName, !fortune.isReversed);
+    } catch (error) {
+      setDrawError(error instanceof Error ? error.message : '正逆位暂未保存，请重试。');
+    }
   };
 
   const openArchiveDialog = (target: DailyFortune) => {
     trackEvent('daily_reflection_opened', { source: target.date < today ? 'past-review' : 'today' });
     const reflectionParts = getDailyReflectionParts(target);
-    const savedDraft = readLocalDraft<DailyFortuneReflectionParts>(`tarot_daily_reflection_draft_${ownerScope}_${target.id}`);
+    const savedDraft = readLocalDraft<DailyFortuneReflectionParts>(getReflectionDraftKey(ownerScope, target.id));
     setEditingFortuneId(target.id);
     setArchiveInitialImpression(typeof savedDraft?.initialImpression === 'string' ? savedDraft.initialImpression : reflectionParts.initialImpression);
     setArchiveDailyReview(typeof savedDraft?.dailyReview === 'string' ? savedDraft.dailyReview : reflectionParts.dailyReview);
@@ -411,23 +498,27 @@ export const DailyFortuneCard: React.FC<DailyFortuneCardProps> = ({
     }
 
     draft.clear();
-    setSavedCardName(editingFortune.cardName);
+    setSavedCardName(isEditingPast ? editingFortune.cardName : null);
     closeArchiveDialog();
-    setSaveNotice('已保存到本机，可在日运复盘中查看；今日回看可以晚些再写。');
+    setSaveNotice('已保存到本机，可在日运复盘中查看。');
     markPwaInstallPromptReady('daily-fortune-archive');
   };
 
   return (
     <>
-      {pendingReview && dismissedReviewDate !== today && (
+      {pendingReview && dismissedDay !== today && (
         <div className="mb-2 flex items-center gap-1 border-b border-forest-accent/8 pb-1">
           <button type="button" onClick={() => openArchiveDialog(pendingReview)} className="min-h-11 min-w-0 flex-1 text-left text-xs text-forest-accent hover:underline">
             <span className="block">上次的「{pendingReview.cardName}」还没回看</span>
             <span className="text-[10px] text-forest-muted">{pendingReview.date} · 继续补写</span>
           </button>
           <button type="button" aria-label="暂时略过日运回看" title="暂时略过" onClick={() => {
-            setDismissedReviewDate(today);
-            try { sessionStorage.setItem(reminderKey, today); } catch { /* Dismiss within this view. */ }
+            const ids = recentPastFortunes
+              .filter(item => item.id === pendingReview.id || dismissedReviewIds.includes(item.id))
+              .map(item => item.id);
+            setDismissedReminders({ scope: ownerScope, ids, day: today });
+            try { localStorage.setItem(reminderKey, JSON.stringify(ids)); } catch { /* Dismiss within this view. */ }
+            try { sessionStorage.setItem(reminderDayKey, today); } catch { /* Dismiss within this view. */ }
           }} className="grid h-11 w-11 shrink-0 place-items-center text-forest-muted hover:text-forest-accent"><X size={15} /></button>
         </div>
       )}
@@ -471,14 +562,8 @@ export const DailyFortuneCard: React.FC<DailyFortuneCardProps> = ({
                       {fortune.isReversed ? '逆位' : '正位'}
                     </span>
                   </div>
-                  <p className="mt-1 line-clamp-1 text-xs leading-relaxed text-forest-text/80">{fortune.interpretation}</p>
-                  <div className="mt-1 flex flex-wrap gap-1">
-                    {compactKeywords.map((kw, idx) => (
-                      <span key={idx} className="rounded-full bg-forest-accent/10 px-2 py-0.5 text-[10px] font-medium text-forest-accent">
-                        {kw}
-                      </span>
-                    ))}
-                  </div>
+                  <p className="mt-1 text-xs leading-relaxed text-forest-text/80">{observation}</p>
+                  {cardHistoryButton}
                 </div>
               </div>
 
@@ -495,12 +580,13 @@ export const DailyFortuneCard: React.FC<DailyFortuneCardProps> = ({
                   </button>
                   <button
                     type="button"
-                    onClick={() => setCardPickerMode('replace')}
+                    onClick={() => openPhysicalCardPicker('replace')}
                     className="flex min-h-11 items-center justify-center gap-1.5 rounded-full bg-forest-pink/10 px-3 text-[11px] font-bold text-forest-pink transition-all hover:bg-forest-pink/16"
                   >
                     <PenLine size={13} />
                     更换牌
                   </button>
+                  {drawErrorNotice}
                 </div>
               )}
 
@@ -521,7 +607,7 @@ export const DailyFortuneCard: React.FC<DailyFortuneCardProps> = ({
                     <p className="mt-0.5 text-[10px] leading-relaxed text-forest-muted">
                       先记第一直觉，晚一点补今日回看。
                     </p>
-                    <DailyReflectionBlocks fortune={fortune} />
+                    <DailyReflectionBlocks fortune={fortune} hasDraft={hasCurrentDraft} />
                   </div>
                 </div>
 
@@ -536,7 +622,7 @@ export const DailyFortuneCard: React.FC<DailyFortuneCardProps> = ({
                     }`}
                   >
                     {fortune.archivedAt ? <PenLine size={15} /> : <Archive size={15} />}
-                    {getDailyReflectionActionLabel(fortune)}
+                    {getDailyReflectionActionLabel(fortune, hasCurrentDraft)}
                   </button>
                   <button
                     type="button"
@@ -551,10 +637,11 @@ export const DailyFortuneCard: React.FC<DailyFortuneCardProps> = ({
                 </div>
               </div>
 
-              {!fortune.archivedAt && (
+              {canRedraw && (
                 <button
                   onClick={handleStartRedraw}
-                  className="mt-2 flex min-h-10 w-full items-center justify-center gap-2 rounded-xl bg-white/28 px-3 text-xs text-forest-ink transition-all hover:bg-white/62"
+                  type="button"
+                  className="mt-2 flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-white/28 px-3 text-xs text-forest-ink transition-all hover:bg-white/62"
                 >
                   <RefreshCw size={14} />
                   <span>重新抽一张日运</span>
@@ -600,14 +687,8 @@ export const DailyFortuneCard: React.FC<DailyFortuneCardProps> = ({
                     {getSourceLabel(fortune.source)}
                   </span>
                 </div>
-                <p className="line-clamp-2 text-xs leading-relaxed text-forest-text/80 sm:text-sm">{fortune.interpretation}</p>
-                <div className="flex flex-wrap gap-1.5">
-                  {fortune.keywords.map((kw, idx) => (
-                    <span key={idx} className="rounded-full bg-forest-accent/10 px-2 py-0.5 text-[10px] font-medium text-forest-accent">
-                      {kw}
-                    </span>
-                  ))}
-                </div>
+                <p className="text-xs leading-relaxed text-forest-text/80 sm:text-sm">{observation}</p>
+                {cardHistoryButton}
                 {canAdjustPhysicalCard && (
                   <div className="flex flex-wrap gap-1.5 pt-0.5">
                     <button
@@ -621,17 +702,15 @@ export const DailyFortuneCard: React.FC<DailyFortuneCardProps> = ({
                     </button>
                     <button
                       type="button"
-                      onClick={() => setCardPickerMode('replace')}
+                      onClick={() => openPhysicalCardPicker('replace')}
                       className="flex min-h-11 items-center justify-center gap-1.5 rounded-full bg-forest-pink/12 px-3 text-[10px] font-bold text-forest-pink transition-all hover:bg-forest-pink/18"
                     >
                       <PenLine size={12} />
                       更换牌
                     </button>
+                    {drawErrorNotice}
                   </div>
                 )}
-                <p className="line-clamp-1 text-[10px] leading-relaxed text-forest-muted sm:text-[11px]">
-                  今日记忆：先记关键词，晚上再和真实发生的事对应。
-                </p>
               </div>
             </div>
 
@@ -652,7 +731,7 @@ export const DailyFortuneCard: React.FC<DailyFortuneCardProps> = ({
                   <p className="mt-1 text-[11px] leading-relaxed text-forest-muted">
                     先写第一直觉，晚一点再回看今天有没有对应。
                   </p>
-                  <DailyReflectionBlocks fortune={fortune} />
+                  <DailyReflectionBlocks fortune={fortune} hasDraft={hasCurrentDraft} />
                 </div>
               </div>
 
@@ -660,19 +739,19 @@ export const DailyFortuneCard: React.FC<DailyFortuneCardProps> = ({
                 <button
                   type="button"
                   onClick={() => openArchiveDialog(fortune)}
-                  className={`flex min-h-10 w-full items-center justify-center gap-2 rounded-full px-4 text-xs font-bold transition-all ${
+                  className={`flex min-h-11 w-full items-center justify-center gap-2 rounded-full px-4 text-xs font-bold transition-all ${
                     fortune.archivedAt
                       ? 'bg-forest-accent/10 text-forest-accent hover:bg-forest-accent/15'
                       : 'bg-forest-accent text-white shadow-lg shadow-forest-accent/15 hover:bg-forest-accent/90'
                   }`}
                 >
                   {fortune.archivedAt ? <PenLine size={16} /> : <Archive size={16} />}
-                  {getDailyReflectionActionLabel(fortune)}
+                  {getDailyReflectionActionLabel(fortune, hasCurrentDraft)}
                 </button>
                 <button
                   type="button"
                   onClick={() => onOpenArchive ? onOpenArchive() : setShowArchiveZone(true)}
-                  className={`flex min-h-10 w-full items-center justify-center gap-2 rounded-full px-4 text-xs font-bold transition-all ${
+                  className={`flex min-h-11 w-full items-center justify-center gap-2 rounded-full px-4 text-xs font-bold transition-all ${
                     fortune.archivedAt
                       ? 'bg-forest-accent text-white shadow-lg shadow-forest-accent/15 hover:bg-forest-accent/90'
                       : 'border border-forest-accent/10 bg-white/75 text-forest-accent hover:border-forest-accent/30 hover:bg-white'
@@ -685,10 +764,11 @@ export const DailyFortuneCard: React.FC<DailyFortuneCardProps> = ({
               </div>
             </div>
 
-            {!fortune.archivedAt && (
+            {canRedraw && (
               <button
+                  type="button"
                 onClick={handleStartRedraw}
-                  className="mt-2 flex min-h-10 w-full items-center justify-center gap-2 rounded-xl bg-white/50 px-3 text-xs text-forest-ink transition-all hover:bg-white"
+                  className="mt-2 flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-white/50 px-3 text-xs text-forest-ink transition-all hover:bg-white"
               >
                 <RefreshCw size={14} />
                 <span>重新洗牌抽日运</span>
@@ -696,7 +776,7 @@ export const DailyFortuneCard: React.FC<DailyFortuneCardProps> = ({
             )}
           </div>
           )
-        ) : fortuneChoice && shufflePhase === 'selected' && !fortuneChoice.isRevealed ? (
+        ) : fortuneChoice && shufflePhase === 'selected' ? (
           <div className="p-6 text-center">
             <motion.div
               initial={{ opacity: 0, scale: 0.9 }}
@@ -778,7 +858,7 @@ export const DailyFortuneCard: React.FC<DailyFortuneCardProps> = ({
                       </button>
                       <button
                         type="button"
-                        onClick={() => setCardPickerMode('create')}
+                        onClick={() => openPhysicalCardPicker('create')}
                         className="flex min-h-11 items-center justify-center gap-1 rounded-xl border border-forest-accent/8 bg-white/45 px-2.5 text-xs font-medium text-forest-ink transition-all hover:bg-white/70"
                       >
                         <PenLine size={15} />
@@ -836,7 +916,7 @@ export const DailyFortuneCard: React.FC<DailyFortuneCardProps> = ({
                         </span>
                       </button>
                       <button
-                        onClick={() => setCardPickerMode('create')}
+                        onClick={() => openPhysicalCardPicker('create')}
                         className="min-h-11 min-w-11 flex-1 rounded-xl border border-forest-accent/8 bg-white/42 px-2 text-[11px] font-bold text-forest-ink transition-all hover:bg-white/66 sm:flex-none sm:w-28 sm:px-3 sm:text-xs"
                       >
                         <span className="flex items-center justify-center gap-1.5">
@@ -956,14 +1036,10 @@ export const DailyFortuneCard: React.FC<DailyFortuneCardProps> = ({
                       <div className="flex gap-2">
                         <button
                           type="button"
-                          onClick={() => {
-                            setShufflePhase('idle');
-                            setIsRedrawing(false);
-                            setCardNumber('');
-                          }}
+                          onClick={resetDraw}
                           className="min-h-11 flex-1 rounded-xl px-4 text-xs text-forest-muted transition-colors hover:text-forest-ink"
                         >
-                          取消
+                          {isRedrawing ? '取消重抽' : '取消'}
                         </button>
                         <button
                           type="submit"
@@ -990,9 +1066,14 @@ export const DailyFortuneCard: React.FC<DailyFortuneCardProps> = ({
             </AnimatePresence>
           </div>
         )}
+        {isRedrawing && !(shufflePhase === 'selected' && showNumberInput) && (
+          <button type="button" onClick={resetDraw} className="mx-auto flex min-h-11 items-center px-4 text-xs text-forest-muted hover:underline">
+            取消重抽
+          </button>
+        )}
       </motion.div>
 
-      {drawError && !cardPickerMode && <p role="alert" className="mt-2 text-xs text-red-600">{drawError}</p>}
+      {(!canAdjustPhysicalCard || isRedrawing) && drawErrorNotice}
 
       {saveNotice && (
         <div className="mt-2 px-2 text-xs leading-relaxed text-forest-accent">
@@ -1006,19 +1087,36 @@ export const DailyFortuneCard: React.FC<DailyFortuneCardProps> = ({
           <CardPicker
             title={cardPickerMode === 'replace' ? '更换今日日运牌' : '选择现实中抽到的牌'}
             description={cardPickerMode === 'replace'
-              ? '更正今天现实抽到的牌或正逆位，已写的第一直觉和今日回看会继续保留。'
+              ? '只更换牌名，当前正逆位、第一直觉和今日回看会保留。'
               : '选中后会作为今日日运记录，也可以用来练习这张单牌的含义。'}
             initialIsReversed={cardPickerMode === 'replace' ? fortune?.isReversed : false}
             error={drawError}
             onSelect={handlePhysicalCardSelect}
-            onClose={() => setCardPickerMode(null)}
+            onClose={() => {
+              setDrawError('');
+              setCardPickerMode(null);
+            }}
           />
         )}
       </AnimatePresence>
 
-      <PageView isOpen={showArchiveDialog && Boolean(editingFortune)} onBack={requestCloseArchive} title={editingFortune?.archivedAt ? '补写日运' : '记录日运'}>
+      <ConfirmDialog
+        isOpen={Boolean(canRedraw && fortune && redrawConfirmationId === fortune.id)}
+        title="这张牌还有日运草稿"
+        message="抽到并保存新牌后，原来的草稿会随旧牌一起替换。也可以先返回继续写。"
+        confirmText="放弃草稿并重抽"
+        cancelText="保留草稿"
+        destructive
+        onConfirm={startRedraw}
+        onClose={() => setRedrawConfirmationId(null)}
+      />
+
+      <PageView isOpen={showArchiveDialog && Boolean(editingFortune)} onBack={requestCloseArchive} title={editingFortune?.archivedAt || isEditingPast ? '补写日运' : '记录日运'}>
         {editingFortune && <>
-              <DailyReflectionCard fortune={editingFortune} description="刚抽完先写第一直觉；晚上回来，再写今日回看。" />
+              <DailyReflectionCard
+                fortune={editingFortune}
+                description={isEditingPast ? `${editingFortune.date} · 回顾那天的经历。` : '刚抽完先写第一直觉，晚上回来再写今日回看。'}
+              />
 
               <div className="mt-3 space-y-2.5 sm:mt-4 sm:space-y-3">
                 <label className="block">
@@ -1036,26 +1134,28 @@ export const DailyFortuneCard: React.FC<DailyFortuneCardProps> = ({
                 </label>
 
                 <label className="block">
-                  <span className="text-xs font-semibold text-forest-accent">今日回看</span>
-                  <span className="ml-2 text-xs text-forest-muted">可晚些再填</span>
+                  <span className="text-xs font-semibold text-forest-accent">{reviewLabel}</span>
+                  {!isEditingPast && <span className="ml-2 text-xs text-forest-muted">可晚些再填</span>}
                   <AutoResizeTextarea
                     minRows={1.5}
                     maxRows={7}
                     value={archiveDailyReview}
                     onChange={(event) => setArchiveDailyReview(event.target.value)}
-                    aria-label="今日回看"
+                    aria-label={reviewLabel}
                     onFocus={scrollFocusedFieldIntoView}
-                    placeholder="晚一点回来写：今天发生了什么？它和这张牌的关键词、画面或正逆位有什么关系？"
+                    placeholder={isEditingPast
+                      ? '那天发生了什么？你在牌面和经历之间看到了什么联系？'
+                      : '晚一点回来写：今天发生了什么？它和这张牌的关键词、画面或正逆位有什么关系？'}
                     className="mt-1 w-full rounded-xl border border-forest-accent/10 bg-white/88 p-3 text-base leading-relaxed text-forest-ink outline-none transition-all placeholder:text-forest-muted/65 focus:border-forest-accent/35 focus:ring-2 focus:ring-forest-accent/12 sm:rounded-2xl sm:p-3.5 sm:text-sm"
                   />
                 </label>
 
                 <button
                   type="button"
-                  onClick={() => setArchiveDailyReview(appendNoObviousDailyMatch)}
+                  onClick={() => setArchiveDailyReview(current => appendNoObviousDailyMatch(current, noMatchText))}
                   className="min-h-11 rounded-full bg-forest-accent/8 px-3 text-xs font-semibold text-forest-accent transition-colors hover:bg-forest-accent/13"
                 >
-                  今天暂未看见明显对应
+                  {noMatchText}
                 </button>
               </div>
 

@@ -63,4 +63,20 @@ describe('CardPicker', () => {
 
     expect(props.onSelect).toHaveBeenCalledWith(expect.objectContaining({ id: 'ar04' }), false);
   });
+
+  it('explains an unmatched search and restores the deck when cleared', async () => {
+    const user = userEvent.setup();
+    renderPicker();
+    const searchInput = screen.getByRole('searchbox');
+
+    await user.type(searchInput, 'zzz(找不到)*');
+    expect(screen.getByRole('status')).toHaveTextContent('没有找到匹配的牌');
+    expect(screen.queryAllByRole('img')).toHaveLength(0);
+
+    await user.click(screen.getByRole('button', { name: '清空搜索' }));
+    expect(searchInput).toHaveValue('');
+    expect(searchInput).toHaveFocus();
+    expect(screen.getByRole('img', { name: '皇帝' })).toBeInTheDocument();
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
+  });
 });

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { render, screen, waitForElementToBeRemoved, within } from '@testing-library/react';
+import { act, render, screen, waitForElementToBeRemoved, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { QuizMemoryEntry } from '../types';
@@ -102,6 +102,31 @@ describe('StudyPavilionModules', () => {
     expect(within(quizCard).getByRole('button', { name: /换一题|下一题/ })).toBeInTheDocument();
   });
 
+  it('reviews a single wrong card outside the previous specialty, then returns to the full deck', async () => {
+    const user = userEvent.setup();
+    render(<Harness />);
+    const quizCard = screen.getByTestId('card-quiz-card');
+
+    await user.click(within(quizCard).getByTestId('quiz-option-answer-水'));
+    await user.click(within(quizCard).getByRole('button', { name: '档案' }));
+    const archive = screen.getByRole('main', { name: '小考档案' });
+    await user.click(within(archive).getByRole('button', { name: /专项设置/ }));
+    await user.selectOptions(within(archive).getByRole('combobox', { name: '元素' }), '水');
+    expect(within(archive).getByText('看牌对应 · 水元素')).toBeInTheDocument();
+    await user.click(within(archive).getByRole('button', { name: '去温习' }));
+    await waitForElementToBeRemoved(() => screen.queryByRole('main', { name: '小考档案' }));
+
+    expect(within(quizCard).getByAltText('愚者')).toBeInTheDocument();
+    expect(within(quizCard).getByTestId('quiz-option-answer-水')).toBeInTheDocument();
+    await user.click(within(quizCard).getByTestId('quiz-option-answer-风'));
+    expect(await within(quizCard).findByText('答案：风')).toBeInTheDocument();
+    await user.click(within(quizCard).getByRole('button', { name: '下一题' }));
+
+    expect(within(quizCard).getByText('没有待温习的牌了')).toBeInTheDocument();
+    await user.click(within(quizCard).getByRole('button', { name: '回到全牌库' }));
+    expect(await within(quizCard).findByTestId('quiz-option-answer-风')).toBeInTheDocument();
+  });
+
   it('shows persisted quiz history in the archive', async () => {
     const user = userEvent.setup();
     render(
@@ -137,6 +162,28 @@ describe('StudyPavilionModules', () => {
     expect(within(archiveDialog).getByText(/选了 水/)).toBeInTheDocument();
     expect(within(archiveDialog).getByText('薄弱牌')).toBeInTheDocument();
     expect(within(archiveDialog).getAllByText('愚者').length).toBeGreaterThan(0);
+  });
+
+  it('counts practice on the local day and refreshes the open archive after midnight', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    try {
+      const user = userEvent.setup();
+      const practicedAt = new Date(2026, 10, 12, 1);
+      vi.setSystemTime(practicedAt);
+      render(<Harness />);
+      const quizCard = screen.getByTestId('card-quiz-card');
+      await user.click(within(quizCard).getByTestId('quiz-option-answer-风'));
+      await user.click(within(quizCard).getByRole('button', { name: '档案' }));
+      const archive = screen.getByRole('main', { name: '小考档案' });
+      const today = within(archive).getByText('今日').parentElement;
+      expect(today).toHaveTextContent('1今日');
+
+      vi.setSystemTime(new Date(2026, 10, 13));
+      act(() => { window.dispatchEvent(new Event('focus')); });
+      expect(today).toHaveTextContent('0今日');
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('keeps text-to-card mode in the archive settings', async () => {

@@ -744,9 +744,9 @@ export const PrivateTab: React.FC<PrivateTabProps> = ({
             initial={{ opacity: 0, y: 18, x: 0 }}
             animate={{ opacity: 1, y: 0, x: 0 }}
             exit={{ opacity: 0, y: 18, x: 0 }}
-            className="fixed inset-x-3 bottom-[calc(4.75rem+env(safe-area-inset-bottom))] z-50 max-h-[72vh] overflow-hidden rounded-[1.4rem] border border-forest-accent/10 bg-[#fffdf8]/92 shadow-[0_18px_54px_-36px_rgba(62,58,54,0.62)] backdrop-blur-xl sm:inset-y-4 sm:left-auto sm:right-4 sm:w-[420px] sm:max-h-[calc(100vh-2rem)] sm:rounded-[1.5rem]"
+            className="fixed inset-x-3 bottom-[calc(4.75rem+env(safe-area-inset-bottom))] z-50 flex max-h-[min(72dvh,calc(100dvh-5.5rem-env(safe-area-inset-top)-env(safe-area-inset-bottom)))] flex-col overflow-hidden rounded-[1.4rem] border border-forest-accent/10 bg-[#fffdf8]/92 shadow-[0_18px_54px_-36px_rgba(62,58,54,0.62)] backdrop-blur-xl sm:inset-y-4 sm:left-auto sm:right-4 sm:w-[420px] sm:max-h-[calc(100dvh-2rem)] sm:rounded-[1.5rem]"
           >
-            <div className="flex items-start justify-between gap-3 border-b border-forest-accent/8 px-4 py-3">
+            <div className="flex shrink-0 items-start justify-between gap-3 border-b border-forest-accent/8 px-4 py-3">
               <div>
                 <p className="font-serif text-lg font-bold text-forest-accent">典籍索引</p>
                 <p className="mt-0.5 text-[11px] text-forest-muted">按牌、牌阵、标签或问题找回手记。</p>
@@ -761,7 +761,7 @@ export const PrivateTab: React.FC<PrivateTabProps> = ({
               </button>
             </div>
 
-            <div className="space-y-3 overflow-y-auto px-4 py-3">
+            <div className="min-h-0 flex-auto space-y-3 overflow-y-auto overscroll-contain px-4 py-3">
               <div className="grid grid-cols-4 gap-1.5 rounded-full border border-forest-accent/8 bg-white/36 p-1">
                 {archiveIndexTabs.map(tab => {
                   const Icon = tab.icon;

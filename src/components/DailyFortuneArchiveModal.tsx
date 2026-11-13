@@ -27,6 +27,8 @@ import {
   appendNoObviousDailyMatch,
   getDailyReflectionParts,
   hasDailyReflectionContent,
+  NO_OBVIOUS_DAILY_MATCH_TEXT,
+  NO_OBVIOUS_PAST_DAILY_MATCH_TEXT,
 } from '../lib/dailyFortuneReflection';
 import {
   buildDailyFortunePdfLines,
@@ -50,6 +52,7 @@ import { scrollFocusedFieldIntoView } from '../lib/mobileFocus';
 import { DailyReflectionCard } from './DailyReflectionCard';
 import { getRecordCalendarDate, isDailyReading, readingMatchesSearch } from '../lib/readingSearch';
 import { ReadingDetailModal } from './ReadingDetailModal';
+import { toLocalReadingDate } from '../lib/readingDate';
 
 interface DailyFortuneArchiveModalProps {
   fortunes: DailyFortune[];
@@ -487,6 +490,9 @@ export const DailyFortuneArchiveModal: React.FC<DailyFortuneArchiveModalProps> =
   const [selectedCardName, setSelectedCardName] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(fortunes[0]?.id || null);
   const [editingFortune, setEditingFortune] = useState<DailyFortune | null>(null);
+  const isEditingPast = Boolean(editingFortune && getRecordCalendarDate(editingFortune.date) < toLocalReadingDate());
+  const reviewLabel = isEditingPast ? '回看' : '今日回看';
+  const noMatchText = isEditingPast ? NO_OBVIOUS_PAST_DAILY_MATCH_TEXT : NO_OBVIOUS_DAILY_MATCH_TEXT;
   const [editInitialImpression, setEditInitialImpression] = useState('');
   const [editDailyReview, setEditDailyReview] = useState('');
   const [editSaveError, setEditSaveError] = useState('');
@@ -655,10 +661,6 @@ export const DailyFortuneArchiveModal: React.FC<DailyFortuneArchiveModalProps> =
     setActiveView(view);
     setExpandedId(null);
     setIsExportMenuOpen(false);
-    if (view === 'month') {
-      setDrawMonth(selectedMonthKey);
-      setDrawDatesOpen(true);
-    }
   };
 
   const handleReviewFilterChange = (filter: ReviewFilter) => {
@@ -1183,7 +1185,10 @@ export const DailyFortuneArchiveModal: React.FC<DailyFortuneArchiveModalProps> =
               </div>
           <PageView isOpen={Boolean(editingFortune)} onBack={requestCloseEdit} title="补写日运">
             {editingFortune && <>
-                  <DailyReflectionCard fortune={editingFortune} description="先保留第一眼的感受，再回看这一天。" />
+                  <DailyReflectionCard
+                    fortune={editingFortune}
+                    description={isEditingPast ? `${editingFortune.date} · 回顾那天的经历。` : '先保留第一眼的感受，再回看这一天。'}
+                  />
 
                   <div className="mt-3 space-y-2.5 sm:mt-4 sm:space-y-3">
                     <label className="block">
@@ -1201,25 +1206,27 @@ export const DailyFortuneArchiveModal: React.FC<DailyFortuneArchiveModalProps> =
                     </label>
 
                     <label className="block">
-                      <span className="text-xs font-medium text-forest-accent">今日回看</span>
+                      <span className="text-xs font-medium text-forest-accent">{reviewLabel}</span>
                       <AutoResizeTextarea
                         minRows={1.5}
                         maxRows={7}
                         value={editDailyReview}
                         onFocus={scrollFocusedFieldIntoView}
                         onChange={(event) => setEditDailyReview(event.target.value)}
-                        aria-label="今日回看"
-                        placeholder="今天发生了什么？它和这张牌哪里有关系，或暂时没有看见关系？"
+                        aria-label={reviewLabel}
+                        placeholder={isEditingPast
+                          ? '那天发生了什么？你在牌面和经历之间看到了什么联系？'
+                          : '今天发生了什么？它和这张牌哪里有关系，或暂时没有看见关系？'}
                         className="mt-1 w-full rounded-xl border border-forest-accent/12 bg-white/88 p-3 text-base leading-relaxed text-forest-ink outline-none transition-all placeholder:text-forest-muted/70 focus:border-forest-accent/35 focus:ring-2 focus:ring-forest-accent/15 sm:rounded-2xl sm:p-3.5 sm:text-sm"
                       />
                     </label>
 
                     <button
                       type="button"
-                      onClick={() => setEditDailyReview(appendNoObviousDailyMatch)}
+                      onClick={() => setEditDailyReview(current => appendNoObviousDailyMatch(current, noMatchText))}
                       className="min-h-11 rounded-full bg-forest-accent/10 px-3 text-xs font-medium text-forest-accent transition-colors hover:bg-forest-accent/15"
                     >
-                      今天暂未看见明显对应
+                      {noMatchText}
                     </button>
                   </div>
 

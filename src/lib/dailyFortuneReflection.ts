@@ -1,11 +1,13 @@
 import { DailyFortune, DailyFortuneReflectionParts } from '../types';
 
 export const NO_OBVIOUS_DAILY_MATCH_TEXT = '今天暂未看见明显对应';
+export const NO_OBVIOUS_PAST_DAILY_MATCH_TEXT = '那天暂未看见明显对应';
 
-export const appendNoObviousDailyMatch = (text: string) => {
-  if (!text.trim()) return NO_OBVIOUS_DAILY_MATCH_TEXT;
-  if (text.split(/\r?\n/).some(line => line.trim() === NO_OBVIOUS_DAILY_MATCH_TEXT)) return text;
-  return `${text}${text.endsWith('\n') ? '' : '\n'}${NO_OBVIOUS_DAILY_MATCH_TEXT}`;
+export const appendNoObviousDailyMatch = (text: string, matchText = NO_OBVIOUS_DAILY_MATCH_TEXT) => {
+  if (!text.trim()) return matchText;
+  const matchPhrases = [NO_OBVIOUS_DAILY_MATCH_TEXT, NO_OBVIOUS_PAST_DAILY_MATCH_TEXT, matchText];
+  if (text.split(/\r?\n/).some(line => matchPhrases.includes(line.trim()))) return text;
+  return `${text}${text.endsWith('\n') ? '' : '\n'}${matchText}`;
 };
 
 const normalize = (value?: string) => (value || '').trim();
@@ -40,6 +42,10 @@ export const hasDailyReflectionContent = (fortune: DailyFortune) => {
   const parts = getDailyReflectionParts(fortune);
   return Boolean(parts.initialImpression || parts.dailyReview || normalize(fortune.reflection));
 };
+
+export const canRedrawDailyFortune = (fortune: DailyFortune) => (
+  !fortune.archivedAt && !fortune.savedToCardAnnotationAt && !hasDailyReflectionContent(fortune)
+);
 
 export const createDailyReflectionPatch = (
   input?: string | DailyFortuneReflectionParts

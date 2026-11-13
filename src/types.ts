@@ -349,6 +349,7 @@ export interface ReadingEditorWorkspaceBackup extends ReadingEditorSnapshot {
 export interface ReadingEditorDraft {
   formData: ReadingEditorFields;
   feedbackBaseline?: string;
+  readingDateConfirmed?: boolean;
   cardSlots: ReadingSlotData[];
   cardInterpretations: string[];
   cardQuestions: string[];

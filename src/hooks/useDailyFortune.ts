@@ -1,7 +1,9 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { DailyFortune, DailyFortuneReflectionParts, FortuneSummary } from '../types';
 import { TAROT_CARDS } from '../constants';
+import { getDailyCardObservation } from '../constants/dailyCardObservations';
 import {
+  canRedrawDailyFortune,
   createDailyReflectionPatch,
   hasDailyReflectionContent,
 } from '../lib/dailyFortuneReflection';
@@ -44,39 +46,9 @@ const createFortuneId = () => (
     : `fortune-${Date.now()}`
 );
 
-const getDailyCardInterpretation = (cardName: string, isReversed: boolean) => {
-  const interpretations: Record<string, { reversed: string; upright: string }> = {
-    '魔术师': { upright: '今天是充满创造力和行动力的一天，你拥有实现目标所需的全部资源。', reversed: '小心过度自信或操控他人的倾向，保持真诚。' },
-    '女祭司': { upright: '信任你的直觉，内心深处的智慧正在指引你。', reversed: '可能需要面对隐藏的情绪或秘密。' },
-    '皇后': { upright: '丰收与喜悦的一天，人际关系和谐美满。', reversed: '注意不要过度依赖他人或忽视自我关怀。' },
-    '皇帝': { upright: '展现你的领导力，今天适合做出重要决定。', reversed: '避免独裁或僵化的思维方式。' },
-    '教皇': { upright: '寻求传统智慧的指引，或成为他人的导师。', reversed: '质疑权威，寻找自己的真理。' },
-    '恋人': { upright: '爱情与和谐，重要的关系决策即将到来。', reversed: '关系中可能存在冲突或不诚实。' },
-    '战车': { upright: '勇往直前，战胜挑战，胜利就在前方。', reversed: '小心冲动或失控的行为。' },
-    '力量': { upright: '内心的力量与勇气将帮助你克服困难。', reversed: '可能感到软弱或被他人操控。' },
-    '隐士': { upright: '独处和内省将带来深刻的洞察。', reversed: '孤独可能变成孤立，不要逃避社交。' },
-    '命运之轮': { upright: '命运的转变正在发生，顺势而为。', reversed: '抗拒变化可能导致困境。' },
-    '正义': { upright: '真理终将显现，公平与平衡将得到恢复。', reversed: '偏见或不公可能影响判断。' },
-    '倒吊人': { upright: '放下执念，新的视角将带来解脱。', reversed: '抗拒放下可能导致痛苦。' },
-    '死神': { upright: '结束即是新的开始，拥抱转变。', reversed: '抗拒终结可能阻碍成长。' },
-    '节制': { upright: '平衡与耐心将引领你走向成功。', reversed: '过度或不足都可能带来问题。' },
-    '恶魔': { upright: '面对你的恐惧和欲望，才能获得自由。', reversed: '摆脱束缚，重获自由。' },
-    '塔': { upright: '突如其来的变化将摧毁旧有的结构。', reversed: '逃避危机可能导致更大的问题。' },
-    '星星': { upright: '希望与灵感，梦想即将实现。', reversed: '失望或缺乏信心可能阻碍进展。' },
-    '月亮': { upright: '探索潜意识，真相将逐渐显现。', reversed: '混乱或错觉可能影响判断。' },
-    '太阳': { upright: '喜悦、成功和光明的一天。', reversed: '暂时的挫折，保持乐观。' },
-    '审判': { upright: '觉醒与重生，重要的召唤正在到来。', reversed: '抗拒召唤可能错过良机。' },
-    '世界': { upright: '圆满完成，新的旅程即将开始。', reversed: '未完成的事务可能需要关注。' },
-  };
-
-  const defaultInterpretation = {
-    upright: '今天是充满可能性的一天，保持开放的心态迎接新的机遇。',
-    reversed: '今天需要更加谨慎，反思自己的方向。'
-  };
-
-  const cardInterpretation = interpretations[cardName] || defaultInterpretation;
-  return isReversed ? cardInterpretation.reversed : cardInterpretation.upright;
-};
+const getDailyCardInterpretation = (cardId: string, isReversed: boolean) => (
+  getDailyCardObservation(cardId, isReversed) ?? '这张牌的哪个细节最吸引你？'
+);
 
 export const useDailyFortune = (
   session: { uid?: string; email?: string | null } | null = null,
@@ -256,18 +228,32 @@ export const useDailyFortune = (
     return deck;
   }, [session?.uid]);
 
-  const getToday = useCallback(() => {
-    const today = toLocalReadingDate();
-    return fortunes.find(f => f.date === today);
-  }, [fortunes]);
+  const getToday = useCallback((day = toLocalReadingDate()) => (
+    isDataReady && activeDataKeyRef.current === activeDataKey
+      ? latestFortunesRef.current.find(fortune => !fortune.deletedAt && fortune.date === day)
+      : undefined
+  ), [isDataReady, activeDataKey]);
 
   const createFortuneFromCard = useCallback((
     card: typeof TAROT_CARDS[0],
     isReversed: boolean,
-    source: DailyFortune['source'] = 'app-draw'
+    source: DailyFortune['source'] = 'app-draw',
+    expectedRedrawId?: string,
   ) => {
     if (isAuthLoading || loadedDataKey !== activeDataKey || activeDataKeyRef.current !== activeDataKey) throw new Error('账号正在恢复，请稍后再抽牌。');
     const today = toLocalReadingDate();
+    const current = latestFortunesRef.current;
+    const todaysFortunes = current.filter(previous => previous.date === today && !previous.deletedAt);
+    if (expectedRedrawId !== undefined) {
+      if (todaysFortunes.length !== 1 || todaysFortunes[0].id !== expectedRedrawId) {
+        throw new Error('今日的日运已变更，请返回查看记录后再试。');
+      }
+      if (!canRedrawDailyFortune(todaysFortunes[0])) {
+        throw new Error('这条日运已保存文字或归档，请返回查看原记录。');
+      }
+    } else if (todaysFortunes.length) {
+      throw new Error('今日已有日运，请返回查看原记录。');
+    }
     const now = new Date().toISOString();
     
     const fortune: DailyFortune = {
@@ -276,7 +262,7 @@ export const useDailyFortune = (
       date: today,
       cardName: card.name,
       isReversed,
-      interpretation: getDailyCardInterpretation(card.name, isReversed),
+      interpretation: getDailyCardInterpretation(card.id, isReversed),
       keywords: [card.name, isReversed ? '逆位' : '正位'],
       source,
       createdAt: now,
@@ -284,11 +270,9 @@ export const useDailyFortune = (
       isRevealed: true
     };
 
-    const previousFortunes = latestFortunesRef.current.flatMap(previous => {
-      if (previous.date !== today || previous.deletedAt) return [previous];
-      return previous.savedToCardAnnotationAt ? [markDailyFortuneDeleted(previous, now)] : [];
-    });
-    const next = [...previousFortunes, fortune];
+    const next = [...current.filter(previous => (
+      expectedRedrawId === undefined || previous.id !== expectedRedrawId || previous.date !== today || previous.deletedAt
+    )), fortune];
     requireLocalSave(storageKey, next);
     setFortunes(next);
     trackEvent('daily_fortune_saved', {
@@ -315,10 +299,10 @@ export const useDailyFortune = (
   const generateDailyFortuneWithNumber = useCallback((
     cardNumber: number,
     selectedCardIndex?: number,
-    replaceExisting = false
+    expectedRedrawId?: string,
   ) => {
     const existing = getToday();
-    if (existing && !replaceExisting) {
+    if (existing && expectedRedrawId === undefined) {
       return existing;
     }
 
@@ -337,26 +321,27 @@ export const useDailyFortune = (
     const card = TAROT_CARDS[cardIndex];
     const isReversed = Math.random() > 0.7;
 
-    return createFortuneFromCard(card, isReversed, 'app-draw');
+    return createFortuneFromCard(card, isReversed, 'app-draw', expectedRedrawId);
   }, [createFortuneFromCard, getToday, shuffledDeck]);
 
-  const reshuffleDailyFortune = useCallback(() => {
+  const reshuffleDailyFortune = useCallback((expectedRedrawId?: string) => {
     const randomIndex = Math.floor(Math.random() * TAROT_CARDS.length);
     const card = TAROT_CARDS[randomIndex];
     const isReversed = Math.random() > 0.7;
 
-    return createFortuneFromCard(card, isReversed, 'app-draw');
+    return createFortuneFromCard(card, isReversed, 'app-draw', expectedRedrawId);
   }, [createFortuneFromCard]);
 
   const createDailyFortuneFromCard = useCallback((
     cardId: string,
     isReversed: boolean,
-    source: NonNullable<DailyFortune['source']> = 'physical-draw'
+    source: NonNullable<DailyFortune['source']> = 'physical-draw',
+    expectedRedrawId?: string,
   ) => {
     const card = TAROT_CARDS.find(item => item.id === cardId || item.name === cardId);
     if (!card) return null;
 
-    return createFortuneFromCard(card, isReversed, source);
+    return createFortuneFromCard(card, isReversed, source, expectedRedrawId);
   }, [createFortuneFromCard]);
 
   const updateDailyFortuneCard = useCallback((
@@ -364,25 +349,32 @@ export const useDailyFortune = (
     cardId: string,
     isReversed: boolean
   ) => {
+    if (!isDataReady || activeDataKeyRef.current !== activeDataKey) throw new Error('记录正在恢复，请稍后再保存。');
     const card = TAROT_CARDS.find(item => item.id === cardId || item.name === cardId);
-    if (!card) return;
+    if (!card) throw new Error('没有找到这张牌，请重新选择。');
+    const current = latestFortunesRef.current;
+    if (!current.some(fortune => fortune.id === fortuneId && !fortune.deletedAt)) {
+      throw new Error('这条日运已变更，请重新打开记录。');
+    }
     const updatedAt = new Date().toISOString();
 
-    setFortunes(prev => prev.map(f => (
+    const next = current.map(f => (
       f.id === fortuneId && !f.deletedAt
         ? {
             ...f,
             cardName: card.name,
             isReversed,
-            interpretation: getDailyCardInterpretation(card.name, isReversed),
+            interpretation: getDailyCardInterpretation(card.id, isReversed),
             keywords: [card.name, isReversed ? '逆位' : '正位'],
             isRevealed: true,
             updatedAt
           }
         : f
-    )));
+    ));
+    requireLocalSave(storageKey, next);
+    setFortunes(next);
     trackEvent('daily_fortune_updated', { is_reversed: isReversed });
-  }, []);
+  }, [activeDataKey, isDataReady, setFortunes, storageKey]);
 
   const addReflection = useCallback((fortuneId: string, reflection: string | DailyFortuneReflectionParts) => {
     const updatedAt = new Date().toISOString();

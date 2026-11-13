@@ -38,6 +38,9 @@ import { AutoResizeTextarea } from './ui/AutoResizeTextarea';
 import { trackEvent } from '../lib/analytics';
 import { Modal } from './Modal';
 import { DailyFortuneReadingPage } from './DailyFortuneReadingPage';
+import { ReadingReviewPage } from './ReadingReviewPage';
+import { getReadingOverview } from '../lib/readingThoughts';
+import { getRecordCalendarDate } from '../lib/readingSearch';
 
 interface CardMetadataManagerProps {
   metadata: TarotCardMetadata[];
@@ -53,6 +56,7 @@ interface CardMetadataManagerProps {
   ownerName?: string;
   detailOnly?: boolean;
   onClose?: () => void;
+  onSaveReadingFeedback?: (id: string, text: string) => boolean | Promise<boolean>;
 }
 
 interface CardNumerologyCardProps {
@@ -320,12 +324,13 @@ function CardNumerologyCard({ cardName, isLoggedIn, userId }: CardNumerologyCard
   );
 }
 
-export function CardMetadataManager({ metadata, onUpdate, readings, dailyFortunes = [], dailyFortuneExamples, cardKeywordMemory = [], onShowSnackbar, isLoggedIn, userId, initialCardId, ownerName = '见习阁主', detailOnly = false, onClose }: CardMetadataManagerProps) {
+export function CardMetadataManager({ metadata, onUpdate, readings, dailyFortunes = [], dailyFortuneExamples, cardKeywordMemory = [], onShowSnackbar, isLoggedIn, userId, initialCardId, ownerName = '见习阁主', detailOnly = false, onClose, onSaveReadingFeedback }: CardMetadataManagerProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [detailCardId, setDetailCardId] = useState<string | null>(null);
   const [isDetailSheetOpen, setIsDetailSheetOpen] = useState(false);
   const [readingFortune, setReadingFortune] = useState<DailyFortune | null>(null);
   const [isFortuneReadingOpen, setIsFortuneReadingOpen] = useState(false);
+  const [reviewReadingId, setReviewReadingId] = useState<string | null>(null);
   const [localMetadata, setLocalMetadata] = useState<TarotCardMetadata[]>(() => buildCardLibrary(metadata));
   const [filterType, setFilterType] = useState<'all' | 'major' | 'wands' | 'cups' | 'swords' | 'pentacles'>('all');
   const [libraryViewMode, setLibraryViewMode] = useState<'grid' | 'list'>('grid');
@@ -486,12 +491,15 @@ export function CardMetadataManager({ metadata, onUpdate, readings, dailyFortune
       .filter(r => r.cards.some(c => c.name === cardName))
       .map(r => {
         const cardIndex = r.cards.findIndex(c => c.name === cardName);
+        const cardInsight = r.cardInterpretations?.[cardIndex]?.trim()
+          || (r.cards.length === 1 ? r.interpretation?.singleCard?.trim() : '');
         return {
           id: r.id,
           date: r.readingDate || r.date,
           isReversed: r.cards[cardIndex].isReversed,
           question: r.question || '无具体问题',
-          insight: r.cardInterpretations?.[cardIndex] || r.interpretation.singleCard
+          insight: cardInsight || getReadingOverview(r),
+          insightLabel: cardInsight ? '这张牌的理解' : r.cards.length > 1 ? '我的想法（整组）' : '我的想法',
         };
       })
       .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
@@ -522,6 +530,7 @@ export function CardMetadataManager({ metadata, onUpdate, readings, dailyFortune
   const detailDailyFortuneGroup = detailCard ? dailyFortuneGroupMap.get(detailCard.name) : undefined;
   const detailDailyFortuneExamples = detailCard ? dailyFortuneExampleGroupMap.get(detailCard.name)?.fortunes || [] : [];
   const detailDailyFortuneHistory = detailDailyFortuneGroup?.fortunes || [];
+  const reviewReading = reviewReadingId ? readings.find(reading => reading.id === reviewReadingId) : undefined;
   const openFortuneReading = (fortune: DailyFortune) => {
     setReadingFortune(fortune);
     setIsFortuneReadingOpen(true);
@@ -1131,18 +1140,29 @@ export function CardMetadataManager({ metadata, onUpdate, readings, dailyFortune
                   {detailInsights.length > 0 ? (
                     <div className="custom-scrollbar max-h-56 space-y-2 overflow-y-auto pr-1">
                       {detailInsights.map(item => (
-                        <div key={item.id} className="rounded-xl border border-forest-accent/5 bg-white/58 p-3">
-                          <div className="flex items-center justify-between gap-2">
-                            <span className="text-[10px] font-medium text-forest-muted">{new Date(item.date).toLocaleDateString()}</span>
+                        <button
+                          key={item.id}
+                          type="button"
+                          aria-label={`回看手记：${item.question}`}
+                          onClick={() => setReviewReadingId(item.id)}
+                          className="block min-h-11 w-full rounded-xl border border-forest-accent/5 bg-white/58 p-3 text-left transition-colors hover:bg-forest-accent/5 focus-visible:outline-2 focus-visible:outline-forest-accent"
+                        >
+                          <span className="flex items-center justify-between gap-2">
+                            <span className="text-[10px] font-medium text-forest-muted">{getRecordCalendarDate(item.date) || '未记录日期'}</span>
                             <span className={`rounded-full px-2 py-0.5 text-[9px] font-medium ${
                               item.isReversed ? 'bg-red-50 text-red-400' : 'bg-forest-accent/10 text-forest-accent'
                             }`}>
                               {item.isReversed ? '逆位' : '正位'}
                             </span>
-                          </div>
-                          <p className="mt-1 line-clamp-1 text-xs font-medium text-forest-ink">{item.question}</p>
-                          <p className="mt-2 line-clamp-3 text-xs leading-relaxed text-forest-ink/70">{item.insight}</p>
-                        </div>
+                          </span>
+                          <span className="mt-1 flex items-center justify-between gap-2 text-xs font-medium text-forest-ink">
+                            <span className="min-w-0 truncate">{item.question}</span>
+                            <ChevronRight size={14} aria-hidden="true" className="shrink-0 text-forest-accent" />
+                          </span>
+                          {item.insight && <span className="mt-2 line-clamp-3 whitespace-pre-wrap break-words text-xs leading-relaxed text-forest-ink/70">
+                            <span className="font-medium text-forest-accent">{item.insightLabel} · </span>{item.insight}
+                          </span>}
+                        </button>
                       ))}
                     </div>
                   ) : (
@@ -1158,6 +1178,13 @@ export function CardMetadataManager({ metadata, onUpdate, readings, dailyFortune
             fortune={readingFortune}
             isOpen={isFortuneReadingOpen}
             onBack={() => setIsFortuneReadingOpen(false)}
+          />}
+          {reviewReading && <ReadingReviewPage
+            key={`${noteScope}:${reviewReading.id}`}
+            reading={reviewReading}
+            ownerScope={noteScope}
+            onClose={() => setReviewReadingId(null)}
+            onSaveFeedback={reviewReading.isExample ? undefined : onSaveReadingFeedback}
           />}
           <CardAnnotationEditor
             isOpen={showAnnotationEditor}

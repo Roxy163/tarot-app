@@ -30,6 +30,7 @@ export function CardPicker({
   title = '选择塔罗牌',
   description,
   error,
+  initialIsReversed = false,
 }: CardPickerProps) {
   useBodyScrollLock(true);
   const dialogRef = useRef<HTMLDivElement>(null);
@@ -113,13 +114,29 @@ export function CardPicker({
         {error && <p role="alert" className="shrink-0 px-3 py-2 text-sm text-red-600 sm:px-4">{error}</p>}
 
         <div className="grid flex-1 grid-cols-3 gap-2 overflow-y-auto overscroll-contain p-2.5 sm:grid-cols-4 sm:gap-3 sm:p-3.5 md:grid-cols-6">
+          {filteredCards.length === 0 && (
+            <div className="col-span-full self-start px-3 py-8 text-center">
+              <p role="status" className="text-sm text-forest-muted">没有找到匹配的牌</p>
+              <button
+                type="button"
+                onClick={() => {
+                  setSearch('');
+                  searchRef.current?.focus();
+                }}
+                className="mt-2 min-h-11 rounded-full bg-forest-accent/10 px-4 text-xs font-medium text-forest-accent hover:bg-forest-accent/16"
+              >
+                清空搜索
+              </button>
+            </div>
+          )}
           {filteredCards.map((card, index) => {
             const isExcluded = excludeCards.includes(card.name);
             return (
               <button
                 key={card.id}
+                type="button"
                 disabled={isExcluded}
-                onClick={() => onSelect(card, false)}
+                onClick={() => onSelect(card, initialIsReversed)}
                 className={`group flex flex-col items-center gap-1.5 rounded-xl p-1.5 transition-all sm:gap-2 sm:p-2.5 ${
                   isExcluded ? 'opacity-30 cursor-not-allowed grayscale' : 'hover:bg-forest-accent/5 active:scale-95'
                 }`}

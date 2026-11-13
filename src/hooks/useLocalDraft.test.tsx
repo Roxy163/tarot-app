@@ -1,6 +1,6 @@
 import { act, renderHook } from '@testing-library/react';
 import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
-import { clearAccountDrafts, isLocalDraftDurable, readLocalDraft, resetDraftMemory, useLocalDraft, writeLocalDraft } from './useLocalDraft';
+import { clearAccountDrafts, clearLocalDraft, isLocalDraftDurable, readLocalDraft, resetDraftMemory, useLocalDraft, writeLocalDraft } from './useLocalDraft';
 
 describe('local drafts', () => {
   beforeEach(() => { localStorage.clear(); sessionStorage.clear(); resetDraftMemory(); });
@@ -18,6 +18,18 @@ describe('local drafts', () => {
     expect(readLocalDraft('draft')).toBeNull();
     rerender({ note: 'second' });
     expect(readLocalDraft('draft')).toEqual({ note: 'second' });
+  });
+  it('removes a discarded draft when deletion is allowed but writes are refused', () => {
+    const key = 'tarot_reading_draft_guest_old-record';
+    expect(writeLocalDraft(key, { question: '不再保留这份草稿' })).toBe(true);
+    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+      throw new DOMException('Storage is full', 'QuotaExceededError');
+    });
+    expect(clearLocalDraft(key)).toBe(true);
+    resetDraftMemory();
+    expect(readLocalDraft(key)).toBeNull();
+    expect(localStorage.getItem(key)).toBeNull();
+    expect(localStorage.getItem(key + '__latest')).toBeNull();
   });
   it('retains failed writes across navigation and warns on page exit', () => {
     vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new Error('full'); });

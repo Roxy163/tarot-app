@@ -5,6 +5,7 @@ import { INITIAL_READINGS } from '../constants';
 import { DailyFortuneArchiveModal } from './DailyFortuneArchiveModal';
 import type { DailyFortune } from '../types';
 import { downloadTextFile } from '../lib/downloadFile';
+import { getCurrentMonthKey } from '../lib/dailyFortuneReview';
 
 vi.mock('../lib/downloadFile', () => ({ downloadTextFile: vi.fn(), downloadBlobFile: vi.fn() }));
 
@@ -125,6 +126,45 @@ describe('combined daily archive', () => {
     expect(callbacks.onDeleteFortunes).not.toHaveBeenCalled();
   });
 
+  it('uses this month only in month view until a date or month is selected', async () => {
+    const user = userEvent.setup();
+    const now = new Date();
+    const thisMonth = getCurrentMonthKey(now);
+    const previousMonth = getCurrentMonthKey(new Date(now.getFullYear(), now.getMonth() - 1, 1));
+    const currentDate = `${thisMonth}-03`;
+    const olderDate = `${previousMonth}-04`;
+    render(<DailyFortuneArchiveModal {...props()} readings={[]} fortunes={[
+      { ...fortune, date: currentDate, createdAt: `${currentDate}T08:00:00Z` },
+      { ...fortune, id: 'older', date: olderDate, createdAt: `${olderDate}T08:00:00Z`, cardName: '太阳' },
+    ]} />);
+
+    const currentResult = () => screen.getByText('当前结果').parentElement;
+    expect(currentResult()).toHaveTextContent('2天');
+    await user.click(screen.getByRole('button', { name: '切换到按月日运' }));
+    expect(screen.getByLabelText('日运抽牌月份')).toHaveValue(thisMonth);
+    expect(currentResult()).toHaveTextContent('1天');
+    await user.click(screen.getByRole('button', { name: '导出' }));
+    await user.click(screen.getByRole('menuitem', { name: /^Markdown/ }));
+    expect(vi.mocked(downloadTextFile).mock.calls[0][1]).toContain(currentDate);
+    expect(vi.mocked(downloadTextFile).mock.calls[0][1]).not.toContain(olderDate);
+
+    await user.click(screen.getByRole('button', { name: '切换到时间线日运' }));
+    expect(currentResult()).toHaveTextContent('2天');
+    expect(screen.getByText(`${olderDate} · 系统抽牌`)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '按日期查找' })).toHaveAttribute('aria-expanded', 'false');
+    await user.click(screen.getByRole('button', { name: '导出' }));
+    await user.click(screen.getByRole('menuitem', { name: /^Markdown/ }));
+    expect(vi.mocked(downloadTextFile).mock.calls[1][1]).toContain(currentDate);
+    expect(vi.mocked(downloadTextFile).mock.calls[1][1]).toContain(olderDate);
+
+    await user.click(screen.getByRole('button', { name: '切换到按月日运' }));
+    await user.click(screen.getByRole('button', { name: '切换到按牌日运' }));
+    expect(currentResult()).toHaveTextContent('2天');
+    await user.click(screen.getByRole('button', { name: /^太阳 当前/ }));
+    expect(currentResult()).toHaveTextContent('1天');
+    expect(screen.getByText(`${olderDate} · 系统抽牌`)).toBeInTheDocument();
+  });
+
   it('keeps a historical month, its text search, statistics and exported content in agreement', async () => {
     const user = userEvent.setup();
     const october = [
@@ -158,6 +198,11 @@ describe('combined daily archive', () => {
     expect(vi.mocked(downloadTextFile).mock.calls[1][1]).toContain('2026-10-30');
     expect(vi.mocked(downloadTextFile).mock.calls[1][1]).not.toContain('2026-10-03');
 
+    await user.click(screen.getByRole('button', { name: '切换到时间线日运' }));
+    expect(screen.getByRole('button', { name: '按日期查找 · 2026-10-30' })).toBeInTheDocument();
+    expect(screen.getByText('当前结果').parentElement).toHaveTextContent('1天');
+    await user.click(screen.getByRole('button', { name: '切换到按月日运' }));
+    expect(screen.getByLabelText('日运抽牌日期')).toHaveValue('2026-10-30');
     fireEvent.change(screen.getByLabelText('日运抽牌日期'), { target: { value: '' } });
     fireEvent.change(screen.getByRole('textbox', { name: '搜索日运抽牌' }), { target: { value: '' } });
     await user.click(screen.getByRole('button', { name: '筛选待回看日运记录' }));

@@ -7,7 +7,7 @@ import { Sparkles, Layers, User, MessageSquare, BookOpen, Settings, Save, Hash, 
 import { CardKeywordMemory, SpreadDefinition, TarotCardMetadata, ReadingSlotData, TarotReading, ReadingFormData, ReadingEditorDraft, ReadingEditorFields, ReadingSpreadSnapshot, ReadingSpreadSwitch, ReadingAiPromptDraft, ReadingEditorSnapshot, ReadingEditorHistoryEntry, ReadingEditorWorkspaceBackup } from '../types';
 import { readLocalDraft, useLocalDraft } from '../hooks/useLocalDraft';
 import { useModalFocus } from '../hooks/useModalFocus';
-import { toLocalReadingDate } from '../lib/readingDate';
+import { serializeReadingDate, toLocalReadingDate } from '../lib/readingDate';
 import { LAYOUT_TEMPLATES, TAROT_CARDS, OFFICIAL_SPREADS } from '../constants';
 import { CardPicker } from './CardPicker';
 import { FreeLayoutSaveMode, SpreadDesigner } from './SpreadDesigner';
@@ -17,6 +17,7 @@ import { ReadingDetailView } from './ReadingDetailView';
 import { ReadingSpreadDisplay } from './ReadingSpreadDisplay';
 import { BasicInfoSection } from './BasicInfoSection';
 import { ConfirmDialog } from './ConfirmDialog';
+import { Modal } from './Modal';
 import { QuickSpreadButtons } from './QuickSpreadButtons';
 import { AutoResizeTextarea } from './ui/AutoResizeTextarea';
 import { useLongPressClear } from '../hooks/useLongPressClear';
@@ -46,6 +47,7 @@ import {
   buildReadingSubmitPayload,
   getReadingDraftRequiredFieldIssue,
   getReadingRequiredFieldIssue,
+  getReadingSlotInterpretation,
 } from '../lib/readingSubmitPayload';
 import { convertGridSlotsToFreeLayout, ensureFreeLayoutSlots } from '../lib/freeLayout';
 import { useBodyScrollLock } from '../hooks/useBodyScrollLock';
@@ -224,10 +226,14 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
   const initialSpreadDefinition = initialData?.spread
     ? spreads.find(spread => spread.name === initialData.spread)
     : defaultSpreadDefinition;
+  const originalReadingDate = initialData?.readingDate || initialData?.date;
   const [formData, setFormData] = useState<ReadingEditorFields>(() => restoredDraft ? {
     ...restoredDraft.formData,
     aiContext: restoredDraft.formData.aiContext ?? initialData?.aiContext ?? '',
     userFeedback: feedbackState.value,
+    readingDate: restoredDraft.hasUnsavedChanges === false || typeof restoredDraft.formData.readingDate !== 'string'
+      ? toLocalReadingDate(originalReadingDate)
+      : restoredDraft.formData.readingDate,
   } : ({
     question: initialData?.question || '',
     spread: initialData?.spread || defaultSpreadDefinition.name,
@@ -251,13 +257,25 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
     aiContext: initialData?.aiContext || '',
     choicePathA: initialData?.choicePathA || '',
     choicePathB: initialData?.choicePathB || '',
-    readingDate: toLocalReadingDate(initialData?.readingDate),
+    readingDate: toLocalReadingDate(originalReadingDate),
     isTimePrecise: false,
     category: initialData?.category || initialData?.manualTags?.join('、') || '',
     skipAi: initialData?.skipAi !== undefined 
       ? initialData.skipAi 
       : (localStorage.getItem('tarot_ai_preference') === 'process' ? false : true)
   }));
+  const [readingDateConfirmed, setReadingDateConfirmed] = useState(() => {
+    if (!restoredDraft || restoredDraft.hasUnsavedChanges === false || restoredDraft.readingDateConfirmed
+      || initialData?.readingDate || !originalReadingDate) return true;
+    // Older drafts could use the day the editor opened in place of the saved date.
+    try {
+      return toLocalReadingDate(serializeReadingDate(formData.readingDate))
+        === toLocalReadingDate(serializeReadingDate(originalReadingDate));
+    } catch {
+      return true;
+    }
+  });
+  const [pendingDateConfirmation, setPendingDateConfirmation] = useState<ReadingSubmitMode | null>(null);
 
   const [cardInterpretations, setCardInterpretations] = useState<string[]>(restoredDraft?.cardInterpretations || initialData?.cardInterpretations || []);
   const [cardQuestions, setCardQuestions] = useState<string[]>(restoredDraft?.cardQuestions || initialData?.cardQuestions || []);
@@ -281,6 +299,9 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
   const [confirmSpreadUndo, setConfirmSpreadUndo] = useState(false);
   const [showSpreadManager, setShowSpreadManager] = useState(Boolean(restoredDraft?.workspaceBackup));
   const [showPicker, setShowPicker] = useState(false);
+  const [pendingCardSelection, setPendingCardSelection] = useState<{ slotIndex: number; cardName: string; isReversed: boolean } | null>(null);
+  const [showExitEdit, setShowExitEdit] = useState(false);
+  const submitting = useRef(false);
   const [newSpreadName, setNewSpreadName] = useState(restoredDraft?.newSpreadName || '');
   const [designActiveSlot, setDesignActiveSlot] = useState(restoredDraft?.designActiveSlot ?? 0);
   const [spreadActionMessage, setSpreadActionMessage] = useState('');
@@ -356,16 +377,31 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
   const editedAiPrompts = Object.entries(aiPromptDrafts).filter(([, value]) => value.text !== value.sourceText).map(([mode, value]) => [mode, value.text]);
   const contentRevision = JSON.stringify({ formData, cardSlots, cardInterpretations, cardQuestions, gridCols, gridRows, isEditingSession, editedAiPrompts });
   const initialContentRevision = useRef(contentRevision);
+  const hasUnsavedChanges = Boolean((restoredDraft && restoredDraft.hasUnsavedChanges !== false) || contentRevision !== initialContentRevision.current || !initialData?.id);
   const draftUpdatedAt = useMemo(() => new Date().toISOString(), [contentRevision]);
   const draft = useLocalDraft<ReadingEditorDraft>(draftKey, {
     formData, cardSlots, cardInterpretations, cardQuestions, history,
     feedbackBaseline: feedbackState.baseline,
+    readingDateConfirmed,
     activeSlotIndex, readingDetailSlotIndex, gridCols, gridRows, isEditingSession,
     spreadSwitchHistory, aiPromptMode, aiPromptDrafts, showCardStudy, updatedAt: draftUpdatedAt,
     newSpreadName, designActiveSlot, freeLayoutSaveMode,
     workspaceBackup: showSpreadManager ? spreadManagerDraftBackupRef.current || undefined : undefined,
-    hasUnsavedChanges: Boolean((restoredDraft && restoredDraft.hasUnsavedChanges !== false) || contentRevision !== initialContentRevision.current || !initialData?.id),
+    hasUnsavedChanges,
   }, draftStarted.current);
+
+  const leaveEdit = (discard: boolean) => {
+    if (isLoading || submitting.current || (!discard && !draft.durable)) return;
+    if (discard) draft.clear();
+    setShowExitEdit(false);
+    onCancel?.();
+  };
+
+  const requestCancelEdit = () => {
+    if (isLoading || submitting.current) return;
+    if (hasUnsavedChanges) setShowExitEdit(true);
+    else leaveEdit(true);
+  };
 
   const {
     isLongPressActive,
@@ -579,7 +615,10 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
     const before = currentEditorSnapshot();
     const after = remapEditorSlots(before, newSlots, sources);
     clearIndices.forEach(index => { after.cardInterpretations[index] = ''; after.cardQuestions[index] = ''; });
-    if (newSlots.length === 1 && clearIndices.includes(0)) after.singleCard = '';
+    if (newSlots.length === 1) {
+      if (clearIndices.includes(0)) after.singleCard = '';
+      else if (before.cardSlots.length === 1 && !after.singleCard) after.singleCard = before.singleCard;
+    }
     setHistory(previous => appendEditorHistory(previous, before));
     applyEditorSnapshot(after);
   };
@@ -594,11 +633,13 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
     } : snapshot);
   };
 
-  const handleCardSelect = (card: typeof TAROT_CARDS[0], isReversed: boolean) => {
-    const selectedSlotIndex = activeSlotIndex;
-    const newSlots = selectCardForSlot(cardSlots, activeSlotIndex, card.name, isReversed);
+  const applyCardSelection = (selectedSlotIndex: number, cardName: string, isReversed: boolean, clearWriting = false) => {
+    const currentSlot = cardSlots[selectedSlotIndex];
+    const newSlots = currentSlot?.name === cardName && currentSlot.isReversed === isReversed
+      ? cardSlots
+      : selectCardForSlot(cardSlots, selectedSlotIndex, cardName, isReversed);
     if (newSlots !== cardSlots) {
-      updateCardSlotsWithHistory(newSlots);
+      updateCardSlotsWithHistory(newSlots, undefined, clearWriting ? [selectedSlotIndex] : []);
     }
 
     const nextEmptySlotIndex = getNextEmptySlotIndex(newSlots, selectedSlotIndex);
@@ -612,6 +653,27 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
 
     setActiveSlotIndex(selectedSlotIndex);
     window.setTimeout(scrollReadingDetailIntoView, 260);
+  };
+
+  const handleCardSelect = (card: typeof TAROT_CARDS[0], isReversed: boolean) => {
+    const slotIndex = activeSlotIndex;
+    const slot = cardSlots[slotIndex];
+    if (isCardSlotFilled(slot) && slot.name !== card.name && (
+      getReadingSlotInterpretation({ formData, cardSlots, cardInterpretations, slotIndex })
+      || cardQuestions[slotIndex]?.trim()
+    )) {
+      setShowPicker(false);
+      setPendingCardSelection({ slotIndex, cardName: card.name, isReversed });
+      return;
+    }
+    applyCardSelection(slotIndex, card.name, slot?.name === card.name ? slot.isReversed : isReversed);
+  };
+
+  const confirmCardSelection = (clearWriting: boolean) => {
+    if (!pendingCardSelection) return;
+    const { slotIndex, cardName, isReversed } = pendingCardSelection;
+    applyCardSelection(slotIndex, cardName, isReversed, clearWriting);
+    setPendingCardSelection(null);
   };
 
   const toggleReverse = (index: number, e: React.MouseEvent) => {
@@ -951,7 +1013,9 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
       : getReadingDraftRequiredFieldIssue({ formData, cardSlots })
   );
 
-  const submitReading = async (mode: ReadingSubmitMode) => {
+  const submitReading = async (mode: ReadingSubmitMode, confirmedDate?: string) => {
+    if (isLoading || submitting.current || showExitEdit || pendingCardSelection
+      || (pendingDateConfirmation && confirmedDate === undefined)) return;
     const requiredIssue = getSubmitIssueForMode(mode);
     if (requiredIssue) {
       setSubmitIssue(requiredIssue);
@@ -961,12 +1025,12 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
     }
 
     const result = buildReadingSubmitPayload({
-      formData,
+      formData: confirmedDate === undefined ? formData : { ...formData, readingDate: confirmedDate },
       cardSlots,
       cardInterpretations,
       cardQuestions,
       mode,
-      originalReadingDate: initialData?.readingDate,
+      originalReadingDate,
     });
 
     if (result.ok === false) {
@@ -975,17 +1039,30 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
       return;
     }
 
+    if (!readingDateConfirmed && confirmedDate === undefined) {
+      setPendingDateConfirmation(mode);
+      return;
+    }
+    if (confirmedDate !== undefined) {
+      setPendingDateConfirmation(null);
+      setReadingDateConfirmed(true);
+      setFormData(previous => ({ ...previous, readingDate: confirmedDate }));
+    }
+
     setSubmitNotice('');
     setSubmitIssue(null);
     // Unchanged review text must not overwrite a newer review saved outside this editor.
     if (initialData?.id && formData.userFeedback.trim() === feedbackState.baseline.trim()) {
       delete result.payload.userFeedback;
     }
+    submitting.current = true;
     try {
       if (await onSubmit(result.payload) !== false) draft.clear();
       else setSubmitNotice('本机保存失败，内容仍保留在此页，请重试。');
     } catch {
       setSubmitNotice('保存失败，内容仍保留在此页，请重试。');
+    } finally {
+      submitting.current = false;
     }
   };
 
@@ -1178,7 +1255,35 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
           }
         />
       )}
-      
+
+      {createPortal(<>
+        <Modal isOpen={pendingDateConfirmation !== null} title="确认手记日期" onClose={() => setPendingDateConfirmation(null)}>
+          <p>原手记日期为 {toLocalReadingDate(originalReadingDate)}，草稿日期为 {toLocalReadingDate(formData.readingDate)}。请选择保存后的日期。</p>
+          <div className="mt-4 flex flex-wrap justify-end gap-2">
+            <button type="button" onClick={() => setPendingDateConfirmation(null)} className="min-h-11 rounded-xl px-3 text-forest-muted hover:bg-forest-accent/8">继续编辑</button>
+            <button type="button" onClick={() => pendingDateConfirmation && submitReading(pendingDateConfirmation, toLocalReadingDate(originalReadingDate))} className="min-h-11 rounded-xl bg-forest-accent px-3 font-medium text-white hover:bg-forest-accent/90">沿用原日期</button>
+            <button type="button" onClick={() => pendingDateConfirmation && submitReading(pendingDateConfirmation, formData.readingDate)} className="min-h-11 rounded-xl bg-forest-accent/10 px-3 font-medium text-forest-accent hover:bg-forest-accent/16">使用草稿日期</button>
+          </div>
+        </Modal>
+        <Modal isOpen={Boolean(pendingCardSelection)} title="更换这张牌" onClose={() => setPendingCardSelection(null)}>
+          {pendingCardSelection && <p>从「{cardSlots[pendingCardSelection.slotIndex]?.name}」换成「{pendingCardSelection.cardName}」。这个牌位已有解读或疑问，换牌后仍可撤销。</p>}
+          <div className="mt-4 flex flex-wrap justify-end gap-2">
+            <button type="button" onClick={() => setPendingCardSelection(null)} className="min-h-11 rounded-xl px-3 text-forest-muted hover:bg-forest-accent/8">取消换牌</button>
+            <button type="button" onClick={() => confirmCardSelection(false)} className="min-h-11 rounded-xl bg-forest-accent/10 px-3 font-medium text-forest-accent hover:bg-forest-accent/16">换牌并保留文字</button>
+            <button type="button" onClick={() => confirmCardSelection(true)} className="min-h-11 rounded-xl bg-forest-accent px-3 font-medium text-white hover:bg-forest-accent/90">换牌并清空文字</button>
+          </div>
+        </Modal>
+        <Modal isOpen={showExitEdit} title="退出编辑" onClose={() => setShowExitEdit(false)}>
+          <p>这次修改还没保存。可以留作草稿，下次继续。</p>
+          {!draft.durable && <p role="alert" className="mt-2">本机暂存失败。请继续编辑，释放空间后再保存。</p>}
+          <div className="mt-4 flex flex-wrap justify-end gap-2">
+            <button type="button" onClick={() => setShowExitEdit(false)} className="min-h-11 rounded-xl px-3 text-forest-muted hover:bg-forest-accent/8">继续编辑</button>
+            <button type="button" onClick={() => leaveEdit(true)} className="min-h-11 rounded-xl px-3 text-red-600 hover:bg-red-50">放弃修改</button>
+            <button type="button" disabled={!draft.durable || isLoading} onClick={() => leaveEdit(false)} className="min-h-11 rounded-xl bg-forest-accent px-3 font-medium text-white hover:bg-forest-accent/90 disabled:opacity-50">保留草稿退出</button>
+          </div>
+        </Modal>
+      </>, document.body)}
+
       <AnimatePresence>
         {spreadActionMessage && (
           <motion.div 
@@ -1217,7 +1322,10 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
         category={formData.category}
         onUpdateCategory={v => setFormData({...formData, category: v})}
         date={formData.readingDate.split('T')[0]}
-        onUpdateDate={v => setFormData({...formData, readingDate: v})}
+        onUpdateDate={v => {
+          setReadingDateConfirmed(true);
+          setFormData(previous => ({ ...previous, readingDate: v }));
+        }}
         spread={formData.spread}
         spreads={spreads}
         onSelectSpread={handleSpreadSelection}
@@ -1234,10 +1342,8 @@ export const AddReadingForm: React.FC<AddReadingFormProps> = ({
         isForClient={formData.isForClient}
         onToggleClientMode={() => setFormData({...formData, isForClient: !formData.isForClient})}
         initialData={initialData}
-        onCancel={() => {
-          draft.clear();
-          onCancel?.();
-        }}
+        onCancel={requestCancelEdit}
+        cancelDisabled={isLoading}
         tagSuggestions={tagSuggestions}
         onSelectTagSuggestion={handleSelectTagSuggestion}
         highlightedRequiredField={

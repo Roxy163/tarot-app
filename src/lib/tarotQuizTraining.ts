@@ -57,6 +57,7 @@ const MAX_QUIZ_ATTEMPTS_PER_CARD = 12;
 interface CreateQuizQuestionOptions {
   kinds?: QuizQuestionKind[];
   correctOptionIndex?: number;
+  optionCards?: QuizTrainingCard[];
 }
 
 export interface QuizQuestionOption {
@@ -371,17 +372,40 @@ const sentencePreview = (text: string) => {
   return sentence ? `${sentence}。` : text.trim().slice(0, 42);
 };
 
+const chooseDistractors = <T,>(
+  preferred: T[],
+  extra: T[],
+  getKey: (item: T) => string,
+  random: () => number,
+) => {
+  const selected = shuffle(preferred, random).slice(0, 3);
+  if (selected.length === 3) return selected;
+
+  const selectedKeys = new Set(selected.map(getKey));
+  const remaining = extra.filter(item => !selectedKeys.has(getKey(item)));
+  return [...selected, ...shuffle(remaining, random).slice(0, 3 - selected.length)];
+};
+
 const buildTextOptions = (
   correct: string,
   distractors: string[],
+  extraDistractors: string[],
   random = Math.random,
   correctOptionIndex?: number,
 ): QuizQuestionOption[] => {
+  const correctLabel = formatQuizDisplayValue(correct);
+  const getDistractorLabels = (values: string[]) => (
+    unique(values.map(formatQuizDisplayValue)).filter(label => label !== correctLabel)
+  );
+  const labels = chooseDistractors(
+    getDistractorLabels(distractors),
+    getDistractorLabels(extraDistractors),
+    label => label,
+    random,
+  );
   const options = [
-    { id: `answer-${correct}`, label: correct },
-    ...shuffle(unique(distractors).filter(item => item !== correct), random)
-      .slice(0, 3)
-      .map(label => ({ id: `answer-${label}`, label })),
+    { id: `answer-${correct}`, label: correctLabel },
+    ...labels.map(label => ({ id: `answer-${label}`, label })),
   ];
 
   return placeCorrectOption(shuffle(options, random), `answer-${correct}`, correctOptionIndex);
@@ -390,14 +414,19 @@ const buildTextOptions = (
 const buildCardOptions = (
   correct: QuizTrainingCard,
   cards: QuizTrainingCard[],
+  extraCards: QuizTrainingCard[],
   random = Math.random,
   correctOptionIndex?: number,
 ): QuizQuestionOption[] => {
+  const distractors = chooseDistractors(
+    cards.filter(card => card.id !== correct.id),
+    extraCards.filter(card => card.id !== correct.id),
+    card => card.id,
+    random,
+  );
   const options = [
     { id: correct.id, label: correct.name, cardId: correct.id },
-    ...shuffle(cards.filter(card => card.id !== correct.id), random)
-      .slice(0, 3)
-      .map(card => ({ id: card.id, label: card.name, cardId: card.id })),
+    ...distractors.map(card => ({ id: card.id, label: card.name, cardId: card.id })),
   ];
 
   return placeCorrectOption(shuffle(options, random), correct.id, correctOptionIndex);
@@ -438,36 +467,38 @@ const createCorrespondenceQuestion = (
   random = Math.random,
   options: CreateQuizQuestionOptions = {},
 ): QuizQuestion | null => {
-  const card = chooseWeightedQuizCard(cards, memory, random);
+  const extraCards = options.optionCards === cards ? [] : options.optionCards || [];
+  const sources = (['element', 'planet', 'zodiac', 'house'] as CorrespondenceType[])
+    .map(type => ({
+      type,
+      values: getAvailableCorrespondenceValues(cards, type),
+      extra: getAvailableCorrespondenceValues(extraCards, type),
+    }))
+    .filter(({ values, extra }) => new Set([...values, ...extra].map(formatQuizDisplayValue)).size >= 3);
+  const eligibleCards = cards.filter(card => sources.some(({ type }) => card[type]?.trim()));
+  const card = chooseWeightedQuizCard(eligibleCards, memory, random);
   if (!card) return null;
 
-  const available = (['element', 'planet', 'zodiac', 'house'] as CorrespondenceType[])
-    .map(type => ({ type, value: card[type] }))
-    .filter((item): item is { type: CorrespondenceType; value: string } => Boolean(item.value));
-  const target = pickRandom(available, random);
+  const target = pickRandom(sources.filter(({ type }) => card[type]?.trim()), random);
   if (!target) return null;
 
-  const allValues = getAvailableCorrespondenceValues(cards, target.type);
-  const answerOptions = buildTextOptions(target.value, allValues, random, options.correctOptionIndex)
-    .map(option => ({
-      ...option,
-      label: formatQuizDisplayValue(option.label),
-    }));
+  const value = card[target.type]!.trim();
+  const answerOptions = buildTextOptions(value, target.values, target.extra, random, options.correctOptionIndex);
   if (answerOptions.length < 3) return null;
-  const formattedAnswer = formatQuizDisplayValue(target.value);
+  const formattedAnswer = formatQuizDisplayValue(value);
 
   return {
-    id: `${card.id}-${target.type}-${target.value}`,
+    id: `${card.id}-${target.type}-${value}`,
     kind: 'correspondence',
     prompt: `这张牌对应哪个${correspondenceLabels[target.type]}？`,
     promptHint: '看牌面，选一个最接近的答案。',
     cardId: card.id,
     cardName: card.name,
     options: answerOptions,
-    correctOptionId: `answer-${target.value}`,
+    correctOptionId: `answer-${value}`,
     answerLabel: formattedAnswer,
     explanation: `「${card.name}」的${correspondenceLabels[target.type]}是「${formattedAnswer}」。`,
-    relatedCardIds: cards.filter(item => item[target.type] === target.value).map(item => item.id),
+    relatedCardIds: cards.filter(item => item[target.type]?.trim() === value).map(item => item.id),
   };
 };
 
@@ -482,7 +513,8 @@ const createMeaningCardQuestion = (
   if (!card) return null;
 
   const promptHint = sentencePreview(card.uprightMeaning);
-  const answerOptions = buildCardOptions(card, cards, random, options.correctOptionIndex);
+  const extraCards = options.optionCards === cards ? [] : options.optionCards || [];
+  const answerOptions = buildCardOptions(card, cards, extraCards, random, options.correctOptionIndex);
   if (answerOptions.length < 3) return null;
 
   return {

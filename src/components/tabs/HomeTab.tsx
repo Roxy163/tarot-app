@@ -10,6 +10,7 @@ import { cardAnnotationService } from '../../services/cardAnnotationService';
 import { getDailyReflectionParts } from '../../lib/dailyFortuneReflection';
 import { useAnnotationRevision } from '../../hooks/useAnnotationSync';
 import { findResumableReading } from '../../lib/resumableReading';
+import { useLocalCalendarDay } from '../../hooks/useLocalCalendarDay';
 
 interface HomeTabProps {
   session: { uid?: string; email?: string } | null;
@@ -58,7 +59,8 @@ export const HomeTab: React.FC<HomeTabProps> = ({
     deleteDailyFortunes,
   } = dailyFortune;
   
-  const todayFortune = getToday();
+  const today = useLocalCalendarDay();
+  const todayFortune = getToday(today);
   const resumable = useMemo(() => isAuthLoading ? null : findResumableReading(session?.uid || 'guest', readings), [session?.uid, readings, isAuthLoading]);
   const realReadings = useMemo(() => readings.filter(reading => !reading.isExample), [readings]);
   const reviewedReadings = useMemo(
@@ -121,6 +123,7 @@ export const HomeTab: React.FC<HomeTabProps> = ({
           <DailyFortuneCard
             key={session?.uid || 'guest'}
             ownerScope={session?.uid || 'guest'}
+            today={today}
             fortune={todayFortune}
             fortunes={fortunes}
             ownerName={dailyFortuneOwnerName}

@@ -2,8 +2,9 @@ import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cardAnnotationService } from '../services/cardAnnotationService';
+import { resetDraftMemory } from '../hooks/useLocalDraft';
 import { CardMetadataManager } from './CardMetadataManager';
-import { DailyFortune } from '../types';
+import { DailyFortune, TarotReading } from '../types';
 
 vi.mock('./CardAnnotationEditor', () => ({
   CardAnnotationEditor: ({ isOpen, initialCardId, onAnnotationsUpdated }: {
@@ -43,6 +44,8 @@ describe('CardMetadataManager', () => {
 
   beforeEach(() => {
     localStorage.clear();
+    sessionStorage.clear();
+    resetDraftMemory();
     cardAnnotationService.clearAllUserData();
     Object.defineProperty(URL, 'createObjectURL', {
       configurable: true,
@@ -250,6 +253,56 @@ describe('CardMetadataManager', () => {
     expect(screen.getByText('暂无日运历史')).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: '查看2026-11-01日运例证' }));
     expect(within(screen.getByRole('main', { name: '2026-11-01 日运记录' })).getByText('归入后仍值得回看的经历。')).toBeInTheDocument();
+  });
+
+  it('opens a complete reading review from the overall thoughts preview and restores the annotation page on return', async () => {
+    const user = userEvent.setup();
+    const reading: TarotReading = {
+      id: 'previous-reading', userId: 'guest', date: '2026-11-02T08:00:00.000Z', question: '我可以从哪里开始？',
+      readingDate: '2026-11-02',
+      spread: '双牌练习', layoutType: 'horizontal', cards: [
+        { name: '愚者', isReversed: false, label: '第一张', position: 'col-start-1 row-start-2' },
+        { name: '魔术师', isReversed: true, label: '第二张', position: 'col-start-2 row-start-2' },
+      ],
+      cardInterpretations: [' ', '这是第二张牌的理解。'],
+      interpretation: { singleCard: '', combination: '先找一个可以尝试的小方向。', summary: '' },
+      userFeedback: '后来做了一次小尝试。', keywords: [], isPublic: false, isAnonymous: false, authorName: '测试访客',
+    };
+    const onSaveReadingFeedback = vi.fn().mockReturnValue(false);
+    render(<CardMetadataManager metadata={[]} onUpdate={vi.fn()} readings={[reading]} onSaveReadingFeedback={onSaveReadingFeedback} />);
+    await user.click(screen.getByRole('button', { name: '查看愚者研习资料' }));
+    const detail = screen.getByRole('main', { name: '愚者研习资料' });
+    const scrollArea = detail.querySelector('[data-page-scroll]')!;
+    const note = within(detail).getByPlaceholderText('在此记录你对这张牌的独特见解、私人感悟或研习心得...');
+    await user.type(note, '未保存的注疏');
+    scrollArea.scrollTop = 280;
+    const historyItem = within(detail).getByRole('button', { name: `回看手记：${reading.question}` });
+    expect(historyItem).toHaveTextContent('2026-11-02');
+    expect(historyItem).toHaveTextContent('我的想法（整组） · 先找一个可以尝试的小方向。');
+    expect(historyItem).not.toHaveTextContent('这是第二张牌的理解。');
+
+    await user.click(historyItem);
+    const review = screen.getByRole('main', { name: '手记回看' });
+    expect(screen.queryByRole('main', { name: '愚者研习资料' })).not.toBeInTheDocument();
+    expect(within(within(review).getByRole('region', { name: '原牌阵' })).getByRole('button', { name: /第一张：愚者（正位）/ })).toBeInTheDocument();
+    expect(within(review).getByText(reading.interpretation.combination)).toBeInTheDocument();
+    expect(within(review).getByText(reading.userFeedback!)).toBeInTheDocument();
+
+    await user.click(within(review).getByRole('button', { name: '补写复盘' }));
+    const reflection = within(review).getByRole('textbox', { name: '后来发生了什么' });
+    await user.type(reflection, '这句稍后再保存。');
+    await user.click(within(review).getByRole('button', { name: '保存复盘' }));
+    expect(onSaveReadingFeedback).toHaveBeenCalledWith(reading.id, '后来做了一次小尝试。这句稍后再保存。');
+    expect(within(review).getByText('本机保存失败，文字已保留，请稍后重试。')).toBeInTheDocument();
+    expect(reflection).toHaveValue('后来做了一次小尝试。这句稍后再保存。');
+
+    await user.keyboard('{Escape}');
+    await waitFor(() => expect(screen.queryByRole('main', { name: '手记回看' })).not.toBeInTheDocument());
+    expect(screen.getByRole('main', { name: '愚者研习资料' })).toBe(detail);
+    expect(scrollArea.scrollTop).toBe(280);
+    expect(note).toHaveValue('未保存的注疏');
+    await user.click(historyItem);
+    expect(within(screen.getByRole('main', { name: '手记回看' })).getByRole('textbox', { name: '后来发生了什么' })).toHaveValue('后来做了一次小尝试。这句稍后再保存。');
   });
 
   it('closes the booklet export dialog with Escape', async () => {

@@ -107,6 +107,36 @@ describe('tarotQuizTraining', () => {
     expect(question?.options.every(option => Boolean(option.cardId))).toBe(true);
   });
 
+  it.each(['correspondence', 'meaning-card'] as const)('uses the full deck for %s options with only one or two review cards', kind => {
+    const cards = buildQuizTrainingCards();
+    const [fool, magician] = cards;
+    const memory = updateQuizMemory(updateQuizMemory([], fool, 'wrong'), magician, 'wrong');
+    const filters = { ...DEFAULT_QUIZ_FILTERS, repeatOnly: true };
+    const oneCard = filterQuizTrainingCards(cards, filters, memory.filter(entry => entry.cardId === fool.id));
+    const twoCards = filterQuizTrainingCards(cards, filters, memory);
+    const options = { kinds: [kind], optionCards: cards, correctOptionIndex: 2 };
+
+    const oneQuestion = createQuizQuestion(oneCard, memory, () => 0, options);
+    const twoQuestion = createQuizQuestion(twoCards, memory, () => 0.99, options);
+    expect(oneQuestion?.cardId).toBe(fool.id);
+    expect(twoQuestion?.cardId).toBe(magician.id);
+    for (const question of [oneQuestion, twoQuestion]) {
+      expect(question?.options).toHaveLength(4);
+      expect(new Set(question?.options.map(option => option.label)).size).toBe(4);
+      expect(question?.options[2].id).toBe(question?.correctOptionId);
+    }
+  });
+
+  it('keeps a narrow element filter for the tested cards while adding different element options', () => {
+    const cards = buildQuizTrainingCards();
+    const fireCards = filterQuizTrainingCards(cards, { ...DEFAULT_QUIZ_FILTERS, elements: ['火'] });
+    const question = createQuizQuestion(fireCards, [], () => 0, { kinds: ['correspondence'], optionCards: cards });
+
+    expect(fireCards.some(card => card.id === question?.cardId)).toBe(true);
+    expect(question?.answerLabel).toBe('火');
+    expect(question?.options.map(option => option.label).sort()).toEqual(['土', '水', '火', '风']);
+  });
+
   it('merges user keyword input without duplicating existing card keywords', () => {
     expect(mergeKeywordInput(['冒险', '自由'], '自由、起点, 信任 信任')).toEqual([
       '冒险',

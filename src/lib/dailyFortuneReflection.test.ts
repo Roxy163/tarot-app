@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { appendNoObviousDailyMatch, NO_OBVIOUS_DAILY_MATCH_TEXT } from './dailyFortuneReflection';
+import { appendNoObviousDailyMatch, NO_OBVIOUS_DAILY_MATCH_TEXT, NO_OBVIOUS_PAST_DAILY_MATCH_TEXT } from './dailyFortuneReflection';
 
 describe('daily review quick phrase', () => {
   it.each(['', ' \n  '])('fills a blank review without leading whitespace', text => {
@@ -20,5 +20,11 @@ describe('daily review quick phrase', () => {
     expect(appendNoObviousDailyMatch(text)).toBe(text);
     const appended = appendNoObviousDailyMatch('先保留观察。');
     expect(appendNoObviousDailyMatch(appended)).toBe(appended);
+  });
+
+  it('keeps the original shortcut when a review is reopened on another day', () => {
+    const text = `记下那天的观察。\n${NO_OBVIOUS_DAILY_MATCH_TEXT}`;
+    expect(appendNoObviousDailyMatch(text, NO_OBVIOUS_PAST_DAILY_MATCH_TEXT)).toBe(text);
+    expect(appendNoObviousDailyMatch(NO_OBVIOUS_PAST_DAILY_MATCH_TEXT)).toBe(NO_OBVIOUS_PAST_DAILY_MATCH_TEXT);
   });
 });

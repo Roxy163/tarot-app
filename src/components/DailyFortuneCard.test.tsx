@@ -3,7 +3,8 @@ import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { DailyFortune } from '../types';
 import { DailyFortuneCard } from './DailyFortuneCard';
-import { readLocalDraft, resetDraftMemory } from '../hooks/useLocalDraft';
+import { readLocalDraft, resetDraftMemory, writeLocalDraft } from '../hooks/useLocalDraft';
+import { toLocalReadingDate } from '../lib/readingDate';
 
 const baseFortune: DailyFortune = {
   id: 'fortune-1',
@@ -21,6 +22,7 @@ const baseFortune: DailyFortune = {
 const defaultProps = {
   fortune: null,
   fortunes: [],
+  today: baseFortune.date,
   onGenerateWithNumber: vi.fn(),
   onCreateFromCard: vi.fn(),
   onUpdateCard: vi.fn(),
@@ -47,12 +49,12 @@ describe('DailyFortuneCard', () => {
     renderCard({ embedded: true, onGenerateWithNumber });
     await userEvent.click(screen.getByRole('button', { name: '随机一张' }));
     expect(onGenerateWithNumber).toHaveBeenCalledTimes(1);
-    const [number, index, replacing] = onGenerateWithNumber.mock.calls[0];
+    const [number, index, expectedRedrawId] = onGenerateWithNumber.mock.calls[0];
     expect(number).toBeGreaterThanOrEqual(1);
     expect(number).toBeLessThanOrEqual(78);
     expect(index).toBeGreaterThanOrEqual(0);
     expect(index).toBeLessThan(78);
-    expect(replacing).toBe(false);
+    expect(expectedRedrawId).toBeUndefined();
   });
 
   it('lets users inspect the reversed card while writing without losing their text or changing the card', async () => {
@@ -67,27 +69,102 @@ describe('DailyFortuneCard', () => {
     expect(props.onArchive).not.toHaveBeenCalled();
   });
 
-  it.each([undefined, '2020-01-02T20:00:00Z'])('opens and saves the most recent past unreviewed record with archivedAt=%s', async archivedAt => {
-    const previous = { ...baseFortune, id: 'older', date: '2020-01-02', archivedAt, initialImpression: '上次的想法' };
+  it.each([undefined, '2026-07-01T20:00:00Z'])('opens and saves the most recent past unreviewed record with archivedAt=%s', async archivedAt => {
+    const previous = { ...baseFortune, id: 'older', date: '2026-07-01', archivedAt, initialImpression: '上次的想法' };
     const onOpenCardHistory = vi.fn();
     const props = renderCard({ fortunes: [previous], onOpenCardHistory });
     await userEvent.click(screen.getByRole('button', { name: /上次的「女祭司」还没回看/ }));
-    await userEvent.type(screen.getByRole('textbox', { name: '今日回看' }), '补上后来的观察');
+    expect(screen.getByText('2026-07-01 · 回顾那天的经历。')).toBeInTheDocument();
+    await userEvent.type(screen.getByRole('textbox', { name: '回看' }), '补上后来的观察');
     await userEvent.click(screen.getByRole('button', { name: '保存记录' }));
     expect(archivedAt ? props.onUpdateReflection : props.onArchive).toHaveBeenCalledWith('older', { initialImpression: '上次的想法', dailyReview: '补上后来的观察' });
     await userEvent.click(await screen.findByRole('button', { name: '查看「女祭司」的记录' }));
     expect(onOpenCardHistory).toHaveBeenCalledWith('女祭司');
   });
 
-  it('can skip a past review across remounts without editing or deleting it', async () => {
-    const props = { ...defaultProps, fortunes: [{ ...baseFortune, archivedAt: baseFortune.createdAt }], ownerScope: 'skip-user' };
+  it('remembers the skipped record across visits and days without editing it or silencing a new record', async () => {
+    const older = { ...baseFortune, id: 'older', date: '2026-07-01', cardName: '魔术师', initialImpression: '前天的直觉' };
+    const props = {
+      ...defaultProps,
+      today: '2026-07-03',
+      fortunes: [{ ...baseFortune, archivedAt: baseFortune.createdAt, initialImpression: '昨天的直觉' }, older],
+      ownerScope: 'skip-user',
+    };
     const first = render(<DailyFortuneCard {...props} />);
     await userEvent.click(screen.getByRole('button', { name: '暂时略过日运回看' }));
-    first.unmount();
-    render(<DailyFortuneCard {...props} />);
     expect(screen.queryByRole('button', { name: /上次的/ })).not.toBeInTheDocument();
+    first.unmount();
+    const reopened = render(<DailyFortuneCard {...props} />);
+    expect(screen.queryByRole('button', { name: /上次的/ })).not.toBeInTheDocument();
+    reopened.rerender(<DailyFortuneCard {...props} today="2026-07-04" />);
+    expect(screen.queryByRole('button', { name: /上次的「女祭司」/ })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /上次的「魔术师」/ })).toBeInTheDocument();
+    reopened.rerender(<DailyFortuneCard {...props} today="2026-07-04" ownerScope="other-user" />);
+    expect(screen.getByRole('button', { name: /上次的「女祭司」/ })).toBeInTheDocument();
+    const newer = { ...baseFortune, id: 'newer', date: '2026-07-03', cardName: '愚者', initialImpression: '另一条直觉' };
+    reopened.rerender(<DailyFortuneCard {...props} today="2026-07-04" fortunes={[...props.fortunes, newer]} />);
+    expect(screen.getByRole('button', { name: /上次的「愚者」/ })).toBeInTheDocument();
     expect(props.onUpdateReflection).not.toHaveBeenCalled();
     expect(props.onDeleteFortunes).not.toHaveBeenCalled();
+  });
+  it('only reminds about a recent past record with writing or an unfinished draft', async () => {
+    const old = { ...baseFortune, id: 'old', date: '2026-06-22', cardName: '愚者', initialImpression: '很早以前写过' };
+    const bare = { ...baseFortune, id: 'bare', date: '2026-07-02' };
+    const props = { ...defaultProps, today: '2026-07-03', fortunes: [old, bare] };
+    const screenView = render(<DailyFortuneCard {...props} />);
+    expect(screen.queryByRole('button', { name: /上次的/ })).not.toBeInTheDocument();
+    writeLocalDraft('tarot_daily_reflection_draft_guest_bare', { initialImpression: '还没保存的第一直觉', dailyReview: '' });
+    screenView.rerender(<DailyFortuneCard {...props} />);
+    await userEvent.click(screen.getByRole('button', { name: /上次的「女祭司」/ }));
+    expect(screen.getByLabelText('第一直觉')).toHaveValue('还没保存的第一直觉');
+  });
+
+  it('preserves an open reflection when the displayed date changes', async () => {
+    const user = userEvent.setup();
+    const props = { ...defaultProps, fortune: baseFortune, fortunes: [baseFortune] };
+    const screenView = render(<DailyFortuneCard {...props} />);
+    await user.click(screen.getByRole('button', { name: '写下第一直觉' }));
+    await user.type(screen.getByLabelText('第一直觉'), '跨天了还在写');
+    screenView.rerender(<DailyFortuneCard {...props} today="2026-07-03" fortune={null} />);
+    expect(screen.getByLabelText('第一直觉')).toHaveValue('跨天了还在写');
+    expect(screen.getByText('2026-07-02 · 回顾那天的经历。')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: '保存记录' }));
+    expect(props.onArchive).toHaveBeenCalledWith(baseFortune.id, { initialImpression: '跨天了还在写', dailyReview: '' });
+  });
+
+  it('keeps the draft when redraw is cancelled or fails and clears it after successful replacement', async () => {
+    const user = userEvent.setup();
+    const today = toLocalReadingDate();
+    const fortune = { ...baseFortune, date: today };
+    const replacement = { ...fortune, id: 'replacement', cardName: '愚者' };
+    const key = `tarot_daily_reflection_draft_guest_${fortune.id}`;
+    writeLocalDraft(key, { initialImpression: '还没写完', dailyReview: '' });
+    const onGenerateWithNumber = vi.fn()
+      .mockImplementationOnce(() => { throw new Error('本机暂时无法保存'); })
+      .mockReturnValueOnce(replacement);
+    renderCard({ fortune, fortunes: [fortune], today, embedded: true, onGenerateWithNumber });
+    expect(screen.getByRole('button', { name: '继续写日运' })).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: '重新抽一张日运' }));
+    await user.click(screen.getByRole('button', { name: '保留草稿' }));
+    expect(onGenerateWithNumber).not.toHaveBeenCalled();
+    await user.click(screen.getByRole('button', { name: '重新抽一张日运' }));
+    await user.click(screen.getByRole('button', { name: '放弃草稿并重抽' }));
+    await user.click(screen.getByRole('button', { name: '取消重抽' }));
+    expect(screen.getByRole('button', { name: '继续写日运' })).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: '重新抽一张日运' }));
+    await user.click(screen.getByRole('button', { name: '放弃草稿并重抽' }));
+    await user.click(screen.getByRole('button', { name: '随机一张' }));
+    expect(screen.getByRole('alert')).toHaveTextContent('本机暂时无法保存');
+    expect(readLocalDraft(key)).toMatchObject({ initialImpression: '还没写完' });
+    await user.click(screen.getByRole('button', { name: '随机一张' }));
+    expect(readLocalDraft(key)).toBeNull();
+  });
+
+  it.each([true, false])('protects writing saved from the archive without an archive timestamp (embedded=%s)', embedded => {
+    const fortune = { ...baseFortune, initialImpression: '从日运复盘保存的文字' };
+    renderCard({ fortune, fortunes: [fortune], embedded });
+    expect(screen.getByText('从日运复盘保存的文字')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /重新(洗牌)?抽(一张)?日运/ })).not.toBeInTheDocument();
   });
   it('keeps the writing page open on Back when the draft cannot be persisted', async () => {
     const user = userEvent.setup();
@@ -128,7 +205,7 @@ describe('DailyFortuneCard', () => {
     expect(screen.getByRole('heading', { name: '选择现实中抽到的牌' })).toBeInTheDocument();
 
     await user.click(screen.getByText('愚者'));
-    expect(props.onCreateFromCard).toHaveBeenCalledWith('ar00', false, 'physical-draw');
+    expect(props.onCreateFromCard).toHaveBeenCalledWith('ar00', false, 'physical-draw', undefined);
   });
 
   it('keeps the physical card picker open and reports a failed local draw', async () => {
@@ -214,7 +291,7 @@ describe('DailyFortuneCard', () => {
     other.unmount();
 
     render(<DailyFortuneCard {...props} />);
-    await user.click(screen.getByRole('button', { name: '写下第一直觉' }));
+    await user.click(screen.getByRole('button', { name: '继续写日运' }));
     expect(screen.getByLabelText('第一直觉')).toHaveValue('今天先慢下来。');
     await user.click(screen.getByRole('button', { name: '保存记录' }));
     expect(props.onArchive).toHaveBeenCalledWith(baseFortune.id, { initialImpression: '今天先慢下来。', dailyReview: '' });
@@ -237,8 +314,9 @@ describe('DailyFortuneCard', () => {
 
   it('shares unfinished text between the home and archive editors and keeps nested keyboard focus', async () => {
     const user = userEvent.setup();
-    const archived = { ...baseFortune, archivedAt: baseFortune.createdAt, initialImpression: '原来的直觉' };
-    renderCard({ fortune: archived, fortunes: [archived], ownerScope: 'user-a' });
+    const today = toLocalReadingDate();
+    const archived = { ...baseFortune, date: today, archivedAt: baseFortune.createdAt, initialImpression: '原来的直觉' };
+    renderCard({ fortune: archived, fortunes: [archived], today, ownerScope: 'user-a' });
     await user.click(screen.getByRole('button', { name: '补写今日回看' }));
     await user.type(screen.getByLabelText('今日回看'), '晚上回来继续写');
     await user.click(screen.getByRole('button', { name: '稍后再写' }));
@@ -259,7 +337,7 @@ describe('DailyFortuneCard', () => {
     await waitFor(() => expect(editButton).toHaveFocus());
     await user.keyboard('{Escape}');
     await waitFor(() => expect(screen.queryByRole('main', { name: '日运复盘' })).not.toBeInTheDocument());
-    await user.click(screen.getByRole('button', { name: '补写今日回看' }));
+    await user.click(screen.getByRole('button', { name: '继续写日运' }));
     expect(screen.getByLabelText('今日回看')).toHaveValue('晚上回来继续写，已经想明白');
     expect(readLocalDraft('tarot_daily_reflection_draft_guest_fortune-1')).toBeNull();
   });
@@ -272,21 +350,22 @@ describe('DailyFortuneCard', () => {
     const first = render(<DailyFortuneCard {...props} />);
     await user.click(screen.getByRole('button', { name: '打开日运复盘' }));
     await user.click(screen.getByRole('button', { name: '补写日运手札' }));
-    await user.type(screen.getByLabelText('今日回看'), '补写内容不能丢');
-    await user.click(screen.getByRole('button', { name: '今天暂未看见明显对应' }));
-    await user.click(screen.getByRole('button', { name: '今天暂未看见明显对应' }));
-    const review = '补写内容不能丢\n今天暂未看见明显对应';
+    expect(screen.getByText('2026-07-02 · 回顾那天的经历。')).toBeInTheDocument();
+    await user.type(screen.getByLabelText('回看'), '补写内容不能丢');
+    await user.click(screen.getByRole('button', { name: '那天暂未看见明显对应' }));
+    await user.click(screen.getByRole('button', { name: '那天暂未看见明显对应' }));
+    const review = '补写内容不能丢\n那天暂未看见明显对应';
     first.unmount();
     resetDraftMemory();
     const other = render(<DailyFortuneCard {...props} ownerScope="user-b" />);
     await user.click(screen.getByRole('button', { name: '打开日运复盘' }));
     await user.click(screen.getByRole('button', { name: '补写日运手札' }));
-    expect(screen.getByLabelText('今日回看')).toHaveValue('');
+    expect(screen.getByLabelText('回看')).toHaveValue('');
     other.unmount();
     render(<DailyFortuneCard {...props} />);
     await user.click(screen.getByRole('button', { name: '打开日运复盘' }));
     await user.click(screen.getByRole('button', { name: '补写日运手札' }));
-    expect(screen.getByLabelText('今日回看')).toHaveValue(review);
+    expect(screen.getByLabelText('回看')).toHaveValue(review);
     await user.click(screen.getByRole('button', { name: '保存记录' }));
     expect(screen.getByRole('alert')).toHaveTextContent('本机保存失败');
     expect(readLocalDraft('tarot_daily_reflection_draft_user-a_fortune-1')).toMatchObject({ dailyReview: review });
@@ -511,9 +590,47 @@ describe('DailyFortuneCard', () => {
     expect(props.onUpdateCard).toHaveBeenCalledWith(physicalFortune.id, 'ar04', false);
   });
 
+  it('keeps the original reversed card and lets users retry a failed replacement', async () => {
+    const user = userEvent.setup();
+    const fortune: DailyFortune = { ...baseFortune, source: 'physical-draw', isReversed: true };
+    const onUpdateCard = vi.fn().mockImplementationOnce(() => { throw new Error('本机保存失败'); });
+    renderCard({ embedded: true, fortune, fortunes: [fortune], onUpdateCard });
+
+    await user.click(screen.getByRole('button', { name: '更换牌' }));
+    const picker = screen.getByRole('dialog', { name: '更换今日日运牌' });
+    await user.click(within(picker).getByText('皇帝'));
+
+    expect(within(picker).getByRole('alert')).toHaveTextContent('本机保存失败');
+    expect(onUpdateCard).toHaveBeenLastCalledWith(fortune.id, 'ar04', true);
+    expect(screen.getByRole('heading', { name: fortune.cardName })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '切换为正位' })).toBeInTheDocument();
+
+    await user.click(within(picker).getByText('皇帝'));
+    expect(onUpdateCard).toHaveBeenCalledTimes(2);
+    expect(onUpdateCard).toHaveBeenLastCalledWith(fortune.id, 'ar04', true);
+    await waitFor(() => expect(picker).not.toBeInTheDocument());
+  });
+
+  it('keeps the direction control available after a failed change', async () => {
+    const user = userEvent.setup();
+    const fortune: DailyFortune = { ...baseFortune, source: 'physical-draw' };
+    const onUpdateCard = vi.fn().mockImplementationOnce(() => { throw new Error('本机保存失败'); });
+    renderCard({ embedded: true, fortune, fortunes: [fortune], onUpdateCard });
+    const toggle = screen.getByRole('button', { name: '切换为逆位' });
+
+    await user.click(toggle);
+    expect(within(toggle.parentElement!).getByRole('alert')).toHaveTextContent('本机保存失败');
+    await user.click(toggle);
+    expect(onUpdateCard).toHaveBeenCalledTimes(2);
+    expect(onUpdateCard).toHaveBeenLastCalledWith(fortune.id, 'ar02', true);
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
   it('asks for a number before replacing today fortune when redrawing', async () => {
     const user = userEvent.setup();
-    const props = renderCard({ fortune: baseFortune, fortunes: [baseFortune] });
+    const today = toLocalReadingDate();
+    const fortune = { ...baseFortune, date: today };
+    const props = renderCard({ fortune, fortunes: [fortune], today });
 
     await user.click(screen.getByRole('button', { name: '重新洗牌抽日运' }));
     await user.click(screen.getByRole('button', { name: '重新洗牌' }));
@@ -525,6 +642,6 @@ describe('DailyFortuneCard', () => {
     expect(screen.getByText('你抽到了今天的第 7 张牌')).toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: '揭晓答案' }));
-    expect(props.onGenerateWithNumber).toHaveBeenCalledWith(7, expect.any(Number), true);
+    expect(props.onGenerateWithNumber).toHaveBeenCalledWith(7, expect.any(Number), fortune.id);
   });
 });

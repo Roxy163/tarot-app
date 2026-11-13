@@ -39,7 +39,11 @@ export function clearLocalDraft(key: string) {
   failedKeys.delete(key);
   let durable = true;
   try { sessionStorage.removeItem(key); } catch { durable = false; }
-  try { localStorage.setItem(key, 'null'); removeJsonWithBackup(key); } catch { durable = false; }
+  try {
+    removeJsonWithBackup(key);
+  } catch {
+    try { localStorage.setItem(key, 'null'); } catch { durable = false; }
+  }
   return durable;
 }
 

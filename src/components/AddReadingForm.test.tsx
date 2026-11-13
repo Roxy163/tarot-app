@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { OFFICIAL_SPREADS } from '../constants';
 import { AddReadingForm } from './AddReadingForm';
 import { readLocalDraft, resetDraftMemory } from '../hooks/useLocalDraft';
-import { SpreadDefinition, TarotReading } from '../types';
+import { ReadingEditorDraft, SpreadDefinition, TarotReading } from '../types';
 import * as spreadReveal from '../lib/revealReadingSpread';
 import { findResumableReading } from '../lib/resumableReading';
 
@@ -293,6 +293,64 @@ describe('AddReadingForm spread designer flow', () => {
     expect(readLocalDraft<any>('tarot_reading_draft_guest_unchanged').hasUnsavedChanges).toBe(false);
   });
 
+  it('retains a legacy reading timestamp when only the title changes', async () => {
+    const user = userEvent.setup();
+    const date = '2026-08-03T09:15:00+08:00';
+    const { onSubmit } = renderForm({ initialData: makeReading('legacy-date', [], date, { readingDate: undefined }) });
+    expect(screen.getByLabelText('占卜日期')).toHaveValue('2026-08-03');
+    await user.type(screen.getByRole('textbox', { name: '占卜问题' }), ' 修改标题');
+    await user.click(screen.getByRole('button', { name: '保存修改' }));
+    expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ readingDate: date }));
+  });
+
+  it('preserves a deliberately changed date after resuming a draft', async () => {
+    const user = userEvent.setup();
+    const initialData = makeReading('changed-date', [], '2026-08-03T09:15:00+08:00', { readingDate: undefined });
+    const first = renderForm({ initialData });
+    fireEvent.change(screen.getByLabelText('占卜日期'), { target: { value: '2026-10-22' } });
+    first.unmount();
+    resetDraftMemory();
+    const { onSubmit } = renderForm({ initialData });
+    expect(screen.getByLabelText('占卜日期')).toHaveValue('2026-10-22');
+    await user.click(screen.getByRole('button', { name: '保存修改' }));
+    expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ readingDate: '2026-10-22' }));
+  });
+
+  it.each([
+    ['沿用原日期', '2026-08-03T09:15:00+08:00'],
+    ['使用草稿日期', '2026-10-22'],
+  ])('checks an ambiguous legacy draft date before saving with %s', async (choice, expectedDate) => {
+    const user = userEvent.setup();
+    const initialData = makeReading('old-draft-date', [], '2026-08-03T09:15:00+08:00', { readingDate: undefined });
+    const key = 'tarot_reading_draft_guest_old-draft-date';
+    const first = renderForm({ initialData });
+    const existingDraft = readLocalDraft<ReadingEditorDraft>(key)!;
+    first.unmount();
+    resetDraftMemory();
+    sessionStorage.removeItem(key);
+    localStorage.setItem(key, JSON.stringify({
+      ...existingDraft,
+      readingDateConfirmed: undefined,
+      hasUnsavedChanges: true,
+      formData: { ...existingDraft.formData, question: '旧草稿的新问题', readingDate: '2026-10-22' },
+    }));
+
+    const { onSubmit } = renderForm({ initialData });
+    const save = screen.getByRole('button', { name: '保存修改' });
+    const dateDialog = () => screen.getByRole('dialog', { name: '确认手记日期' });
+    await user.click(save);
+    expect(onSubmit).not.toHaveBeenCalled();
+    expect(dateDialog()).toHaveTextContent('原手记日期为 2026-08-03，草稿日期为 2026-10-22');
+    await user.click(within(dateDialog()).getByRole('button', { name: '继续编辑' }));
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: '确认手记日期' })).not.toBeInTheDocument());
+    expect(onSubmit).not.toHaveBeenCalled();
+    expect(screen.getByLabelText('占卜日期')).toHaveValue('2026-10-22');
+    await user.click(save);
+    await user.click(within(dateDialog()).getByRole('button', { name: choice }));
+    expect(onSubmit).toHaveBeenCalledOnce();
+    expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ question: '旧草稿的新问题', readingDate: expectedDate }));
+  });
+
   it('keeps an older edited draft resumable after opening it without further changes', async () => {
     const user = userEvent.setup();
     const initialData = makeReading('legacy-edit', [], '2026-10-21');
@@ -384,20 +442,97 @@ describe('AddReadingForm spread designer flow', () => {
     expect(onSubmit).not.toHaveBeenCalled();
   });
 
-  it('discards the edit draft when cancelling without changing the saved reading', async () => {
+  it('lets a changed edit continue, resume after leaving, or discard only after confirmation', async () => {
     const user = userEvent.setup();
     const initialData = makeReading('cancelled-edit', [], '2026-09-16');
     const view = renderForm({ initialData });
-    await user.clear(screen.getByPlaceholderText('占卜的问题是什么？'));
-    await user.type(screen.getByPlaceholderText('占卜的问题是什么？'), '不要保存这次修改');
-    await user.click(screen.getByRole('button', { name: '取消修改' }));
+    const editedTitle = '还没写完这次修改';
+    const question = () => screen.getByRole('textbox', { name: '占卜问题' });
+    const requestExit = () => user.click(screen.getByRole('button', { name: '取消修改' }));
+    const exitDialog = () => screen.getByRole('dialog', { name: '退出编辑' });
+    fireEvent.change(question(), { target: { value: editedTitle } });
+    await requestExit();
+    expect(view.onCancel).not.toHaveBeenCalled();
+    await user.click(within(exitDialog()).getByRole('button', { name: '继续编辑' }));
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: '退出编辑' })).not.toBeInTheDocument());
+    expect(question()).toHaveValue(editedTitle);
+    await requestExit();
+    await user.click(within(exitDialog()).getByRole('button', { name: '保留草稿退出' }));
     expect(view.onCancel).toHaveBeenCalledOnce();
     expect(view.onSubmit).not.toHaveBeenCalled();
     view.unmount();
     resetDraftMemory();
+    expect(findResumableReading('guest', [initialData])?.question).toBe(editedTitle);
+    const resumed = renderForm({ initialData });
+    expect(question()).toHaveValue(editedTitle);
+    await requestExit();
+    await user.click(within(exitDialog()).getByRole('button', { name: '放弃修改' }));
+    expect(resumed.onCancel).toHaveBeenCalledOnce();
+    expect(resumed.onSubmit).not.toHaveBeenCalled();
+    resumed.unmount();
+    resetDraftMemory();
     expect(readLocalDraft('tarot_reading_draft_guest_cancelled-edit')).toBeNull();
     renderForm({ initialData });
-    expect(screen.getByPlaceholderText('占卜的问题是什么？')).toHaveValue(initialData.question);
+    expect(question()).toHaveValue(initialData.question);
+  });
+
+  it('asks before changing a written card slot and can undo a replacement with cleared writing', async () => {
+    const user = userEvent.setup();
+    const initialData = {
+      ...pairedReading('replace-card'),
+      interpretation: { singleCard: '', combination: '整组想法保持原文', summary: '' },
+    };
+    const { onSubmit } = renderForm({ spreads: [...OFFICIAL_SPREADS, pairedSpread], initialData });
+    const draft = () => readLocalDraft<ReadingEditorDraft>('tarot_reading_draft_guest_replace-card');
+    const choose = async () => {
+      await user.click(screen.getByRole('button', { name: '重新选牌' }));
+      await user.click(screen.getByRole('button', { name: '星币王后 星币王后' }));
+      return screen.getByRole('dialog', { name: '更换这张牌' });
+    };
+    await user.click(screen.getByRole('button', { name: '逐牌研习（可选）' }));
+    await user.click(within(await choose()).getByRole('button', { name: '取消换牌' }));
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: '更换这张牌' })).not.toBeInTheDocument());
+    expect(draft()?.cardSlots[0]).toMatchObject(initialData.cards[0]);
+    expect(draft()?.cardInterpretations).toEqual(initialData.cardInterpretations);
+    await user.click(within(await choose()).getByRole('button', { name: '换牌并清空文字' }));
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: '更换这张牌' })).not.toBeInTheDocument());
+    expect(draft()?.cardSlots[0]).toMatchObject({ ...initialData.cards[0], name: '星币王后' });
+    expect(draft()?.cardInterpretations).toEqual(['', '隐士独有注解']);
+    expect(draft()?.cardQuestions).toEqual(['', '隐士独有疑问']);
+    expect(draft()?.formData.combination).toBe('整组想法保持原文');
+    await user.click(screen.getByRole('button', { name: '撤销牌位操作' }));
+    expect(draft()?.cardSlots[0]).toMatchObject(initialData.cards[0]);
+    expect(draft()?.cardInterpretations).toEqual(initialData.cardInterpretations);
+    expect(draft()?.cardQuestions).toEqual(initialData.cardQuestions);
+    await user.click(within(await choose()).getByRole('button', { name: '换牌并保留文字' }));
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: '更换这张牌' })).not.toBeInTheDocument());
+    await user.click(screen.getByRole('button', { name: '保存修改' }));
+    expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({
+      cards: expect.arrayContaining([expect.objectContaining({ name: '星币王后' })]),
+      cardInterpretations: initialData.cardInterpretations,
+      cardQuestions: initialData.cardQuestions,
+    }));
+  });
+
+  it('preserves legacy single-card writing when correcting a card and does not reset the same card’s direction', async () => {
+    const user = userEvent.setup();
+    const initialData = makeReading('replace-single', [], '2026-09-16', {
+      cards: [{ name: '愚者', isReversed: true }],
+      interpretation: { singleCard: '旧版只保存了单牌想法', combination: '', summary: '' },
+    });
+    const { onSubmit } = renderForm({ initialData });
+    await user.click(screen.getByRole('button', { name: '逐牌研习（可选）' }));
+    await user.click(screen.getByRole('button', { name: '重新选牌' }));
+    await user.click(screen.getByRole('button', { name: '愚者 愚者' }));
+    expect(screen.queryByRole('dialog', { name: '更换这张牌' })).not.toBeInTheDocument();
+    expect(readLocalDraft<ReadingEditorDraft>('tarot_reading_draft_guest_replace-single')?.cardSlots[0].isReversed).toBe(true);
+    await user.click(screen.getByRole('button', { name: '重新选牌' }));
+    await user.click(screen.getByRole('button', { name: '星币王后 星币王后' }));
+    await user.click(within(screen.getByRole('dialog', { name: '更换这张牌' })).getByRole('button', { name: '换牌并保留文字' }));
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: '更换这张牌' })).not.toBeInTheDocument());
+    expect(screen.getByRole('textbox', { name: '我的想法' })).toHaveValue('旧版只保存了单牌想法');
+    await user.click(screen.getByRole('button', { name: '保存修改' }));
+    expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ cardInterpretations: ['旧版只保存了单牌想法'] }));
   });
 
   it('closes the spread designer after saving and using a new free layout spread', async () => {
