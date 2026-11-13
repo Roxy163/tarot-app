@@ -43,6 +43,11 @@ const renderCard = (props: Partial<React.ComponentProps<typeof DailyFortuneCard>
   return mergedProps;
 };
 
+function getArchiveRecord(date: string) {
+  const archive = within(screen.getByRole('main', { name: '日运复盘' }));
+  return archive.getByRole('button', { name: new RegExp(date), expanded: false });
+}
+
 describe('DailyFortuneCard', () => {
   it('can draw once directly while keeping the number-selection shuffle available', async () => {
     const onGenerateWithNumber = vi.fn();
@@ -322,6 +327,7 @@ describe('DailyFortuneCard', () => {
     await user.click(screen.getByRole('button', { name: '稍后再写' }));
     await waitFor(() => expect(screen.queryByRole('main', { name: '补写日运' })).not.toBeInTheDocument());
     await user.click(screen.getByRole('button', { name: '打开日运复盘' }));
+    await user.click(getArchiveRecord(today));
     const editButton = screen.getByRole('button', { name: '补写日运手札' });
     await user.click(editButton);
     expect(screen.getByLabelText('第一直觉')).toHaveValue('原来的直觉');
@@ -349,6 +355,7 @@ describe('DailyFortuneCard', () => {
     const props = { ...defaultProps, fortune: archived, fortunes: [archived], ownerScope: 'user-a', onUpdateReflection };
     const first = render(<DailyFortuneCard {...props} />);
     await user.click(screen.getByRole('button', { name: '打开日运复盘' }));
+    await user.click(getArchiveRecord(archived.date));
     await user.click(screen.getByRole('button', { name: '补写日运手札' }));
     expect(screen.getByText('2026-07-02 · 回顾那天的经历。')).toBeInTheDocument();
     await user.type(screen.getByLabelText('回看'), '补写内容不能丢');
@@ -359,11 +366,13 @@ describe('DailyFortuneCard', () => {
     resetDraftMemory();
     const other = render(<DailyFortuneCard {...props} ownerScope="user-b" />);
     await user.click(screen.getByRole('button', { name: '打开日运复盘' }));
+    await user.click(getArchiveRecord(archived.date));
     await user.click(screen.getByRole('button', { name: '补写日运手札' }));
     expect(screen.getByLabelText('回看')).toHaveValue('');
     other.unmount();
     render(<DailyFortuneCard {...props} />);
     await user.click(screen.getByRole('button', { name: '打开日运复盘' }));
+    await user.click(getArchiveRecord(archived.date));
     await user.click(screen.getByRole('button', { name: '补写日运手札' }));
     expect(screen.getByLabelText('回看')).toHaveValue(review);
     await user.click(screen.getByRole('button', { name: '保存记录' }));
@@ -392,11 +401,13 @@ describe('DailyFortuneCard', () => {
 
     await user.click(screen.getByRole('button', { name: '打开日运复盘' }));
     expect(screen.getByRole('main', { name: '日运复盘' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /时间线/ })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /按牌/ })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /按月/ })).toBeInTheDocument();
     expect(screen.getByText('现实抽牌')).toBeInTheDocument();
     expect(screen.getAllByText('晚上对应到一次真实的直觉判断。').length).toBeGreaterThan(0);
+    await user.click(screen.getByRole('button', { name: '更多日运操作' }));
+    const more = within(screen.getByRole('dialog', { name: '更多日运操作' }));
+    expect(more.getByRole('button', { name: '切换到时间线日运' })).toBeInTheDocument();
+    expect(more.getByRole('button', { name: '切换到按牌日运' })).toBeInTheDocument();
+    expect(more.getByRole('button', { name: '切换到按月日运' })).toBeInTheDocument();
   });
 
   it('lets users save an archived daily fortune into card annotations once', async () => {
@@ -411,6 +422,7 @@ describe('DailyFortuneCard', () => {
     const props = renderCard({ fortune: archivedFortune, fortunes: [archivedFortune] });
 
     await user.click(screen.getByRole('button', { name: '打开日运复盘' }));
+    await user.click(getArchiveRecord(archivedFortune.date));
     await user.click(screen.getByRole('button', { name: '归入牌义注疏' }));
 
     expect(props.onSaveToCardAnnotation).toHaveBeenCalledWith(archivedFortune.id);
@@ -427,6 +439,7 @@ describe('DailyFortuneCard', () => {
     const props = renderCard({ fortune: archivedFortune, fortunes: [archivedFortune] });
 
     await user.click(screen.getByRole('button', { name: '打开日运复盘' }));
+    await user.click(getArchiveRecord(archivedFortune.date));
 
     const button = screen.getByRole('button', { name: '已归入牌义注疏' });
     expect(button).toBeDisabled();
@@ -475,7 +488,9 @@ describe('DailyFortuneCard', () => {
     const props = renderCard({ fortune: archivedFortune, fortunes: [archivedFortune, olderFortune] });
 
     await user.click(screen.getByRole('button', { name: '打开日运复盘' }));
+    await user.click(getArchiveRecord(archivedFortune.date));
     expect(screen.getByRole('button', { name: '补写日运手札' })).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: '更多日运操作' }));
     await user.click(screen.getByRole('button', { name: '整理' }));
     await waitFor(() => {
       expect(screen.queryByRole('button', { name: '补写日运手札' })).not.toBeInTheDocument();
@@ -511,16 +526,33 @@ describe('DailyFortuneCard', () => {
 
     await user.click(screen.getByRole('button', { name: '打开日运复盘' }));
     const archiveDialog = screen.getByRole('main', { name: '日运复盘' });
+    expect(within(archiveDialog).getByRole('button', { name: '查找与筛选' })).toBeEnabled();
+    expect(within(archiveDialog).queryByRole('textbox', { name: '搜索日运抽牌' })).not.toBeInTheDocument();
+    expect(within(archiveDialog).queryByRole('button', { name: '切换到时间线日运' })).not.toBeInTheDocument();
+    expect(within(archiveDialog).queryByRole('button', { name: '筛选待回看日运记录' })).not.toBeInTheDocument();
+    expect(within(archiveDialog).queryByRole('button', { name: '导出' })).not.toBeInTheDocument();
+    expect(within(archiveDialog).queryByRole('button', { name: '整理' })).not.toBeInTheDocument();
+    expect(within(archiveDialog).queryByText('当前结果')).not.toBeInTheDocument();
+    expect(getArchiveRecord(reviewedFortune.date)).toHaveTextContent('晚上对应到直觉判断。');
+    expect(getArchiveRecord(pendingFortune.date)).toHaveTextContent('先动手。');
+    expect(within(archiveDialog).queryByRole('button', { name: '补写日运手札' })).not.toBeInTheDocument();
 
-    expect(within(archiveDialog).getByRole('button', { name: /导出/ })).toBeEnabled();
-    expect(within(archiveDialog).queryByRole('button', { name: '导出PDF' })).not.toBeInTheDocument();
+    await user.click(within(archiveDialog).getByRole('button', { name: '更多日运操作' }));
+    const more = within(screen.getByRole('dialog', { name: '更多日运操作' }));
+    expect(more.getByRole('button', { name: '导出' })).toBeEnabled();
+    expect(more.queryByRole('menuitem', { name: /PDF 手札/ })).not.toBeInTheDocument();
+    await user.click(more.getByRole('button', { name: '导出' }));
+    expect(more.getByRole('menuitem', { name: /PDF 手札/ })).toBeInTheDocument();
+    expect(more.getByRole('menuitem', { name: /表格/ })).toBeInTheDocument();
+    expect(more.getByRole('menuitem', { name: /Markdown/ })).toBeInTheDocument();
+    await user.click(more.getByRole('button', { name: '关闭更多日运操作' }));
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: '更多日运操作' })).not.toBeInTheDocument());
 
-    await user.click(within(archiveDialog).getByRole('button', { name: /导出/ }));
-    expect(within(archiveDialog).getByRole('menuitem', { name: /PDF 手札/ })).toBeInTheDocument();
-    expect(within(archiveDialog).getByRole('menuitem', { name: /表格/ })).toBeInTheDocument();
-    expect(within(archiveDialog).getByRole('menuitem', { name: /Markdown/ })).toBeInTheDocument();
-
-    await user.click(within(archiveDialog).getByRole('button', { name: '筛选待回看日运记录' }));
+    await user.click(within(archiveDialog).getByRole('button', { name: '查找与筛选' }));
+    const find = within(screen.getByRole('dialog', { name: '查找与筛选' }));
+    await user.click(find.getByRole('button', { name: '筛选待回看日运记录' }));
+    await user.click(find.getByRole('button', { name: '关闭查找与筛选' }));
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: '查找与筛选' })).not.toBeInTheDocument());
     expect(within(archiveDialog).getByText(/先动手/)).toBeInTheDocument();
     expect(within(archiveDialog).queryByText(/晚上对应到直觉判断/)).not.toBeInTheDocument();
   });

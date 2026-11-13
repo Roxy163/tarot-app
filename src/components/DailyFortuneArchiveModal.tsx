@@ -1,5 +1,6 @@
 import { downloadBlobFile, downloadTextFile } from '../lib/downloadFile';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { AnimatePresence, motion } from 'motion/react';
 import {
   Archive,
@@ -17,7 +18,7 @@ import {
   Trash2,
   Search,
   ChevronRight,
-  CalendarDays,
+  Ellipsis,
   X,
 } from 'lucide-react';
 import { DailyFortune, DailyFortuneReflectionParts, TarotReading } from '../types';
@@ -41,13 +42,13 @@ import {
   dailyFortuneMatchesSearch,
 } from '../lib/dailyFortuneReview';
 import { createExportPdfBlobFromLines } from '../lib/pdfExport';
-import { useClickOutside } from '../hooks/useClickOutside';
 import { QuietEmptyState } from './ui/SoftUI';
 import { AutoResizeTextarea } from './ui/AutoResizeTextarea';
 import { trackEvent } from '../lib/analytics';
 import { ConfirmDialog } from './ConfirmDialog';
 import { readLocalDraft, useLocalDraft } from '../hooks/useLocalDraft';
 import { PageView } from './PageView';
+import { Modal } from './Modal';
 import { scrollFocusedFieldIntoView } from '../lib/mobileFocus';
 import { DailyReflectionCard } from './DailyReflectionCard';
 import { getRecordCalendarDate, isDailyReading, readingMatchesSearch } from '../lib/readingSearch';
@@ -70,6 +71,20 @@ interface DailyFortuneArchiveModalProps {
 
 type ReviewView = 'timeline' | 'cards' | 'month';
 type ReviewFilter = 'all' | 'pending' | 'reviewed' | 'saved';
+
+const viewOptions = [
+  ['timeline', '时间线', Archive],
+  ['cards', '按牌', Library],
+  ['month', '按月', BarChart3],
+] as const;
+
+const readingFilterOptions = [
+  ['all', '全部'], ['pending', '待复盘'], ['reviewed', '已复盘'],
+] as const;
+
+const filterButtonClass = (selected: boolean) => `inline-flex min-h-11 items-center gap-1.5 rounded-full px-3 text-xs font-medium transition-colors ${
+  selected ? 'bg-forest-accent text-white' : 'bg-forest-accent/7 text-forest-accent hover:bg-forest-accent/12'
+}`;
 type SwipeDragState = {
   pointerId: number | null;
   startX: number;
@@ -102,38 +117,26 @@ const matchesReviewFilter = (fortune: DailyFortune, filter: ReviewFilter) => {
   return true;
 };
 
-function ArchiveSearchControls({ sourceLabel, query, date, month, dateControlsOpen, forceDateControls = false,
-  onQueryChange, onDateChange, onMonthChange, onToggleDates, onClear,
-}: {
-  sourceLabel: string; query: string; date: string; month: string; dateControlsOpen: boolean; forceDateControls?: boolean;
+function ArchiveSearchControls({ sourceLabel, query, date, month, onQueryChange, onDateChange, onMonthChange }: {
+  sourceLabel: string; query: string; date: string; month: string;
   onQueryChange: (value: string) => void; onDateChange: (value: string) => void; onMonthChange: (value: string) => void;
-  onToggleDates: () => void; onClear: () => void;
 }) {
-  return <div className="mb-4 space-y-2">
+  return <div className="space-y-3">
     <div className="relative">
       <Search size={18} className="pointer-events-none absolute left-3 top-3.5 text-forest-accent" />
       <input aria-label={`搜索${sourceLabel}`} placeholder="搜索牌名、日期或记录内容" value={query} onChange={event => onQueryChange(event.target.value)} className="min-h-11 w-full rounded-lg border border-forest-accent/15 bg-white/60 py-2 pl-10 pr-12 text-base text-forest-ink" />
       {query && <button type="button" aria-label={`清空${sourceLabel}搜索`} onClick={() => onQueryChange('')} className="absolute right-0 top-0 flex h-11 w-11 items-center justify-center text-forest-muted"><X size={17} /></button>}
     </div>
-    <div className="flex flex-wrap items-center gap-x-4">
-      {!forceDateControls && <button type="button" aria-expanded={dateControlsOpen} onClick={onToggleDates} className="inline-flex min-h-11 items-center gap-1.5 text-xs text-forest-accent"><CalendarDays size={15} />按日期查找{(date || month) && ` · ${date || month}`}</button>}
-      {(query || date || month) && <button type="button" aria-label={`清空${sourceLabel}查找`} onClick={onClear} className="min-h-11 text-xs text-forest-muted hover:text-forest-accent">清空查找</button>}
-    </div>
-    {(dateControlsOpen || forceDateControls) && <div className="grid grid-cols-2 gap-3">
+    <div className="grid grid-cols-2 gap-2">
       <label className="min-w-0 text-xs text-forest-muted">日期<input type="date" aria-label={`${sourceLabel}日期`} value={date} onChange={event => onDateChange(event.target.value)} className="mt-1 min-h-11 w-full min-w-0 rounded-lg border border-forest-accent/15 bg-white/60 px-2 text-base text-forest-ink" /></label>
       <label className="min-w-0 text-xs text-forest-muted">月份<input type="month" aria-label={`${sourceLabel}月份`} value={month} onChange={event => onMonthChange(event.target.value)} className="mt-1 min-h-11 w-full min-w-0 rounded-lg border border-forest-accent/15 bg-white/60 px-2 text-base text-forest-ink" /></label>
-    </div>}
+    </div>
   </div>;
 }
 
 const getFortunePreviewText = (fortune: DailyFortune) => {
   const parts = getDailyReflectionParts(fortune);
-  return (
-    parts.dailyReview
-    || parts.initialImpression
-    || fortune.reflection
-    || fortune.interpretation
-  );
+  return parts.dailyReview || parts.initialImpression || fortune.reflection?.trim();
 };
 
 const clampSwipeOffset = (value: number) => Math.min(0, Math.max(-SWIPE_MAX_OFFSET, value));
@@ -186,6 +189,9 @@ const DailyReflectionBlocks = ({ fortune }: { fortune: DailyFortune }) => {
 
 interface FortuneArchiveItemProps {
   fortune: DailyFortune;
+  calendarDate: string;
+  yearCount?: number;
+  monthCount?: number;
   expanded: boolean;
   isOrganizing: boolean;
   isSelected: boolean;
@@ -200,6 +206,9 @@ interface FortuneArchiveItemProps {
 
 const FortuneArchiveItem = ({
   fortune,
+  calendarDate,
+  yearCount,
+  monthCount,
   expanded,
   isOrganizing,
   isSelected,
@@ -351,6 +360,7 @@ const FortuneArchiveItem = ({
         <button
           type="button"
           onClick={handleSummaryClick}
+          aria-expanded={isOrganizing ? undefined : expanded}
           aria-label={isOrganizing
             ? `${isSelected ? '取消选择' : '选择'} ${fortune.date} 日运记录`
             : undefined}
@@ -374,7 +384,7 @@ const FortuneArchiveItem = ({
             />
           </div>
           <div className="min-w-0 flex-1">
-            <div className="flex flex-wrap items-center gap-2">
+            <div className={`relative flex flex-wrap items-center gap-2 ${isOrganizing ? '' : 'pr-6'}`}>
               <p className="font-serif text-lg font-semibold text-forest-ink">{fortune.cardName}</p>
               <span className="rounded-full bg-forest-accent/10 px-2 py-0.5 text-[10px] font-medium text-forest-accent">
                 {getDirectionLabel(fortune)}
@@ -384,10 +394,16 @@ const FortuneArchiveItem = ({
                   已归入注疏
                 </span>
               )}
+              {!isOrganizing && (
+                <ChevronDown size={16} aria-hidden="true" className={`absolute right-0 top-1/2 -translate-y-1/2 text-forest-accent transition-transform ${expanded ? 'rotate-180' : ''}`} />
+              )}
             </div>
-            <p className="mt-1 text-xs text-forest-muted">{fortune.date} · {getSourceLabel(fortune.source)}</p>
+            <p className="mt-1 text-xs text-forest-muted">
+              {calendarDate || fortune.date} · {getSourceLabel(fortune.source)}
+              {!isOrganizing && yearCount !== undefined && <span className="whitespace-nowrap tabular-nums text-forest-accent"> · 年内 {yearCount} 次</span>}
+            </p>
             <p className="mt-2 line-clamp-2 whitespace-pre-wrap text-xs leading-relaxed text-forest-text/70">
-              {fortune.reflection || '还没有写第一直觉或今日回看。'}
+              {getFortunePreviewText(fortune) || '还没有写第一直觉或今日回看。'}
             </p>
           </div>
         </button>
@@ -400,6 +416,9 @@ const FortuneArchiveItem = ({
               exit={{ height: 0, opacity: 0 }}
               className="border-t border-forest-accent/8 px-4 pb-4 pt-3"
             >
+              {monthCount !== undefined && (
+                <p className="mb-1.5 text-xs tabular-nums text-forest-accent">{calendarDate.slice(0, 4)} 年出现 {yearCount} 次 · {Number(calendarDate.slice(5, 7))} 月出现 {monthCount} 次</p>
+              )}
               <p className="text-xs leading-relaxed text-forest-text/80">{fortune.interpretation}</p>
               <DailyReflectionBlocks fortune={fortune} />
               <div className="mt-3 grid gap-2 sm:grid-cols-2">
@@ -457,11 +476,9 @@ export const DailyFortuneArchiveModal: React.FC<DailyFortuneArchiveModalProps> =
   const [readingQuery, setReadingQuery] = useState('');
   const [readingDate, setReadingDate] = useState('');
   const [readingMonth, setReadingMonth] = useState('');
-  const [readingDatesOpen, setReadingDatesOpen] = useState(false);
   const [drawQuery, setDrawQuery] = useState('');
   const [drawDate, setDrawDate] = useState('');
   const [drawMonth, setDrawMonth] = useState('');
-  const [drawDatesOpen, setDrawDatesOpen] = useState(false);
   const [readingFilter, setReadingFilter] = useState<'all' | 'pending' | 'reviewed'>('all');
   const [selectedReadingId, setSelectedReadingId] = useState<string | null>(null);
   const archiveAnchor = useRef<HTMLDivElement>(null);
@@ -488,7 +505,7 @@ export const DailyFortuneArchiveModal: React.FC<DailyFortuneArchiveModalProps> =
 
   const [activeView, setActiveView] = useState<ReviewView>('timeline');
   const [selectedCardName, setSelectedCardName] = useState<string | null>(null);
-  const [expandedId, setExpandedId] = useState<string | null>(fortunes[0]?.id || null);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
   const [editingFortune, setEditingFortune] = useState<DailyFortune | null>(null);
   const isEditingPast = Boolean(editingFortune && getRecordCalendarDate(editingFortune.date) < toLocalReadingDate());
   const reviewLabel = isEditingPast ? '回看' : '今日回看';
@@ -501,6 +518,7 @@ export const DailyFortuneArchiveModal: React.FC<DailyFortuneArchiveModalProps> =
     dailyReview: editDailyReview,
   }, isOpen && Boolean(editingFortune));
   const [reviewFilter, setReviewFilter] = useState<ReviewFilter>('all');
+  const [toolsPanel, setToolsPanel] = useState<'search' | 'more' | null>(null);
   const [isExportMenuOpen, setIsExportMenuOpen] = useState(false);
   const [isOrganizing, setIsOrganizing] = useState(false);
   const [selectedDeleteIds, setSelectedDeleteIds] = useState<string[]>([]);
@@ -508,12 +526,20 @@ export const DailyFortuneArchiveModal: React.FC<DailyFortuneArchiveModalProps> =
   const [deleteError, setDeleteError] = useState('');
   const [annotationError, setAnnotationError] = useState<{ id: string; message: string } | null>(null);
   const [swipeResetToken, setSwipeResetToken] = useState(0);
-  const exportMenuRef = useRef<HTMLDivElement | null>(null);
-  const closeExportMenu = useCallback(() => setIsExportMenuOpen(false), []);
-  useClickOutside(exportMenuRef, closeExportMenu, isExportMenuOpen);
-
   const currentMonthKey = getCurrentMonthKey();
   const selectedMonthKey = drawMonth || currentMonthKey;
+  const cardCountsByPeriod = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const fortune of fortunes) {
+      const date = getRecordCalendarDate(fortune.date);
+      if (!date) continue;
+      for (const period of [date.slice(0, 4), date.slice(0, 7)]) {
+        const key = `${period}:${fortune.cardName}`;
+        counts.set(key, (counts.get(key) ?? 0) + 1);
+      }
+    }
+    return counts;
+  }, [fortunes]);
   const searchedFortunes = useMemo(() => fortunes.filter(fortune => dailyFortuneMatchesSearch(fortune, drawQuery)
     && (!drawDate || getRecordCalendarDate(fortune.date) === drawDate)
     && (!(drawMonth || activeView === 'month') || getRecordCalendarDate(fortune.date).startsWith(selectedMonthKey))),
@@ -585,7 +611,6 @@ export const DailyFortuneArchiveModal: React.FC<DailyFortuneArchiveModalProps> =
 
   const openEdit = (fortune: DailyFortune) => {
     resetSwipeActions();
-    setIsExportMenuOpen(false);
     const reflectionParts = getDailyReflectionParts(fortune);
     const savedDraft = readLocalDraft<DailyFortuneReflectionParts>(`tarot_daily_reflection_draft_${ownerScope}_${fortune.id}`);
     setEditingFortune(fortune);
@@ -631,7 +656,6 @@ export const DailyFortuneArchiveModal: React.FC<DailyFortuneArchiveModalProps> =
   const handleSaveToCardAnnotation = (fortune: DailyFortune) => {
     if (!hasDailyReflectionContent(fortune) || fortune.savedToCardAnnotationAt) return;
     resetSwipeActions();
-    setIsExportMenuOpen(false);
     setAnnotationError(null);
     try {
       onSaveToCardAnnotation(fortune.id);
@@ -648,11 +672,22 @@ export const DailyFortuneArchiveModal: React.FC<DailyFortuneArchiveModalProps> =
     setDeleteError('');
   };
 
+  const closeTools = () => {
+    setToolsPanel(null);
+    setIsExportMenuOpen(false);
+  };
+
+  const openTools = (panel: 'search' | 'more') => {
+    resetSwipeActions();
+    setToolsPanel(panel);
+    setIsExportMenuOpen(false);
+  };
+
   const closeArchive = () => {
     closeEdit();
     closeOrganizing();
     setAnnotationError(null);
-    setIsExportMenuOpen(false);
+    closeTools();
     onClose();
   };
 
@@ -660,7 +695,7 @@ export const DailyFortuneArchiveModal: React.FC<DailyFortuneArchiveModalProps> =
     resetSwipeActions();
     setActiveView(view);
     setExpandedId(null);
-    setIsExportMenuOpen(false);
+    closeTools();
   };
 
   const handleReviewFilterChange = (filter: ReviewFilter) => {
@@ -679,7 +714,7 @@ export const DailyFortuneArchiveModal: React.FC<DailyFortuneArchiveModalProps> =
   const toggleOrganizing = () => {
     resetSwipeActions();
     setExpandedId(null);
-    setIsExportMenuOpen(false);
+    closeTools();
     setIsOrganizing(prev => {
       if (prev) {
         setSelectedDeleteIds([]);
@@ -706,7 +741,6 @@ export const DailyFortuneArchiveModal: React.FC<DailyFortuneArchiveModalProps> =
   };
 
   const requestDeleteFortune = (fortune: DailyFortune) => {
-    setIsExportMenuOpen(false);
     setDeleteError('');
     setSelectedDeleteIds([fortune.id]);
     setShowDeleteConfirm(true);
@@ -741,7 +775,7 @@ export const DailyFortuneArchiveModal: React.FC<DailyFortuneArchiveModalProps> =
       record_count: exportFortunes.length,
       view: activeView,
     });
-    setIsExportMenuOpen(false);
+    closeTools();
   };
 
   const handleExportPdf = () => {
@@ -757,7 +791,7 @@ export const DailyFortuneArchiveModal: React.FC<DailyFortuneArchiveModalProps> =
       record_count: exportFortunes.length,
       view: activeView,
     });
-    setIsExportMenuOpen(false);
+    closeTools();
   };
 
   const handleExportCsv = () => {
@@ -773,7 +807,7 @@ export const DailyFortuneArchiveModal: React.FC<DailyFortuneArchiveModalProps> =
       record_count: exportFortunes.length,
       view: activeView,
     });
-    setIsExportMenuOpen(false);
+    closeTools();
   };
 
   const renderFortuneList = (items: DailyFortune[]) => (
@@ -786,51 +820,108 @@ export const DailyFortuneArchiveModal: React.FC<DailyFortuneArchiveModalProps> =
           : '换一个筛选条件，或回到全部记录继续查看。'}
         className="py-8"
       />
-    ) : items.map(fortune => (
-      <FortuneArchiveItem
-        key={fortune.id}
-        fortune={fortune}
-        expanded={!isOrganizing && expandedId === fortune.id}
-        isOrganizing={isOrganizing}
-        isSelected={selectedDeleteIds.includes(fortune.id)}
-        resetSwipeToken={swipeResetToken}
-        saveError={annotationError?.id === fortune.id ? annotationError.message : undefined}
-        onToggle={() => setExpandedId(expandedId === fortune.id ? null : fortune.id)}
-        onToggleSelected={() => toggleDeleteSelection(fortune.id)}
-        onEdit={openEdit}
-        onSaveToCardAnnotation={handleSaveToCardAnnotation}
-        onRequestDelete={requestDeleteFortune}
-      />
-    ))
+    ) : items.map(fortune => {
+      const calendarDate = getRecordCalendarDate(fortune.date);
+      return (
+        <FortuneArchiveItem
+          key={fortune.id}
+          fortune={fortune}
+          calendarDate={calendarDate}
+          yearCount={cardCountsByPeriod.get(`${calendarDate.slice(0, 4)}:${fortune.cardName}`)}
+          monthCount={cardCountsByPeriod.get(`${calendarDate.slice(0, 7)}:${fortune.cardName}`)}
+          expanded={!isOrganizing && expandedId === fortune.id}
+          isOrganizing={isOrganizing}
+          isSelected={selectedDeleteIds.includes(fortune.id)}
+          resetSwipeToken={swipeResetToken}
+          saveError={annotationError?.id === fortune.id ? annotationError.message : undefined}
+          onToggle={() => setExpandedId(expandedId === fortune.id ? null : fortune.id)}
+          onToggleSelected={() => toggleDeleteSelection(fortune.id)}
+          onEdit={openEdit}
+          onSaveToCardAnnotation={handleSaveToCardAnnotation}
+          onRequestDelete={requestDeleteFortune}
+        />
+      );
+    })
   );
+
+  const isReadingSource = source === 'readings';
+  const sourceLabel = isReadingSource ? '日运手记' : '日运抽牌';
+  const query = isReadingSource ? readingQuery : drawQuery;
+  const date = isReadingSource ? readingDate : drawDate;
+  const month = isReadingSource ? readingMonth : drawMonth;
+  const activeStatus = isReadingSource
+    ? readingFilterOptions.find(([value]) => value === readingFilter && value !== 'all')?.[1]
+    : reviewFilterOptions.find(option => option.id === reviewFilter && option.id !== 'all')?.label;
+  const filterSummary = [query.trim(), date || month, activeStatus].filter(Boolean).join(' · ');
+  const viewSummary = activeView === 'month' ? `${selectedMonthKey} 月度回看` : '按牌';
+  const showViewSummary = !isReadingSource && activeView !== 'timeline';
+  const toolButtonClass = 'flex h-11 min-w-11 shrink-0 items-center justify-center gap-1.5 rounded-xl text-xs font-medium text-forest-accent transition-colors hover:bg-forest-accent/8 min-[360px]:px-2 sm:px-3';
+
+  const clearFilters = () => {
+    if (isReadingSource) {
+      setReadingQuery('');
+      setReadingDate('');
+      setReadingMonth('');
+      setReadingFilter('all');
+    } else {
+      setDrawQuery('');
+      setDrawDate('');
+      setDrawMonth('');
+      handleReviewFilterChange('all');
+    }
+  };
 
   return (
     <PageView isOpen={isOpen} onBack={closeArchive} title="日运复盘" width="wide">
-      <div ref={archiveAnchor} role="tablist" aria-label="日运来源" className="mb-4 flex gap-2 border-b border-forest-accent/10">
-        {([['draws', '日运抽牌', fortunes.length], ['readings', '日运手记', dailyReadings.length]] as const).map(([value, label, count]) => (
-          <button key={value} type="button" role="tab" aria-selected={source === value} onClick={() => setSource(value)} className={`min-h-11 border-b-2 px-3 text-sm ${source === value ? 'border-forest-accent font-medium text-forest-accent' : 'border-transparent text-forest-muted'}`}>{label} {count}</button>
-        ))}
-      </div>
-      {source === 'readings' ? <ArchiveSearchControls
-        sourceLabel="日运手记" query={readingQuery} date={readingDate} month={readingMonth} dateControlsOpen={readingDatesOpen}
-        onQueryChange={setReadingQuery} onToggleDates={() => setReadingDatesOpen(value => !value)}
-        onDateChange={value => { setReadingDate(value); if (value) setReadingMonth(value.slice(0, 7)); }}
-        onMonthChange={value => { setReadingMonth(value); if (!readingDate.startsWith(value)) setReadingDate(''); }}
-        onClear={() => { setReadingQuery(''); setReadingDate(''); setReadingMonth(''); }}
-      /> : <ArchiveSearchControls
-        sourceLabel="日运抽牌" query={drawQuery} date={drawDate} month={activeView === 'month' ? selectedMonthKey : drawMonth} dateControlsOpen={drawDatesOpen} forceDateControls={activeView === 'month'}
-        onQueryChange={setDrawQuery} onToggleDates={() => setDrawDatesOpen(value => !value)}
-        onDateChange={value => { setDrawDate(value); if (value) setDrawMonth(value.slice(0, 7)); }}
-        onMonthChange={value => { setDrawMonth(value); if (!drawDate.startsWith(value || (activeView === 'month' ? currentMonthKey : ''))) setDrawDate(''); }}
-        onClear={() => { setDrawQuery(''); setDrawDate(''); setDrawMonth(''); }}
-      />}
-      {source === 'readings' ? <section aria-label="日运手记" className="space-y-4">
-        <div role="group" aria-label="日运手记复盘筛选" className="flex gap-2">
-          {([['all', '全部'], ['pending', '待复盘'], ['reviewed', '已复盘']] as const).map(([value, label]) => <button key={value} type="button" aria-pressed={readingFilter === value} onClick={() => setReadingFilter(value)} className={`min-h-11 rounded-lg px-3 ${readingFilter === value ? 'bg-forest-accent text-white' : 'text-forest-muted hover:bg-forest-accent/5'}`}>{label}</button>)}
+      <div ref={archiveAnchor} className="-mt-3 mb-2 border-b border-forest-accent/10 sm:-mt-5">
+        <div className="flex items-center justify-between gap-1">
+          <div role="tablist" aria-label="日运来源" className="flex min-w-0 items-stretch gap-1 sm:gap-2">
+            {([['draws', '日运抽牌', fortunes.length], ['readings', '日运手记', dailyReadings.length]] as const).map(([value, label, count]) => (
+              <button
+                key={value}
+                type="button"
+                role="tab"
+                aria-selected={source === value}
+                onClick={() => setSource(value)}
+                className={`flex min-h-11 min-w-0 items-center gap-1 border-b-2 px-1.5 text-xs whitespace-nowrap sm:px-3 sm:text-sm ${
+                  source === value ? 'border-forest-accent font-medium text-forest-accent' : 'border-transparent text-forest-muted'
+                }`}
+              >
+                {label} <span className="min-w-0 truncate text-[11px] tabular-nums">{count}</span>
+              </button>
+            ))}
+          </div>
+          <div className="flex shrink-0 items-center">
+            <button type="button" aria-label="查找与筛选" title="查找与筛选" aria-haspopup="dialog" onClick={() => openTools('search')} className={`${toolButtonClass} ${filterSummary ? 'bg-forest-accent/10' : ''}`}>
+              <Search size={19} aria-hidden="true" /><span className="hidden min-[360px]:inline">查找</span>
+            </button>
+            {!isReadingSource && (
+              <button type="button" aria-label="更多日运操作" title="更多日运操作" aria-haspopup="dialog" onClick={() => openTools('more')} className={toolButtonClass}>
+                <Ellipsis size={21} aria-hidden="true" /><span className="hidden min-[360px]:inline">更多</span>
+              </button>
+            )}
+          </div>
         </div>
+        {(filterSummary || showViewSummary) && (
+          <div className="flex items-center gap-1 border-t border-forest-accent/7">
+            {showViewSummary && (
+              <button type="button" aria-haspopup="dialog" onClick={() => openTools('more')} className="inline-flex min-h-11 shrink-0 items-center gap-1.5 px-2 text-xs font-medium text-forest-accent hover:bg-forest-accent/8">
+                {viewSummary}<ChevronDown size={13} aria-hidden="true" />
+              </button>
+            )}
+            {filterSummary && <>
+              <button type="button" aria-haspopup="dialog" onClick={() => openTools('search')} className="min-h-11 min-w-0 flex-1 truncate px-2 text-left text-xs text-forest-accent hover:bg-forest-accent/8">
+                {filterSummary}
+              </button>
+              <button type="button" aria-label="清除当前筛选" title="清除当前筛选" onClick={clearFilters} className={toolButtonClass}><X size={17} aria-hidden="true" /></button>
+            </>}
+          </div>
+        )}
+      </div>
+      {isReadingSource ? <section aria-label="日运手记">
         {!visibleReadings.length && <p className="py-10 text-center text-forest-muted">{dailyReadings.length ? '没有符合条件的日运手记' : '还没有带“日运”标签的手记'}</p>}
         <div className="divide-y divide-forest-accent/10">
-          {visibleReadings.map(reading => <button key={reading.id} type="button" onClick={() => setSelectedReadingId(reading.id)} className="flex min-h-20 w-full items-center gap-3 py-4 text-left">
+          {visibleReadings.map(reading => <button key={reading.id} type="button" onClick={() => setSelectedReadingId(reading.id)} className="flex min-h-20 w-full items-center gap-3 py-3 text-left">
             <span className="min-w-0 flex-1">
               <span className="block text-xs text-forest-muted">{getRecordCalendarDate(reading.readingDate || reading.date)} · {reading.userFeedback?.trim() ? '已复盘' : '待复盘'}</span>
               <span className="mt-1 block break-words font-serif text-base font-bold text-forest-ink">{reading.question}</span>
@@ -841,183 +932,24 @@ export const DailyFortuneArchiveModal: React.FC<DailyFortuneArchiveModalProps> =
         </div>
         <ReadingDetailModal asPage reading={dailyReadings.find(reading => reading.id === selectedReadingId) || null} ownerScope={ownerScope} onSaveFeedback={onUpdateReadingFeedback} onClose={() => setSelectedReadingId(null)} onEdit={onEditReading ? reading => { setSelectedReadingId(null); onEditReading(reading); } : undefined} />
       </section> : <>
-              <div className="relative border-b border-forest-accent/7 bg-white/40 p-3 sm:p-3.5">
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <p className="mt-1 text-xs leading-relaxed text-forest-muted">
-                      回看每天的一张牌，把真实生活归入你的牌义体系。
-                    </p>
-                  </div>
-                </div>
-
-                <div className="mt-3 grid grid-cols-2 gap-1.5 sm:grid-cols-4 sm:gap-2">
-                  {stats.map(([label, value, suffix]) => (
-                    <div key={label} className="min-w-0 rounded-xl border border-forest-accent/6 bg-white/26 px-3 py-2.5">
-                      <p className="text-[10px] font-medium text-forest-muted">{label}</p>
-                      <p className="mt-1 truncate font-serif text-base font-semibold text-forest-accent">
-                        {value}
-                        <span className="ml-0.5 text-[10px] font-sans text-forest-muted">{suffix}</span>
-                      </p>
-                    </div>
-                  ))}
-                </div>
-
-                <div className="mt-3 flex flex-wrap items-center gap-1.5 sm:gap-2">
-                  {([
-                    ['timeline', '时间线', Archive],
-                    ['cards', '按牌', Library],
-                    ['month', '按月', BarChart3],
-                  ] as const).map(([view, label, Icon]) => (
-                    <button
-                      key={view}
-                      type="button"
-                      onClick={() => handleViewChange(view)}
-                      aria-label={`切换到${label}日运`}
-                      className={`flex min-h-11 items-center justify-center gap-1.5 rounded-full px-3 text-xs font-medium transition-colors ${
-                        activeView === view
-                          ? 'bg-forest-accent/92 text-white'
-                          : 'bg-white/40 text-forest-accent hover:bg-white/66'
-                      }`}
-                    >
-                      <Icon size={13} />
-                      {label}
-                    </button>
-                  ))}
+              {isOrganizing && (
+                <div className="mb-2 flex flex-wrap items-center gap-1">
+                  <button type="button" onClick={toggleOrganizing} aria-pressed={true} className={filterButtonClass(false)}>
+                    <CheckCircle2 size={15} aria-hidden="true" />完成整理
+                  </button>
+                  <button type="button" onClick={selectCurrentList} disabled={currentListFortunes.length === 0} className={`${filterButtonClass(false)} disabled:opacity-45`}>全选当前</button>
                   <button
                     type="button"
-                    onClick={toggleOrganizing}
-                    aria-pressed={isOrganizing}
-                    className={`flex min-h-11 items-center justify-center gap-1.5 rounded-full px-3 text-xs font-medium transition-colors ${
-                      isOrganizing
-                        ? 'bg-red-50 text-red-500 ring-1 ring-red-100'
-                        : 'bg-white/40 text-forest-accent hover:bg-white/66'
-                    }`}
+                    onClick={() => { setDeleteError(''); setShowDeleteConfirm(true); }}
+                    disabled={selectedDeleteIds.length === 0}
+                    aria-label={`删除选中 ${selectedDeleteIds.length} 条日运记录`}
+                    className="inline-flex min-h-11 items-center gap-1.5 rounded-full bg-red-50 px-3 text-xs font-medium text-red-500 hover:bg-red-100 disabled:opacity-45"
                   >
-                    <CheckCircle2 size={13} />
-                    {isOrganizing ? '完成整理' : '整理'}
+                    <Trash2 size={15} aria-hidden="true" />删除选中 {selectedDeleteIds.length}
                   </button>
-                  {isOrganizing && (
-                    <>
-                      <button
-                        type="button"
-                        onClick={selectCurrentList}
-                        disabled={currentListFortunes.length === 0}
-                        className="flex min-h-11 items-center justify-center rounded-full bg-white/40 px-3 text-xs font-medium text-forest-accent transition-colors hover:bg-white/66 disabled:opacity-45"
-                      >
-                        全选当前
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => { setDeleteError(''); setShowDeleteConfirm(true); }}
-                        disabled={selectedDeleteIds.length === 0}
-                        aria-label={`删除选中 ${selectedDeleteIds.length} 条日运记录`}
-                        className="flex min-h-11 items-center justify-center gap-1.5 rounded-full bg-red-50 px-3 text-xs font-medium text-red-500 transition-colors hover:bg-red-100 disabled:opacity-45"
-                      >
-                        <Trash2 size={13} />
-                        删除选中 {selectedDeleteIds.length > 0 ? selectedDeleteIds.length : ''}
-                      </button>
-                    </>
-                  )}
                 </div>
-
-                <div className={`mt-2 grid items-start gap-2 ${
-                  isOrganizing ? 'grid-cols-1' : 'grid-cols-[minmax(0,1fr)_auto]'
-                }`}>
-                  <div className="flex flex-wrap gap-1.5">
-                    {reviewFilterOptions.map(option => (
-                      <button
-                        key={option.id}
-                        type="button"
-                        onClick={() => handleReviewFilterChange(option.id)}
-                        aria-pressed={reviewFilter === option.id}
-                        aria-label={`筛选${option.label}日运记录`}
-                        className={`flex min-h-11 shrink-0 items-center justify-center gap-1.5 rounded-full px-3 text-xs font-medium transition-colors ${
-                          reviewFilter === option.id
-                            ? 'bg-forest-accent/90 text-white'
-                            : 'bg-white/36 text-forest-accent hover:bg-white/60'
-                        }`}
-                      >
-                        <span>{option.label}</span>
-                        <span className={`rounded-full px-1.5 py-0.5 text-[10px] ${
-                          reviewFilter === option.id
-                            ? 'bg-white/18 text-white'
-                            : 'bg-forest-accent/8 text-forest-muted'
-                        }`}>
-                          {option.count}
-                        </span>
-                      </button>
-                    ))}
-                  </div>
-
-                  {!isOrganizing && (
-                    <div ref={exportMenuRef} className="relative flex justify-end">
-                      <button
-                        type="button"
-                        onClick={toggleExportMenu}
-                        disabled={exportFortunes.length === 0}
-                        aria-haspopup="menu"
-                        aria-expanded={isExportMenuOpen}
-                        className="flex min-h-11 items-center justify-center gap-1.5 rounded-full bg-forest-accent/88 px-3 text-xs font-medium text-white hover:bg-forest-accent disabled:opacity-45"
-                      >
-                        <Download size={13} />
-                        导出
-                        <ChevronDown size={13} className={`transition-transform ${isExportMenuOpen ? 'rotate-180' : ''}`} />
-                      </button>
-                      {isExportMenuOpen && (
-                        <div
-                          role="menu"
-                          className="absolute right-0 top-12 z-10 w-56 rounded-2xl border border-forest-accent/7 bg-white/92 p-2 shadow-[0_16px_42px_-36px_rgba(62,58,54,0.5)] backdrop-blur-md"
-                        >
-                          <button
-                            type="button"
-                            role="menuitem"
-                            onClick={handleExportPdf}
-                            className="flex min-h-11 w-full items-center justify-between rounded-xl px-3 text-left text-xs font-medium text-forest-ink hover:bg-forest-bg"
-                          >
-                            <span>
-                              PDF 手札
-                              <span className="mt-0.5 block text-[10px] font-normal text-forest-muted">
-                                适合打印或留存整册
-                              </span>
-                            </span>
-                            <Download size={13} className="text-forest-accent" />
-                          </button>
-                          <button
-                            type="button"
-                            role="menuitem"
-                            onClick={handleExportCsv}
-                            className="flex min-h-11 w-full items-center justify-between rounded-xl px-3 text-left text-xs font-medium text-forest-ink hover:bg-forest-bg"
-                          >
-                            <span>
-                              表格
-                              <span className="mt-0.5 block text-[10px] font-normal text-forest-muted">
-                                适合继续筛选整理
-                              </span>
-                            </span>
-                            <Table2 size={13} className="text-forest-accent" />
-                          </button>
-                          <button
-                            type="button"
-                            role="menuitem"
-                            onClick={handleExportMarkdown}
-                            className="flex min-h-11 w-full items-center justify-between rounded-xl px-3 text-left text-xs font-medium text-forest-ink hover:bg-forest-bg"
-                          >
-                            <span>
-                              Markdown
-                              <span className="mt-0.5 block text-[10px] font-normal text-forest-muted">
-                                适合 Notion / Obsidian
-                              </span>
-                            </span>
-                            <FileText size={13} className="text-forest-accent" />
-                          </button>
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              <div className="space-y-2.5 p-3 sm:p-3.5">
+              )}
+              <div className="space-y-2.5">
                 {fortunes.length === 0 ? (
                   <QuietEmptyState
                     icon={<Archive size={24} />}
@@ -1028,30 +960,6 @@ export const DailyFortuneArchiveModal: React.FC<DailyFortuneArchiveModalProps> =
                   renderFortuneList(visibleFortunes)
                 ) : activeView === 'cards' ? (
                   <>
-                    <div className="flex gap-2 overflow-x-auto pb-1 no-scrollbar">
-                      <button
-                        type="button"
-                        onClick={() => setSelectedCardName(null)}
-                        className={`min-h-11 shrink-0 rounded-full px-3 text-xs font-medium ${
-                          !selectedCardName ? 'bg-forest-accent/92 text-white' : 'bg-white/42 text-forest-accent'
-                        }`}
-                      >
-                        全部
-                      </button>
-                      {cardGroups.map(group => (
-                        <button
-                          key={group.cardName}
-                          type="button"
-                          onClick={() => setSelectedCardName(group.cardName)}
-                          className={`min-h-11 shrink-0 rounded-full px-3 text-xs font-medium ${
-                            selectedCardName === group.cardName ? 'bg-forest-accent/92 text-white' : 'bg-white/42 text-forest-accent'
-                          }`}
-                        >
-                          {group.cardName} ×{group.totalCount}
-                        </button>
-                      ))}
-                    </div>
-
                     {!selectedCardName ? (
                       cardGroups.length === 0 ? (
                         renderFortuneList([])
@@ -1081,7 +989,7 @@ export const DailyFortuneArchiveModal: React.FC<DailyFortuneArchiveModalProps> =
                                 </div>
                                 {latestFortune && (
                                   <p className="mt-2 line-clamp-2 text-xs leading-relaxed text-forest-text/70">
-                                    最近 {latestFortune.date} · {latestPreview}
+                                    最近 {latestFortune.date}{latestPreview && ` · ${latestPreview}`}
                                   </p>
                                 )}
                                 <div className="mt-3 grid grid-cols-2 gap-2">
@@ -1099,88 +1007,19 @@ export const DailyFortuneArchiveModal: React.FC<DailyFortuneArchiveModalProps> =
                       )
                     ) : (
                       <>
-                        {selectedCardGroup && (
-                          <div className="rounded-[1.25rem] border border-forest-accent/7 bg-white/32 p-3">
-                            <p className="font-serif text-base font-semibold text-forest-ink">{selectedCardGroup.cardName}</p>
-                            <p className="mt-1 text-xs text-forest-muted">
-                              当前 {selectedCardGroup.totalCount} 次 · {selectedMonthKey} {selectedCardGroup.currentMonthCount} 次 · 已归入注疏 {selectedCardGroup.savedToAnnotationCount} 条
-                            </p>
-                            {selectedCardGroup.fortunes[0] && (
-                              <p className="mt-2 line-clamp-2 text-xs leading-relaxed text-forest-text/70">
-                                最近 {selectedCardGroup.fortunes[0].date} · {getFortunePreviewText(selectedCardGroup.fortunes[0])}
-                              </p>
-                            )}
-                          </div>
-                        )}
+                        <div className="flex flex-wrap items-center gap-x-3">
+                          <button type="button" onClick={() => setSelectedCardName(null)} className={filterButtonClass(false)}>全部牌组</button>
+                          <p className="min-w-0 text-xs text-forest-muted">
+                            <strong className="font-serif text-sm text-forest-ink">{selectedCardName}</strong> · {cardViewFortunes.length} 条
+                            {selectedCardGroup && ` · ${selectedMonthKey} ${selectedCardGroup.currentMonthCount} 次 · 注疏 ${selectedCardGroup.savedToAnnotationCount} 条`}
+                          </p>
+                        </div>
                         {renderFortuneList(cardViewFortunes)}
                       </>
                     )}
                   </>
                 ) : (
-                  <>
-                    <div className="rounded-[1.25rem] border border-forest-accent/7 bg-white/32 p-3">
-                      <p className="font-serif text-base font-semibold text-forest-ink">{selectedMonthKey} 月度回看</p>
-                      <p className="mt-1 text-xs text-forest-muted">当前主题：{monthTopCards.length > 0 ? monthTopCards.map(stat => `${stat.cardName}×${stat.count}`).join(' · ') : '待积累'}</p>
-                      <div className="mt-3 grid grid-cols-3 gap-2">
-                        <div className="rounded-2xl bg-white/34 px-3 py-2">
-                          <p className="text-[10px] text-forest-muted">逆位比例</p>
-                          <p className="mt-1 font-serif text-base font-semibold text-forest-accent">{monthReversedRatio}%</p>
-                        </div>
-                        <div className="rounded-2xl bg-white/34 px-3 py-2">
-                          <p className="text-[10px] text-forest-muted">待回看</p>
-                          <p className="mt-1 font-serif text-base font-semibold text-forest-accent">{monthPendingReviewCount}天</p>
-                        </div>
-                        <div className="rounded-2xl bg-white/34 px-3 py-2">
-                          <p className="text-[10px] text-forest-muted">记录</p>
-                          <p className="mt-1 font-serif text-base font-semibold text-forest-accent">{monthFortunes.length}天</p>
-                        </div>
-                      </div>
-                      {monthlyStats.length > 0 ? (
-                        <div className="mt-3 space-y-2">
-                          {monthlyStats.map(stat => (
-                            <button
-                              key={stat.cardName}
-                              type="button"
-                              onClick={() => {
-                                setDrawMonth(selectedMonthKey);
-                                setActiveView('cards');
-                                setSelectedCardName(stat.cardName);
-                                setExpandedId(null);
-                              }}
-                              className="flex min-h-11 w-full items-center justify-between gap-3 rounded-2xl bg-white/34 px-3 text-left text-xs text-forest-ink"
-                            >
-                              <span className="font-semibold text-forest-accent">{stat.cardName}</span>
-                              <span className="text-forest-muted">
-                                {stat.count} 次 · 正 {stat.uprightCount} / 逆 {stat.reversedCount}
-                              </span>
-                            </button>
-                          ))}
-                        </div>
-                      ) : (
-                        <p className="mt-3 rounded-2xl border border-dashed border-forest-accent/14 bg-white/34 px-3 py-4 text-center text-xs text-forest-muted">
-                          所选月份暂时没有符合条件的日运。
-                        </p>
-                      )}
-                    </div>
-
-                    {monthFortunes.length > 0 && (
-                      <div className="rounded-[1.25rem] border border-forest-accent/7 bg-white/32 p-3">
-                        <p className="font-serif text-base font-semibold text-forest-ink">月末回看提纲</p>
-                        <div className="mt-3 space-y-2">
-                          {[
-                            '哪张牌最像这个月反复出现的主题？',
-                            '哪些逆位提醒，后来在生活里有了答案？',
-                            '哪一条日运值得归入牌义注疏？',
-                          ].map(prompt => (
-                            <p key={prompt} className="rounded-2xl bg-white/34 px-3 py-2 text-xs leading-relaxed text-forest-text/75">
-                              {prompt}
-                            </p>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                    {renderFortuneList(monthFortunes)}
-                  </>
+                  renderFortuneList(monthFortunes)
                 )}
               </div>
           <PageView isOpen={Boolean(editingFortune)} onBack={requestCloseEdit} title="补写日运">
@@ -1265,6 +1104,218 @@ export const DailyFortuneArchiveModal: React.FC<DailyFortuneArchiveModalProps> =
             onClose={() => { setShowDeleteConfirm(false); setDeleteError(''); }}
           />
       </>}
+      {isOpen && createPortal(
+        <Modal isOpen={toolsPanel !== null} onClose={closeTools} title={toolsPanel === 'search' ? '查找与筛选' : '更多日运操作'}>
+          {toolsPanel === 'search' ? (
+            <div className="space-y-3">
+              <ArchiveSearchControls
+                sourceLabel={sourceLabel} query={query} date={date}
+                month={!isReadingSource && activeView === 'month' ? selectedMonthKey : month}
+                onQueryChange={isReadingSource ? setReadingQuery : setDrawQuery}
+                onDateChange={value => {
+                  if (isReadingSource) {
+                    setReadingDate(value);
+                    if (value) setReadingMonth(value.slice(0, 7));
+                  } else {
+                    setDrawDate(value);
+                    if (value) setDrawMonth(value.slice(0, 7));
+                  }
+                }}
+                onMonthChange={value => {
+                  if (isReadingSource) {
+                    setReadingMonth(value);
+                    if (!readingDate.startsWith(value)) setReadingDate('');
+                  } else {
+                    setDrawMonth(value);
+                    if (!drawDate.startsWith(value || (activeView === 'month' ? currentMonthKey : ''))) setDrawDate('');
+                  }
+                }}
+              />
+              {isReadingSource ? (
+                <div role="group" aria-label="日运手记复盘筛选" className="flex flex-wrap gap-1.5">
+                  {readingFilterOptions.map(([value, label]) => (
+                    <button key={value} type="button" aria-pressed={readingFilter === value} onClick={() => setReadingFilter(value)} className={filterButtonClass(readingFilter === value)}>{label}</button>
+                  ))}
+                </div>
+              ) : (
+                <div role="group" aria-label="日运抽牌回看筛选" className="flex flex-wrap gap-1.5">
+                  {reviewFilterOptions.map(option => (
+                    <button
+                      key={option.id}
+                      type="button"
+                      onClick={() => handleReviewFilterChange(option.id)}
+                      aria-pressed={reviewFilter === option.id}
+                      aria-label={`筛选${option.label}日运记录`}
+                      className={filterButtonClass(reviewFilter === option.id)}
+                    >
+                      {option.label}<span className="text-[10px] tabular-nums">{option.count}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p role="status" className="text-xs text-forest-muted">{isReadingSource ? visibleReadings.length : exportFortunes.length} 条符合条件</p>
+                <div className="ml-auto flex items-center gap-1.5">
+                  {filterSummary && <button type="button" aria-label={`清空${sourceLabel}查找`} onClick={clearFilters} className={filterButtonClass(false)}>清空查找</button>}
+                  <button type="button" onClick={closeTools} className={filterButtonClass(true)}>查看记录</button>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              <div role="group" aria-label="日运浏览方式" className="flex flex-wrap gap-1.5">
+                {viewOptions.map(([view, label, Icon]) => (
+                  <button key={view} type="button" onClick={() => handleViewChange(view)} aria-pressed={activeView === view} aria-label={`切换到${label}日运`} className={filterButtonClass(activeView === view)}>
+                    <Icon size={15} aria-hidden="true" />{label}
+                  </button>
+                ))}
+              </div>
+              <div className="flex flex-wrap items-center gap-1.5">
+                <button type="button" onClick={toggleOrganizing} aria-pressed={isOrganizing} className={filterButtonClass(false)}>
+                  <CheckCircle2 size={15} aria-hidden="true" />{isOrganizing ? '完成整理' : '整理'}
+                </button>
+                  <button
+                    type="button"
+                    onClick={toggleExportMenu}
+                    disabled={exportFortunes.length === 0}
+                    aria-haspopup="menu"
+                    aria-expanded={isExportMenuOpen}
+                    className="flex min-h-11 items-center justify-center gap-1.5 rounded-full bg-forest-accent/88 px-3 text-xs font-medium text-white hover:bg-forest-accent disabled:opacity-45"
+                  >
+                    <Download size={13} />
+                    导出
+                    <ChevronDown size={13} className={`transition-transform ${isExportMenuOpen ? 'rotate-180' : ''}`} />
+                  </button>
+              </div>
+              {isExportMenuOpen && (
+                <div
+                  role="menu"
+                  className="mt-1 rounded-2xl border border-forest-accent/7 bg-white/92 p-2 shadow-[0_16px_42px_-36px_rgba(62,58,54,0.5)] backdrop-blur-md"
+                >
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={handleExportPdf}
+                    className="flex min-h-11 w-full items-center justify-between rounded-xl px-3 text-left text-xs font-medium text-forest-ink hover:bg-forest-bg"
+                  >
+                    <span>
+                      PDF 手札
+                      <span className="mt-0.5 block text-[10px] font-normal text-forest-muted">
+                        适合打印或留存整册
+                      </span>
+                    </span>
+                    <Download size={13} className="text-forest-accent" />
+                  </button>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={handleExportCsv}
+                    className="flex min-h-11 w-full items-center justify-between rounded-xl px-3 text-left text-xs font-medium text-forest-ink hover:bg-forest-bg"
+                  >
+                    <span>
+                      表格
+                      <span className="mt-0.5 block text-[10px] font-normal text-forest-muted">
+                        适合继续筛选整理
+                      </span>
+                    </span>
+                    <Table2 size={13} className="text-forest-accent" />
+                  </button>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={handleExportMarkdown}
+                    className="flex min-h-11 w-full items-center justify-between rounded-xl px-3 text-left text-xs font-medium text-forest-ink hover:bg-forest-bg"
+                  >
+                    <span>
+                      Markdown
+                      <span className="mt-0.5 block text-[10px] font-normal text-forest-muted">
+                        适合 Notion / Obsidian
+                      </span>
+                    </span>
+                    <FileText size={13} className="text-forest-accent" />
+                  </button>
+                </div>
+              )}
+              <dl className="grid grid-cols-2 gap-1.5 min-[380px]:grid-cols-4">
+                {stats.map(([label, value, suffix]) => (
+                  <div key={label} className="min-w-0 rounded-xl border border-forest-accent/8 bg-white/30 px-2.5 py-2">
+                    <dt className="text-xs text-forest-muted">{label}</dt>
+                    <dd className="font-serif text-base font-bold text-forest-accent">{value}<span className="ml-0.5 font-sans text-[10px] font-normal text-forest-muted">{suffix}</span></dd>
+                  </div>
+                ))}
+              </dl>
+              {activeView === 'month' && (
+                <div className="space-y-2">
+                  <div className="rounded-[1.25rem] border border-forest-accent/7 bg-white/32 p-3">
+                    <div className="flex flex-wrap items-center justify-between gap-x-2">
+                      <h4 className="font-serif text-base font-bold text-forest-ink">{selectedMonthKey} 月度回看</h4>
+                      <button type="button" onClick={() => openTools('search')} className={filterButtonClass(false)}>选择月份</button>
+                    </div>
+                    <p className="mt-1 text-xs text-forest-muted">当前主题：{monthTopCards.length > 0 ? monthTopCards.map(stat => `${stat.cardName}×${stat.count}`).join(' · ') : '待积累'}</p>
+                    <div className="mt-3 grid grid-cols-3 gap-2">
+                      <div className="rounded-2xl bg-white/34 px-3 py-2">
+                        <p className="text-[10px] text-forest-muted">逆位比例</p>
+                        <p className="mt-1 font-serif text-base font-semibold text-forest-accent">{monthReversedRatio}%</p>
+                      </div>
+                      <div className="rounded-2xl bg-white/34 px-3 py-2">
+                        <p className="text-[10px] text-forest-muted">待回看</p>
+                        <p className="mt-1 font-serif text-base font-semibold text-forest-accent">{monthPendingReviewCount}天</p>
+                      </div>
+                      <div className="rounded-2xl bg-white/34 px-3 py-2">
+                        <p className="text-[10px] text-forest-muted">记录</p>
+                        <p className="mt-1 font-serif text-base font-semibold text-forest-accent">{monthFortunes.length}天</p>
+                      </div>
+                    </div>
+                    {monthlyStats.length > 0 ? (
+                      <div className="mt-3 space-y-2">
+                        {monthlyStats.map(stat => (
+                          <button
+                            key={stat.cardName}
+                            type="button"
+                            onClick={() => {
+                              setDrawMonth(selectedMonthKey);
+                              handleViewChange('cards');
+                              setSelectedCardName(stat.cardName);
+                            }}
+                            className="flex min-h-11 w-full items-center justify-between gap-3 rounded-2xl bg-white/34 px-3 text-left text-xs text-forest-ink"
+                          >
+                            <span className="font-semibold text-forest-accent">{stat.cardName}</span>
+                            <span className="text-forest-muted">
+                              {stat.count} 次 · 正 {stat.uprightCount} / 逆 {stat.reversedCount}
+                            </span>
+                          </button>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="mt-3 rounded-2xl border border-dashed border-forest-accent/14 bg-white/34 px-3 py-4 text-center text-xs text-forest-muted">
+                        所选月份暂时没有符合条件的日运。
+                      </p>
+                    )}
+                  </div>
+
+                  {monthFortunes.length > 0 && (
+                    <div className="rounded-[1.25rem] border border-forest-accent/7 bg-white/32 p-3">
+                      <p className="font-serif text-base font-semibold text-forest-ink">月末回看提纲</p>
+                      <div className="mt-3 space-y-2">
+                        {[
+                          '哪张牌最像这个月反复出现的主题？',
+                          '哪些逆位提醒，后来在生活里有了答案？',
+                          '哪一条日运值得归入牌义注疏？',
+                        ].map(prompt => (
+                          <p key={prompt} className="rounded-2xl bg-white/34 px-3 py-2 text-xs leading-relaxed text-forest-text/75">
+                            {prompt}
+                          </p>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+        </Modal>,
+        document.body,
+      )}
     </PageView>
   );
 };

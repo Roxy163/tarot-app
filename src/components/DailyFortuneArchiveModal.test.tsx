@@ -16,22 +16,79 @@ const reading = { ...INITIAL_READINGS[0], id: 'daily-reading', isExample: false,
 const props = () => ({ isOpen: true, onClose: vi.fn(), fortunes: [], readings: [reading], onUpdateReflection: vi.fn(), onSaveToCardAnnotation: vi.fn(), onDeleteFortunes: vi.fn(), onEditReading: vi.fn() });
 const fortune: DailyFortune = { id: 'daily-draw', userId: 'guest', date: '2026-11-03', cardName: '隐士', isReversed: false, interpretation: '', keywords: [], createdAt: '2026-11-03T08:00:00.000Z', dailyReview: '今天给自己留了一点独处时间。' };
 
+type ArchiveUser = ReturnType<typeof userEvent.setup>;
+type ArchiveTool = '查找与筛选' | '更多日运操作';
+
+async function openTool(user: ArchiveUser, name: ArchiveTool) {
+  await user.click(screen.getByRole('button', { name }));
+  return screen.getByRole('dialog', { name });
+}
+
+async function closeTool(user: ArchiveUser, name: ArchiveTool) {
+  await user.click(within(screen.getByRole('dialog', { name })).getByRole('button', { name: `关闭${name}` }));
+  await waitFor(() => expect(screen.queryByRole('dialog', { name })).not.toBeInTheDocument());
+}
+
+async function switchView(user: ArchiveUser, view: '时间线' | '按牌' | '按月') {
+  const more = await openTool(user, '更多日运操作');
+  await user.click(within(more).getByRole('button', { name: `切换到${view}日运` }));
+  await waitFor(() => expect(screen.queryByRole('dialog', { name: '更多日运操作' })).not.toBeInTheDocument());
+}
+
+async function exportMarkdown(user: ArchiveUser, more: HTMLElement) {
+  await user.click(within(more).getByRole('button', { name: '导出' }));
+  await user.click(within(more).getByRole('menuitem', { name: /^Markdown/ }));
+  await waitFor(() => expect(screen.queryByRole('dialog', { name: '更多日运操作' })).not.toBeInTheDocument());
+}
+
 describe('combined daily archive', () => {
   beforeEach(() => { localStorage.clear(); vi.clearAllMocks(); });
+  it('shows each draw’s calendar-year and calendar-month counts from all saved draws', async () => {
+    const user = userEvent.setup();
+    const repeatDraws = [
+      { ...fortune, id: 'physical', date: '2026-11-01', isReversed: true, source: 'physical-draw' as const },
+      { ...fortune, id: 'earlier-month', date: '2026-10-21' },
+      { ...fortune, id: 'earlier-year', date: '2025-11-03' },
+      { ...fortune, id: 'different-card', date: '2026-11-02', cardName: '太阳' },
+    ];
+    const archiveProps = { ...props(), fortunes: [fortune, ...repeatDraws] };
+    const view = render(<DailyFortuneArchiveModal {...archiveProps} />);
+    const draw = screen.getByRole('button', { name: /2026-11-03 · 系统抽牌/ });
+    expect(draw).toHaveTextContent('年内 3 次');
+    expect(screen.getByRole('button', { name: /2025-11-03 · 系统抽牌/ })).toHaveTextContent('年内 1 次');
+
+    await openTool(user, '查找与筛选');
+    fireEvent.change(screen.getByLabelText('日运抽牌日期'), { target: { value: '2026-11-03' } });
+    await closeTool(user, '查找与筛选');
+    expect(screen.queryByRole('button', { name: /2026-11-01 · 现实抽牌/ })).not.toBeInTheDocument();
+    expect(draw).toHaveTextContent('年内 3 次');
+    await user.click(draw);
+    expect(screen.getByText('2026 年出现 3 次 · 11 月出现 2 次')).toBeInTheDocument();
+
+    view.rerender(<DailyFortuneArchiveModal {...archiveProps} fortunes={[fortune, ...repeatDraws.slice(1)]} />);
+    expect(draw).toHaveTextContent('年内 2 次');
+    expect(screen.getByText('2026 年出现 2 次 · 11 月出现 1 次')).toBeInTheDocument();
+  });
+
   it('opens daily handnotes when there are no system draws and preserves every card in the reader', async () => {
     const user = userEvent.setup();
     const callbacks = props();
     render(<DailyFortuneArchiveModal {...callbacks} />);
     expect(screen.getByRole('tab', { name: '日运手记 1' })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.queryByRole('textbox', { name: '搜索日运手记' })).not.toBeInTheDocument();
+    await openTool(user, '查找与筛选');
     await user.type(screen.getByRole('textbox', { name: '搜索日运手记' }), '湖边散步');
+    await user.keyboard('{Escape}');
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: '查找与筛选' })).not.toBeInTheDocument());
     await user.click(screen.getByRole('button', { name: /日运手记的原问题/ }));
-    expect(screen.getByRole('main', { name: '手记回看' })).toBeInTheDocument();
-    await user.click(screen.getByRole('button', { name: '牌面与逐牌解读（2）' }));
-    expect(screen.getByAltText('隐士')).toBeInTheDocument();
-    expect(screen.getByAltText('愚者')).toBeInTheDocument();
-    expect(screen.getByText('湖边散步')).toBeInTheDocument();
+    const reader = within(screen.getByRole('main', { name: '手记回看' }));
+    await user.click(reader.getByRole('button', { name: '牌面与逐牌解读（2）' }));
+    expect(reader.getByAltText('隐士')).toBeInTheDocument();
+    expect(reader.getByAltText('愚者')).toBeInTheDocument();
+    expect(reader.getByText('湖边散步')).toBeInTheDocument();
     await user.keyboard('{Escape}');
     await waitFor(() => expect(screen.queryByRole('main', { name: '手记回看' })).not.toBeInTheDocument());
+    await openTool(user, '查找与筛选');
     expect(screen.getByRole('textbox', { name: '搜索日运手记' })).toHaveValue('湖边散步');
     expect(callbacks.onUpdateReflection).not.toHaveBeenCalled();
     expect(callbacks.onDeleteFortunes).not.toHaveBeenCalled();
@@ -40,23 +97,31 @@ describe('combined daily archive', () => {
     const user = userEvent.setup();
     const callbacks = props();
     render(<DailyFortuneArchiveModal {...callbacks} />);
+    await openTool(user, '查找与筛选');
     await user.click(screen.getByRole('button', { name: '已复盘' }));
+    await closeTool(user, '查找与筛选');
     expect(screen.queryByRole('button', { name: /日运手记的原问题/ })).not.toBeInTheDocument();
+    await openTool(user, '查找与筛选');
     await user.click(screen.getByRole('button', { name: '待复盘' }));
+    await closeTool(user, '查找与筛选');
     await user.click(screen.getByRole('button', { name: /日运手记的原问题/ }));
     await user.click(screen.getByRole('button', { name: '编辑手记' }));
     expect(callbacks.onEditReading).toHaveBeenCalledWith(reading);
     expect(callbacks.onUpdateReflection).not.toHaveBeenCalled();
   });
   it('retains source and search across close/reopen and excludes examples', async () => {
+    const user = userEvent.setup();
     const callbacks = props();
     const view = render(<DailyFortuneArchiveModal {...callbacks} />);
+    await openTool(user, '查找与筛选');
     fireEvent.change(screen.getByRole('textbox', { name: '搜索日运手记' }), { target: { value: '隐士' } });
+    await closeTool(user, '查找与筛选');
     view.rerender(<DailyFortuneArchiveModal {...callbacks} isOpen={false} />);
     await waitFor(() => expect(screen.queryByRole('main', { name: '日运复盘' })).not.toBeInTheDocument());
     view.rerender(<DailyFortuneArchiveModal {...callbacks} readings={[reading, { ...reading, id: 'example', isExample: true }]} />);
-    expect(screen.getByRole('textbox', { name: '搜索日运手记' })).toHaveValue('隐士');
     expect(screen.getByRole('tab', { name: '日运手记 1' })).toHaveAttribute('aria-selected', 'true');
+    await openTool(user, '查找与筛选');
+    expect(screen.getByRole('textbox', { name: '搜索日运手记' })).toHaveValue('隐士');
   });
 
   it('saves a handnote review in place without calling the draw reflection store', async () => {
@@ -77,6 +142,7 @@ describe('combined daily archive', () => {
     const callbacks = props();
     const save = vi.fn().mockImplementationOnce(() => { throw new Error('本机保存失败，请重试。'); });
     render(<DailyFortuneArchiveModal {...callbacks} readings={[]} fortunes={[fortune]} onSaveToCardAnnotation={save} />);
+    await user.click(screen.getByRole('button', { name: /2026-11-03 · 系统抽牌/, expanded: false }));
     await user.click(screen.getByRole('button', { name: '归入牌义注疏' }));
     expect(screen.getByRole('alert')).toHaveTextContent('本机保存失败，请重试。');
     expect(screen.getByRole('button', { name: '归入牌义注疏' })).toBeEnabled();
@@ -93,7 +159,9 @@ describe('combined daily archive', () => {
     const callbacks = props();
     const remove = vi.fn().mockImplementationOnce(() => { throw new Error('本机删除失败，记录已保留。'); });
     render(<DailyFortuneArchiveModal {...callbacks} readings={[]} fortunes={[fortune]} onDeleteFortunes={remove} />);
+    await openTool(user, '更多日运操作');
     await user.click(screen.getByRole('button', { name: '整理' }));
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: '更多日运操作' })).not.toBeInTheDocument());
     await user.click(screen.getByRole('button', { name: '选择 2026-11-03 日运记录' }));
     await user.click(screen.getByRole('button', { name: '删除选中 1 条日运记录' }));
     await user.click(within(screen.getByRole('dialog', { name: '删除日运记录' })).getByRole('button', { name: '删除' }));
@@ -105,22 +173,30 @@ describe('combined daily archive', () => {
     await user.click(within(dialog).getByRole('button', { name: '删除' }));
     expect(remove).toHaveBeenNthCalledWith(2, [fortune.id]);
     await waitFor(() => expect(screen.queryByRole('dialog', { name: '删除日运记录' })).not.toBeInTheDocument());
-    expect(screen.getByRole('button', { name: '整理' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '完成整理' })).not.toBeInTheDocument();
     expect(screen.getByRole('main', { name: '日运复盘' })).toBeInTheDocument();
+    expect(within(await openTool(user, '更多日运操作')).getByRole('button', { name: '整理' })).toBeInTheDocument();
   });
 
   it('searches draw text, card aliases and dates, then clears the current search without modifying records', async () => {
     const user = userEvent.setup(); const callbacks = props();
     render(<DailyFortuneArchiveModal {...callbacks} readings={[]} fortunes={[fortune]} />);
-    const search = screen.getByRole('textbox', { name: '搜索日运抽牌' });
-    for (const query of ['独处时间', '隐者', '2026年11月3日']) {
+    for (const query of ['独处时间', '隐者', '2026年11月3日', '没有写过的内容']) {
+      const find = await openTool(user, '查找与筛选');
+      const search = within(find).getByRole('textbox', { name: '搜索日运抽牌' });
       fireEvent.change(search, { target: { value: query } });
-      expect(screen.getByText('2026-11-03 · 系统抽牌')).toBeInTheDocument();
+      await closeTool(user, '查找与筛选');
+      if (query === '没有写过的内容') {
+        expect(screen.getByText('没有符合条件的日运')).toBeInTheDocument();
+      } else {
+        expect(screen.getByText('2026-11-03 · 系统抽牌')).toBeInTheDocument();
+      }
     }
-    fireEvent.change(search, { target: { value: '没有写过的内容' } });
-    expect(screen.getByText('没有符合条件的日运')).toBeInTheDocument();
+    await openTool(user, '查找与筛选');
+    await user.click(screen.getByRole('button', { name: '筛选待回看日运记录' }));
     await user.click(screen.getByRole('button', { name: '清空日运抽牌查找' }));
-    expect(search).toHaveValue('');
+    expect(screen.getByRole('textbox', { name: '搜索日运抽牌' })).toHaveValue('');
+    await closeTool(user, '查找与筛选');
     expect(screen.getByText('2026-11-03 · 系统抽牌')).toBeInTheDocument();
     expect(callbacks.onUpdateReflection).not.toHaveBeenCalled();
     expect(callbacks.onDeleteFortunes).not.toHaveBeenCalled();
@@ -138,32 +214,43 @@ describe('combined daily archive', () => {
       { ...fortune, id: 'older', date: olderDate, createdAt: `${olderDate}T08:00:00Z`, cardName: '太阳' },
     ]} />);
 
-    const currentResult = () => screen.getByText('当前结果').parentElement;
-    expect(currentResult()).toHaveTextContent('2天');
-    await user.click(screen.getByRole('button', { name: '切换到按月日运' }));
+    const currentResult = (more: HTMLElement) => within(more).getByText('当前结果').parentElement;
+    let more = await openTool(user, '更多日运操作');
+    expect(currentResult(more)).toHaveTextContent('2天');
+    await closeTool(user, '更多日运操作');
+    await switchView(user, '按月');
+    await openTool(user, '查找与筛选');
     expect(screen.getByLabelText('日运抽牌月份')).toHaveValue(thisMonth);
-    expect(currentResult()).toHaveTextContent('1天');
-    await user.click(screen.getByRole('button', { name: '导出' }));
-    await user.click(screen.getByRole('menuitem', { name: /^Markdown/ }));
+    await closeTool(user, '查找与筛选');
+    expect(screen.getByText(`${currentDate} · 系统抽牌`)).toBeInTheDocument();
+    expect(screen.queryByText(`${olderDate} · 系统抽牌`)).not.toBeInTheDocument();
+    more = await openTool(user, '更多日运操作');
+    expect(currentResult(more)).toHaveTextContent('1天');
+    await exportMarkdown(user, more);
     expect(vi.mocked(downloadTextFile).mock.calls[0][1]).toContain(currentDate);
     expect(vi.mocked(downloadTextFile).mock.calls[0][1]).not.toContain(olderDate);
 
-    await user.click(screen.getByRole('button', { name: '切换到时间线日运' }));
-    expect(currentResult()).toHaveTextContent('2天');
+    await switchView(user, '时间线');
     expect(screen.getByText(`${olderDate} · 系统抽牌`)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: '按日期查找' })).toHaveAttribute('aria-expanded', 'false');
-    await user.click(screen.getByRole('button', { name: '导出' }));
-    await user.click(screen.getByRole('menuitem', { name: /^Markdown/ }));
+    await openTool(user, '查找与筛选');
+    expect(screen.getByLabelText('日运抽牌月份')).toHaveValue('');
+    await closeTool(user, '查找与筛选');
+    more = await openTool(user, '更多日运操作');
+    expect(currentResult(more)).toHaveTextContent('2天');
+    await exportMarkdown(user, more);
     expect(vi.mocked(downloadTextFile).mock.calls[1][1]).toContain(currentDate);
     expect(vi.mocked(downloadTextFile).mock.calls[1][1]).toContain(olderDate);
 
-    await user.click(screen.getByRole('button', { name: '切换到按月日运' }));
-    await user.click(screen.getByRole('button', { name: '切换到按牌日运' }));
-    expect(currentResult()).toHaveTextContent('2天');
+    await switchView(user, '按月');
+    await switchView(user, '按牌');
+    more = await openTool(user, '更多日运操作');
+    expect(currentResult(more)).toHaveTextContent('2天');
+    await closeTool(user, '更多日运操作');
     await user.click(screen.getByRole('button', { name: /^太阳 当前/ }));
-    expect(currentResult()).toHaveTextContent('1天');
     expect(screen.getByText(`${olderDate} · 系统抽牌`)).toBeInTheDocument();
-  });
+    more = await openTool(user, '更多日运操作');
+    expect(currentResult(more)).toHaveTextContent('1天');
+  }, 10_000);
 
   it('keeps a historical month, its text search, statistics and exported content in agreement', async () => {
     const user = userEvent.setup();
@@ -173,74 +260,99 @@ describe('combined daily archive', () => {
       { ...fortune, id: 'oct-sun', date: '2026-10-04', createdAt: '2026-10-04T08:00:00Z', cardName: '太阳', dailyReview: '' },
     ];
     render(<DailyFortuneArchiveModal {...props()} readings={[]} fortunes={[fortune, ...october]} />);
-    await user.click(screen.getByRole('button', { name: '切换到按月日运' }));
+    await switchView(user, '按月');
+    await openTool(user, '查找与筛选');
     fireEvent.change(screen.getByLabelText('日运抽牌月份'), { target: { value: '2026-10' } });
     fireEvent.change(screen.getByRole('textbox', { name: '搜索日运抽牌' }), { target: { value: '隐者' } });
+    await closeTool(user, '查找与筛选');
     expect(screen.getByText('2026-10 月度回看')).toBeInTheDocument();
-    expect(screen.getByText('当前结果').parentElement).toHaveTextContent('2天');
-    expect(screen.getByText('逆位比例').parentElement).toHaveTextContent('50%');
-    expect(screen.getByText('记录', { exact: true }).parentElement).toHaveTextContent('2天');
-    expect(screen.getByText('当前主题：隐士×2')).toBeInTheDocument();
-    await user.click(screen.getByRole('button', { name: '导出' }));
-    await user.click(screen.getByRole('menuitem', { name: /^Markdown/ }));
+    expect(screen.queryByText('月末回看提纲')).not.toBeInTheDocument();
+    expect(screen.getByText('2026-10-30 · 系统抽牌')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /2026-10 月度回看/ }));
+    let more = screen.getByRole('dialog', { name: '更多日运操作' });
+    expect(within(more).getByText('当前结果').parentElement).toHaveTextContent('2天');
+    expect(within(more).getByText('逆位比例').parentElement).toHaveTextContent('50%');
+    expect(within(more).getByText('记录', { exact: true }).parentElement).toHaveTextContent('2天');
+    expect(within(more).getByText('当前主题：隐士×2')).toBeInTheDocument();
+    expect(within(more).getByText('月末回看提纲')).toBeInTheDocument();
+    await exportMarkdown(user, more);
     const exported = vi.mocked(downloadTextFile).mock.calls[0][1];
     expect(exported).toContain('2026-10-03');
     expect(exported).toContain('2026-10-30');
     expect(exported).not.toContain('2026-11-03');
     expect(exported).not.toContain('2026-10-04');
 
+    await openTool(user, '查找与筛选');
     fireEvent.change(screen.getByLabelText('日运抽牌日期'), { target: { value: '2026-10-30' } });
-    expect(screen.getByText('当前结果').parentElement).toHaveTextContent('1天');
-    expect(screen.getByText('逆位比例').parentElement).toHaveTextContent('100%');
-    expect(screen.getByText('记录', { exact: true }).parentElement).toHaveTextContent('1天');
-    await user.click(screen.getByRole('button', { name: '导出' }));
-    await user.click(screen.getByRole('menuitem', { name: /^Markdown/ }));
+    await closeTool(user, '查找与筛选');
+    more = await openTool(user, '更多日运操作');
+    expect(within(more).getByText('当前结果').parentElement).toHaveTextContent('1天');
+    expect(within(more).getByText('逆位比例').parentElement).toHaveTextContent('100%');
+    expect(within(more).getByText('记录', { exact: true }).parentElement).toHaveTextContent('1天');
+    await exportMarkdown(user, more);
     expect(vi.mocked(downloadTextFile).mock.calls[1][1]).toContain('2026-10-30');
     expect(vi.mocked(downloadTextFile).mock.calls[1][1]).not.toContain('2026-10-03');
 
-    await user.click(screen.getByRole('button', { name: '切换到时间线日运' }));
-    expect(screen.getByRole('button', { name: '按日期查找 · 2026-10-30' })).toBeInTheDocument();
-    expect(screen.getByText('当前结果').parentElement).toHaveTextContent('1天');
-    await user.click(screen.getByRole('button', { name: '切换到按月日运' }));
+    await switchView(user, '时间线');
+    expect(screen.getByText('2026-10-30 · 系统抽牌')).toBeInTheDocument();
+    expect(screen.queryByText('2026-10-03 · 系统抽牌')).not.toBeInTheDocument();
+    await switchView(user, '按月');
+    await openTool(user, '查找与筛选');
     expect(screen.getByLabelText('日运抽牌日期')).toHaveValue('2026-10-30');
     fireEvent.change(screen.getByLabelText('日运抽牌日期'), { target: { value: '' } });
     fireEvent.change(screen.getByRole('textbox', { name: '搜索日运抽牌' }), { target: { value: '' } });
     await user.click(screen.getByRole('button', { name: '筛选待回看日运记录' }));
-    expect(screen.getByText('当前结果').parentElement).toHaveTextContent('1天');
-    expect(screen.getByText('记录', { exact: true }).parentElement).toHaveTextContent('1天');
-    expect(screen.getByText('当前主题：太阳×1')).toBeInTheDocument();
-    await user.click(screen.getByRole('button', { name: '导出' }));
-    await user.click(screen.getByRole('menuitem', { name: /^Markdown/ }));
+    await closeTool(user, '查找与筛选');
+    more = await openTool(user, '更多日运操作');
+    expect(within(more).getByText('当前结果').parentElement).toHaveTextContent('1天');
+    expect(within(more).getByText('记录', { exact: true }).parentElement).toHaveTextContent('1天');
+    expect(within(more).getByText('当前主题：太阳×1')).toBeInTheDocument();
+    await exportMarkdown(user, more);
     expect(vi.mocked(downloadTextFile).mock.calls[2][1]).toContain('2026-10-04');
     expect(vi.mocked(downloadTextFile).mock.calls[2][1]).not.toContain('2026-10-30');
-  });
+
+    more = await openTool(user, '更多日运操作');
+    await user.click(within(more).getByRole('button', { name: /^太阳/ }));
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: '更多日运操作' })).not.toBeInTheDocument());
+    expect(screen.getByRole('button', { name: '全部牌组' })).toBeInTheDocument();
+    expect(screen.getByText('2026-10-04 · 系统抽牌')).toBeInTheDocument();
+    await openTool(user, '查找与筛选');
+    expect(screen.getByLabelText('日运抽牌月份')).toHaveValue('2026-10');
+  }, 10_000);
 
   it('keeps each source query and date filter across source switches and close/reopen', async () => {
     const user = userEvent.setup(); const callbacks = props();
     const datedReading = { ...reading, readingDate: '2026-10-02', date: '2026-11-03T08:00:00Z' };
     const view = render(<DailyFortuneArchiveModal {...callbacks} fortunes={[fortune]} readings={[datedReading]} />);
+    await openTool(user, '查找与筛选');
     fireEvent.change(screen.getByRole('textbox', { name: '搜索日运抽牌' }), { target: { value: '11/3' } });
-    await user.click(screen.getByRole('button', { name: '按日期查找' }));
     fireEvent.change(screen.getByLabelText('日运抽牌日期'), { target: { value: '2026-11-03' } });
+    await closeTool(user, '查找与筛选');
     await user.click(screen.getByRole('tab', { name: '日运手记 1' }));
+    await openTool(user, '查找与筛选');
     fireEvent.change(screen.getByRole('textbox', { name: '搜索日运手记' }), { target: { value: '湖边散步' } });
-    await user.click(screen.getByRole('button', { name: '按日期查找' }));
     fireEvent.change(screen.getByLabelText('日运手记日期'), { target: { value: '2026-10-02' } });
+    await closeTool(user, '查找与筛选');
     expect(screen.getByRole('button', { name: /2026-10-02.*日运手记的原问题/ })).toBeInTheDocument();
     await user.click(screen.getByRole('tab', { name: '日运抽牌 1' }));
+    await openTool(user, '查找与筛选');
     expect(screen.getByRole('textbox', { name: '搜索日运抽牌' })).toHaveValue('11/3');
     expect(screen.getByLabelText('日运抽牌日期')).toHaveValue('2026-11-03');
+    await closeTool(user, '查找与筛选');
     await user.click(screen.getByRole('tab', { name: '日运手记 1' }));
     view.rerender(<DailyFortuneArchiveModal {...callbacks} fortunes={[fortune]} readings={[datedReading]} isOpen={false} />);
     await waitFor(() => expect(screen.queryByRole('main', { name: '日运复盘' })).not.toBeInTheDocument());
     view.rerender(<DailyFortuneArchiveModal {...callbacks} fortunes={[fortune]} readings={[datedReading]} />);
+    await openTool(user, '查找与筛选');
     expect(screen.getByRole('textbox', { name: '搜索日运手记' })).toHaveValue('湖边散步');
     expect(screen.getByLabelText('日运手记日期')).toHaveValue('2026-10-02');
     expect(screen.getByLabelText('日运手记月份')).toHaveValue('2026-10');
     await user.click(screen.getByRole('button', { name: '清空日运手记查找' }));
     expect(screen.getByLabelText('日运手记日期')).toHaveValue('');
     expect(screen.getByLabelText('日运手记月份')).toHaveValue('');
+    await closeTool(user, '查找与筛选');
     await user.click(screen.getByRole('tab', { name: '日运抽牌 1' }));
+    await openTool(user, '查找与筛选');
     expect(screen.getByRole('textbox', { name: '搜索日运抽牌' })).toHaveValue('11/3');
   });
 });
